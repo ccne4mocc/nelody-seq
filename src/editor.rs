@@ -385,6 +385,11 @@ impl Editor for SlintEditor {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_step_rate(move |delta| set(&c, &p.rate, p.rate.value().stepped(delta)));
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_set_rate(move |v| {
+                    let last = <Rate as Enum>::variants().len() as i32 - 1;
+                    set(&c, &p.rate, Rate::from_index(v.clamp(0, last) as usize));
+                });
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_rate_submitted(move |text| {
                     if let Some(rate) = Rate::parse(text.as_str()) { set(&c, &p.rate, rate); }
                 });

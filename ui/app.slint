@@ -383,6 +383,7 @@ component RateField inherits Rectangle {
     in property <string> value;
     callback stepped(int);
     callback submitted(string);
+    callback menu-requested();
     out property <bool> editing: root.edit-open;
     height: 25px;
     border-radius: 4px; background: Theme.control; border-width: 1px; border-color: Theme.border;
@@ -402,7 +403,8 @@ component RateField inherits Rectangle {
         root.focus-pending = true;
     }
     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.label; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.value; color: Theme.text; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+    Text { x: 8px; width: parent.width - 26px; height: parent.height; text: root.value; color: Theme.text; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+    Text { x: parent.width - 18px; width: 14px; height: parent.height; text: "▾"; color: Theme.text-muted; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
     ta := TouchArea {
         pointer-event(e) => {
             if (!root.edit-open && e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
@@ -429,6 +431,10 @@ component RateField inherits Rectangle {
                 reject
             }
         }
+    }
+    arrow-touch := TouchArea {
+        x: parent.width - 20px; y: 0px; width: 20px; height: parent.height;
+        clicked => { root.menu-requested(); }
     }
     editor := Rectangle {
         visible: root.edit-open;
@@ -588,6 +594,9 @@ export component AppWindow inherits Window {
     // under the mode header and the Scale chip instead of sliding in from a window edge.
     in property <length> mode-menu-x: 384px;
     in property <length> mode-menu-y: 86px;
+    in-out property <bool> rate-menu-open: false;
+    in property <length> rate-menu-x: 55px;
+    in property <length> rate-menu-y: 386px;
     in-out property <bool> tuning-open: false;
     in property <length> tuning-menu-x: 181px;
     in property <length> tuning-menu-y: 424px;
@@ -632,6 +641,7 @@ export component AppWindow inherits Window {
     // One wheel notch over the current-mode header: -1 previous, +1 next.
     callback step-mode(int);
     callback step-rate(int);
+    callback set-rate(int);
     callback rate-submitted(string);
     callback set-osc-wave(int);
     callback set-theme(int);
@@ -791,7 +801,7 @@ export component AppWindow inherits Window {
             Text { text: root.free-run ? "FREE-RUN CLOCK: ON" : "SYNC: HOST TRANSPORT"; color: root.free-run ? Theme.c1 : Theme.text-muted; font-size: 9px; vertical-alignment: center; }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: generate-touch.has-hover ? Theme.hi : Theme.control; Text { text: root.generate-on ? "RE-GENERATE ↻" : "GENERATE ↻"; color: generate-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } generate-touch := TouchArea { clicked => { root.generate-pressed(); } } }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: randomize-touch.has-hover ? Theme.c3 : Theme.control; Text { text: "RANDOMIZE ⚄"; color: randomize-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } randomize-touch := TouchArea { clicked => { root.randomize-pressed(); } } }
-            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TouchArea { clicked => { root.tuning-open = false; root.settings-open = !root.settings-open; } } }
+            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TouchArea { clicked => { root.tuning-open = false; root.rate-menu-open = false; root.settings-open = !root.settings-open; } } }
         }
         HorizontalLayout {
             // 300px leaves room for the two- or three-sentence description plus the live math
@@ -805,7 +815,7 @@ export component AppWindow inherits Window {
                     background: mode-menu-touch.has-hover ? Theme.control-hover : Theme.control;
                     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MODE  ·  \{root.mode-names[root.mode]}  ▾"; color: Theme.c1; font-size: 13px; font-weight: 700; vertical-alignment: center; overflow: elide; }
                     mode-menu-touch := TouchArea {
-                        clicked => { root.tuning-open = false; root.settings-open = false; root.mode-menu-open = !root.mode-menu-open; }
+                        clicked => { root.tuning-open = false; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = !root.mode-menu-open; }
                         // Hover the current mode and scroll to step through the mode list without
                         // opening it. The list itself keeps the wheel for scrolling.
                         scroll-event(e) => {
@@ -856,6 +866,7 @@ export component AppWindow inherits Window {
                 value: root.rate < root.rate-names.length ? root.rate-names[root.rate] : "";
                 stepped(d) => { root.step-rate(d); }
                 submitted(s) => { root.rate-submitted(s); }
+                menu-requested => { root.rate-menu-open = true; root.mode-menu-open = false; root.tuning-open = false; root.settings-open = false; }
             }
             Rectangle { horizontal-stretch: 1; }
             Text { text: "SWING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
@@ -869,7 +880,7 @@ export component AppWindow inherits Window {
             tuning-root := NumBox { width: 112px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
             // The scale list lives in a dropdown under this chip; the chip only shows the
             // current scale and opens the list.
-            TuningChip { width: 160px; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.settings-open = false; root.mode-menu-open = false; } }
+            TuningChip { width: 160px; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
             // Keep EDO/Oct/NTS on the right while the Scale field keeps its compact half width.
             Rectangle { horizontal-stretch: 1; }
             edo-row := NumBox { visible: root.edo-active; width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
@@ -913,10 +924,10 @@ export component AppWindow inherits Window {
 
     // Mode and Scale are dropdowns. A transparent catcher closes whichever list is open on
     // the next click, and each list overlays the editor instead of taking a side panel.
-    if root.mode-menu-open || root.tuning-open: Rectangle {
+    if root.mode-menu-open || root.tuning-open || root.rate-menu-open: Rectangle {
         x: 0px; y: 0px; width: root.base-width; height: root.base-height;
         background: #00000010;
-        TouchArea { clicked => { root.mode-menu-open = false; root.tuning-open = false; } }
+        TouchArea { clicked => { root.mode-menu-open = false; root.tuning-open = false; root.rate-menu-open = false; } }
     }
     if root.mode-menu-open: DropdownList {
         x: root.mode-menu-x; y: root.mode-menu-y;
@@ -929,6 +940,12 @@ export component AppWindow inherits Window {
         width: 160px; height: 300px;
         options: root.scale-names; current: root.scale-index;
         selected(i) => { root.set-scale(i); root.tuning-open = false; }
+    }
+    if root.rate-menu-open: DropdownList {
+        x: root.rate-menu-x; y: root.rate-menu-y;
+        width: 200px; height: 260px;
+        options: root.rate-names; current: root.rate;
+        selected(i) => { root.set-rate(i); root.rate-menu-open = false; }
     }
 
     // parked off-screen when closed, so the closing animation can play too; a bare
