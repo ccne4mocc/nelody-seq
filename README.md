@@ -7,11 +7,13 @@ eight-lane drum kit, and a right-to-left MIDI piano roll where the drum matrix u
 Route the track to a mono synth. Nelody emits **notes, not percussion**: microtonal tunings,
 pitch slides, legato and accents travel over MIDI channel 1.
 
-- **19 generators**, deterministic and bounded: 14 melodic algorithms (Euclidean necklace,
+- **29 generators**, deterministic and bounded: 24 melodic algorithms (Euclidean necklace,
   Golomb ruler, logistic map, Eulerian walk, Arnold circle map, Mozart dice, Tonnetz walk,
   Rule-30 cellular automaton, Markov walk, oscillator sampling, L-system grammar, Xenakis
-  sieve, Fibonacci/Sturmian word, Bernoulli) plus 5 acid (Random, Euclid, Markov, Motif,
-  Shift-register lines with accent/slide/octave-jump probability knobs).
+  sieve, Fibonacci/Sturmian word, Bernoulli, Thue-Morse, Rudin-Shapiro, Brownian walk,
+  Lévy flight, tent map, Hénon map, arpeggiator, walking bass, Hilbert curve, Ulam spiral
+  primes) plus 5 acid (Random, Euclid, Markov, Motif, Shift-register lines with
+  accent/slide/octave-jump probability knobs).
 - **Microtonal**: root pitch class, twelve scales/ji tables (major, minor, dorian, pentatonics,
   12-TET chromatic, just 5-limit, Pythagorean, 1/4-comma meantone, harmonic series, slendro)
   or any EDO up to 72, with a root-cents fine tune. Non-12-TET pitch is sent as pitch bend

@@ -671,6 +671,7 @@ export component AppWindow inherits Window {
     // what they mean in that mode. `GenParams` still carries every field; this is presentation.
     pure function shows-param(mode: int, key: int) -> bool {
         if (key == 5) { // osc phase: only modes that actually consume it
+            if (mode >= 19 && mode <= 27) { return true; }
             return mode == 0 || mode == 1 || mode == 2 || mode == 4 || mode == 7 || mode == 9 || mode == 10 || mode == 11 || mode == 12 || mode == 17 || mode == 18;
         }
         if (key == 6) { return mode == 9 || mode == 8; }        // osc cycles: Oscillator, Markov
@@ -683,6 +684,8 @@ export component AppWindow inherits Window {
         if (mode == 7) { return 15; }    // cellular generation
         if (mode == 11) { return 2; }    // sieve union terms
         if (mode == 17) { return 16; }   // acid motif length
+        if (mode == 25 || mode == 26) { return 4; } // chord tones
+        if (mode == 27) { return 5; }    // Hilbert order
         return root.cells;
     }
     pure function pulse-label(mode: int) -> string {
@@ -704,6 +707,9 @@ export component AppWindow inherits Window {
         if (mode == 16) { return "Notes"; }
         if (mode == 17) { return "Motif length"; }
         if (mode == 18) { return "Register bits"; }
+        if (mode == 19 || mode == 20 || mode == 21 || mode == 22 || mode == 23 || mode == 24 || mode == 28) { return "Target hits"; }
+        if (mode == 25 || mode == 26) { return "Chord tones"; }
+        if (mode == 27) { return "Order"; }
         return "Pulses";
     }
     pure function density-label(mode: int) -> string {
@@ -712,6 +718,12 @@ export component AppWindow inherits Window {
         if (mode == 13) { return "Onset chance"; }
         if (mode == 14 || mode == 15) { return "Root bias"; }
         if (mode == 16) { return "Leapiness"; }
+        if (mode == 21) { return "Step size"; }
+        if (mode == 22) { return "Tail weight"; }
+        if (mode == 23) { return "Map μ"; }
+        if (mode == 24) { return "Chaos a"; }
+        if (mode == 25 || mode == 27) { return "Gate"; }
+        if (mode == 26) { return "Approach"; }
         return "Density";
     }
     pure function phase-label(mode: int) -> string {
@@ -719,6 +731,11 @@ export component AppWindow inherits Window {
         if (mode == 8) { return "Step/leap"; }
         if (mode == 17) { return "Mutation"; }
         if (mode == 18) { return "Register flip"; }
+        if (mode == 19 || mode == 20) { return "Run offset"; }
+        if (mode == 21 || mode == 22) { return "Drift"; }
+        if (mode == 23 || mode == 24) { return "Initial x"; }
+        if (mode == 25 || mode == 26) { return "Direction"; }
+        if (mode == 27) { return "Rotation"; }
         return "Osc phase";
     }
     pure function osc-label(mode: int) -> string {
@@ -732,7 +749,14 @@ export component AppWindow inherits Window {
     pure function regen-label(mode: int) -> string {
         return "Regenerate after (lengths, 0=off)";
     }
-    property <[string]> mode-names: ["Euclidean", "Golomb Ruler", "Logistic Map", "Eulerian Walk", "Arnold Circle Map", "Mozart Dice", "Tonnetz Walk", "Rule 30", "Markov Walk", "Oscillator / Phase", "L-System Grammar", "Xenakis Sieve", "Fibonacci / Sturmian", "Bernoulli", "Acid Random", "Acid Euclid", "Acid Markov", "Acid Motif", "Acid Shift Register"];
+    property <[string]> mode-names: [
+        "Euclidean", "Golomb Ruler", "Logistic Map", "Eulerian Walk", "Arnold Circle Map",
+        "Mozart Dice", "Tonnetz Walk", "Rule 30", "Markov Walk", "Oscillator / Phase",
+        "L-System Grammar", "Xenakis Sieve", "Fibonacci / Sturmian", "Bernoulli",
+        "Acid Random", "Acid Euclid", "Acid Markov", "Acid Motif", "Acid Shift Register",
+        "Thue-Morse", "Rudin-Shapiro", "Brownian Walk", "Lévy Flight", "Tent Map",
+        "Hénon Map", "Arpeggiator", "Walking Bass", "Hilbert Curve", "Ulam Spiral Primes"
+    ];
     property <[string]> mode-help: [
         "Places pulses as evenly as possible around the step ring, then walks the pitch contour by 1/φ per onset. Density thins the onsets; Seed and Phase move the whole necklace.",
         "Maps the marks of an optimal Golomb ruler onto the bar, so no inter-onset interval repeats. Gap length sets the pitch step, which gives the phrase its wide, non-metrical leaps.",
@@ -752,7 +776,17 @@ export component AppWindow inherits Window {
         "Notes are a Euclidean rhythm; accents, slides and octave jumps are nested Euclidean rhythms over those notes. Knobs only add or remove flags, never reshuffle the line.",
         "A two-state note/rest chain with the requested stationary density, plus a first-order pitch chain. Slides are more likely between close degrees.",
         "Rolls one short motif and repeats it. Phase mutates later repeats by flipping notes, re-pitching them or shifting an octave.",
-        "A Turing-machine shift register feeds rhythm, scale degree, accent, slide and octave from separate bit fields. Phase controls how often the feedback bit flips."
+        "A Turing-machine shift register feeds rhythm, scale degree, accent, slide and octave from separate bit fields. Phase controls how often the feedback bit flips.",
+        "Thue-Morse: t(n) is the parity of the bits in n. Ones are candidates for onsets, the current run length shapes the contour, and Phase shifts the word.",
+        "Rudin-Shapiro: the parity of overlapping 11 pairs in the binary index. Ones become onsets; run lengths and the index shape the contour.",
+        "A reflected random walk. Density sets the step size, Phase adds drift, and the largest moves become onsets while the walk itself is the pitch contour.",
+        "A reflected Lévy flight: mostly small steps with heavy-tailed jumps. Density controls how heavy the tail is; jumps are the onsets.",
+        "The tent map x' = μ·min(x,1−x). Density raises μ toward chaos, Phase sets the initial x, and the orbit is the contour.",
+        "The Hénon map x' = 1 − a·x² + y, y' = b·x, clamped to a safe box. Density sets a, Phase and Seed set the initial point; the panel plots the attractor.",
+        "A one-note arpeggiator over a minor-seven chord. Pulses chooses the chord size, Phase picks up/down/up-down/random and Density gates the steps.",
+        "A walking bass over a dominant-seven chord: chord tones on strong steps and chromatic approach notes between them. Pulses is the chord size, Density the approach chance.",
+        "Samples a Hilbert space-filling curve of order Pulses. The curve is the contour and the left-hand panel draws the 2-D path; Phase rotates it by quarter turns.",
+        "Walks the Ulam square spiral and marks cells whose 1-based index is prime; the centre always sounds. Density thins the prime hits and the panel draws the spiral."
     ];
     // `text` is what the strip shows (with %/°/c), `number` is the same value in display units,
     // and `scale` converts typed display units back to the parameter's own units.

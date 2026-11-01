@@ -37,6 +37,16 @@ index 14 because the melody modes build the non-acid half of that split.
 | 16 | Acid Markov | Acid | nDrums Markov position filled by the melody project's transition chains | Acid piano roll |
 | 17 | Acid Motif | Acid | `_nMelody_old` AcidMotif (mutating repeats) | Acid piano roll |
 | 18 | Acid Shift Register | Acid |Both lineage: nDrums L-System slot, `_nMelody_old` register distillation | Acid piano roll (register fields as rows) |
+| 19 | Thue-Morse | Number Theory | New wave: automatic sequence | Binary word strip + run-length contour |
+| 20 | Rudin-Shapiro | Number Theory | New wave: automatic sequence | Binary word strip + index contour |
+| 21 | Brownian Walk | Stochastic | New wave: reflected random walk | Walk path + onset dots |
+| 22 | Lévy Flight | Stochastic | New wave: heavy-tailed walk | Walk path + onset dots |
+| 23 | Tent Map | Chaos | New wave: piecewise-linear map | Tent map + orbit/onset dots |
+| 24 | Hénon Map | Chaos | New wave: 2-D attractor | 2-D attractor scatter |
+| 25 | Arpeggiator | Music Theory | New wave: chord-tone arp | Absolute piano roll with direction |
+| 26 | Walking Bass | Music Theory | New wave: chord + chromatic approach | Absolute piano roll with approach notes |
+| 27 | Hilbert Curve | Geometric | New wave: space-filling curve | 2-D Hilbert order grid/path |
+| 28 | Ulam Spiral Primes | Number Theory | New wave: prime spiral | 2-D Ulam spiral with prime/hit marks |
 
 Everything else in Nelody's UI is either the nDrums design untouched (header, generate/
 randomize buttons, clock row, settings slide-in, credits, scope chips, 860×760 fixed window)

@@ -9,7 +9,7 @@ Host transport + automation
 MelodyParams (host-visible, automatable) ---> GenParams snapshot
                                                 |
                                                 v
-                                      sequence::generate()   (19 modes)
+                                      sequence::generate()   (29 modes)
                                                 |
                                     fixed-size Pattern [1024 steps]
                                                 |
@@ -198,7 +198,7 @@ variation comes from Generate, Randomize and the knobs.
 - All UI controls call a parameter setter; the GUI must never become an independent source of
   sequencing state.
 - Mode order is stable and shared: `Mode` in `src/modes.rs` is the host parameter, the
-  generator dispatch key and the UI index. A test pins all 19 indices; acid starts at 14.
+  generator dispatch key and the UI index. A test pins all 29 indices; acid starts at 14.
 - Scrolling over the current-mode header steps to the next/previous mode and clamps at the
   ends (`step_mode` in `src/editor.rs`). The open mode list keeps the wheel for its own
   scrolling.

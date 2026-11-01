@@ -40,5 +40,15 @@ pub(crate) fn math(p: &GenParams) -> String {
         Mode::AcidMarkov => format!("stationary density {:.2} · leap exp {:.2}", k as f32 / n as f32, 3.0 * (1.0 - d)),
         Mode::AcidMotif => format!("motif {} steps · mutation {:.2} per repeat", p.pulses.clamp(2, 16), p.phase * 0.6),
         Mode::AcidShift => format!("{}-bit register · P(flip) = {:.2} · fields r/a/s/o", p.pulses.clamp(4, 16), p.phase * 0.5),
+        Mode::ThueMorse => format!("t(n) = popcount(n) mod 2 · run-length contour · top {}", (k as f32 * d).round().max(1.0)),
+        Mode::RudinShapiro => format!("parity of 11-pairs · run-length contour · top {}", (k as f32 * d).round().max(1.0)),
+        Mode::Brownian => format!("step σ = {:.3} · drift {:.3} · largest steps onset", 0.01 + d * 0.20, (p.phase - 0.5) * 0.06),
+        Mode::LevyFlight => format!("tail α = {:.2} · jumps become onsets", 1.0 + d * 4.0),
+        Mode::TentMap => format!("μ = {:.3} · x₀ = {:.3} · x' = μ·min(x,1-x)", 1.0 + d * 0.99, p.phase),
+        Mode::HenonMap => format!("a = {:.3} · b = 0.3 · x₀ = {:.3} · clamped attractor", 1.0 + d * 0.4, p.phase * 1.8 - 0.9),
+        Mode::Arpeggiator => format!("minor7 · {} tones · dir {} · gate {:.0}%", p.pulses.clamp(1, 4), ((p.phase * 4.0) as i32).clamp(0, 3), d * 100.0),
+        Mode::WalkingBass => format!("dominant7 · {} tones · chromatic {:.0}% · dir {}", p.pulses.clamp(1, 4), d * 100.0, ((p.phase * 3.0) as i32).clamp(0, 2)),
+        Mode::HilbertCurve => format!("order {} · {} cells · quarter-turn {}", p.pulses.clamp(1, 5), 1usize << (2 * p.pulses.clamp(1, 5)), ((p.phase * 4.0) as i32).clamp(0, 3)),
+        Mode::UlamPrimes => format!("spiral side {} · centre + primes · top {}", (((n as f64).sqrt().ceil()) as usize).max(1), (k as f32 * d).round().max(1.0)),
     }
 }

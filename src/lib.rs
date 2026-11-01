@@ -858,10 +858,13 @@ mod tests {
             Mode::Dice, Mode::Tonnetz, Mode::Cellular, Mode::Markov, Mode::Oscillator,
             Mode::LSystem, Mode::Sieve, Mode::Fibonacci, Mode::Bernoulli, Mode::AcidRandom,
             Mode::AcidEuclid, Mode::AcidMarkov, Mode::AcidMotif, Mode::AcidShift,
+            Mode::ThueMorse, Mode::RudinShapiro, Mode::Brownian, Mode::LevyFlight,
+            Mode::TentMap, Mode::HenonMap, Mode::Arpeggiator, Mode::WalkingBass,
+            Mode::HilbertCurve, Mode::UlamPrimes,
         ].into_iter().enumerate() {
             assert_eq!(Mode::from_index(index), mode, "mode index {index}");
         }
-        assert_eq!(<Mode as Enum>::variants().len(), 19);
+        assert_eq!(<Mode as Enum>::variants().len(), 29);
         assert_eq!(Mode::AcidRandom.to_index(), 14, "the acid row starts at 14");
     }
 

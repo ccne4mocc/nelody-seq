@@ -98,6 +98,8 @@ fn pulse_limit(mode: Mode, cells: i32) -> i32 {
         Mode::Cellular => 15,
         Mode::Sieve => 2,
         Mode::AcidMotif => 16,
+        Mode::Arpeggiator | Mode::WalkingBass => 4,
+        Mode::HilbertCurve => 5,
         _ => cells,
     }
 }

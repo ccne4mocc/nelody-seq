@@ -1,4 +1,4 @@
-//! The 19 generation modes, in one list (14 non-acid + 5 acid).
+//! The 29 generation modes, in one list (24 non-acid + 5 acid).
 //!
 //! `Mode` is the host-visible enum: the stable `id` values are what a saved project stores and
 //! the `name` values are what the host shows. The generators and the panels match on the same
@@ -29,6 +29,16 @@ pub enum Mode {
     #[id = "acid_markov"] #[name = "Acid Markov"] AcidMarkov,
     #[id = "acid_motif"] #[name = "Acid Motif"] AcidMotif,
     #[id = "acid_shift"] #[name = "Acid Shift Register"] AcidShift,
+    #[id = "thue_morse"] #[name = "Thue-Morse"] ThueMorse,
+    #[id = "rudin_shapiro"] #[name = "Rudin-Shapiro"] RudinShapiro,
+    #[id = "brownian"] #[name = "Brownian Walk"] Brownian,
+    #[id = "levy_flight"] #[name = "Lévy Flight"] LevyFlight,
+    #[id = "tent_map"] #[name = "Tent Map"] TentMap,
+    #[id = "henon_map"] #[name = "Hénon Map"] HenonMap,
+    #[id = "arpeggiator"] #[name = "Arpeggiator"] Arpeggiator,
+    #[id = "walking_bass"] #[name = "Walking Bass"] WalkingBass,
+    #[id = "hilbert_curve"] #[name = "Hilbert Curve"] HilbertCurve,
+    #[id = "ulam_primes"] #[name = "Ulam Spiral Primes"] UlamPrimes,
 }
 
 /// Presentation-only grouping. Never stored in the host state: `Mode` indices stay the stable
@@ -87,6 +97,11 @@ impl Mode {
             Self::Fibonacci => ModeGroup::NumberTheory,
             Self::Bernoulli => ModeGroup::Stochastic,
             Self::AcidRandom | Self::AcidEuclid | Self::AcidMarkov | Self::AcidMotif | Self::AcidShift => ModeGroup::Acid,
+            Self::ThueMorse | Self::RudinShapiro | Self::UlamPrimes => ModeGroup::NumberTheory,
+            Self::Brownian | Self::LevyFlight => ModeGroup::Stochastic,
+            Self::TentMap | Self::HenonMap => ModeGroup::Chaos,
+            Self::Arpeggiator | Self::WalkingBass => ModeGroup::MusicTheory,
+            Self::HilbertCurve => ModeGroup::Geometric,
         }
     }
 

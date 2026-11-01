@@ -537,6 +537,12 @@ pub fn build(kind: Mode, pat: &crate::sequence::Pattern, steps: usize, cur: i32,
         Mode::AcidRandom | Mode::AcidEuclid | Mode::AcidMarkov | Mode::AcidMotif | Mode::AcidShift => {
             acid_view(&mut v, pat, n, cur);
         }
+        // Phase 3 replaces these with dedicated geometry; the generic strip/roll views keep the
+        // first pass compiling and show the same contour the generators feed the scheduler.
+        Mode::ThueMorse | Mode::RudinShapiro => lsystem_view(&mut v, pat, n, cur),
+        Mode::Brownian | Mode::LevyFlight | Mode::TentMap | Mode::HenonMap => bernoulli_view(&mut v, pat, n, cur),
+        Mode::Arpeggiator | Mode::WalkingBass => acid_view(&mut v, pat, n, cur),
+        Mode::HilbertCurve | Mode::UlamPrimes => bernoulli_view(&mut v, pat, n, cur),
     }
     for s in [&mut v.edges, &mut v.fills, &mut v.lines, &mut v.solid, &mut v.hand] {
         if s.is_empty() {

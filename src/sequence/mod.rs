@@ -6,7 +6,9 @@ mod acid_markov;
 mod acid_motif;
 mod acid_random;
 mod acid_shift;
+mod arpeggiator;
 mod bernoulli;
+mod brownian;
 mod cellular;
 mod circle_map;
 mod dice;
@@ -14,12 +16,20 @@ mod euclidean;
 mod eulerian;
 mod fibonacci;
 mod golomb;
+mod henon_map;
+mod hilbert_curve;
+mod levy_flight;
 mod logistic;
 mod lsystem;
 mod markov;
 mod oscillator;
+mod rudin_shapiro;
 mod sieve;
+mod tent_map;
+mod thue_morse;
 mod tonnetz;
+mod ulam_primes;
+mod walking_bass;
 
 // The panel draws these algorithms' own curves and cutoffs rather than restating their
 // formulas, so these re-exports exist for `crate::view` alone.
@@ -353,6 +363,16 @@ fn run_mode(q: &GenParams) -> Pattern {
         Mode::AcidMarkov => acid_markov::generate(q),
         Mode::AcidMotif => acid_motif::generate(q),
         Mode::AcidShift => acid_shift::generate(q),
+        Mode::ThueMorse => thue_morse::generate(q),
+        Mode::RudinShapiro => rudin_shapiro::generate(q),
+        Mode::Brownian => brownian::generate(q),
+        Mode::LevyFlight => levy_flight::generate(q),
+        Mode::TentMap => tent_map::generate(q),
+        Mode::HenonMap => henon_map::generate(q),
+        Mode::Arpeggiator => arpeggiator::generate(q),
+        Mode::WalkingBass => walking_bass::generate(q),
+        Mode::HilbertCurve => hilbert_curve::generate(q),
+        Mode::UlamPrimes => ulam_primes::generate(q),
     }
 }
 
