@@ -66,6 +66,10 @@ mapping highlights, for modes where the knob name is wrong in the generic sense:
 | 14–18 acid | Note count / motif length / register width | Root bias / leapiness | Mutation / register flip |
 | Symmetry | Hidden entirely (`shows-param` returns false for key 11) — a drum-only idea | | |
 
+`GenParams::mode_data` is the Phase-5 bridge for future typed mode parameters: fixed, zero-filled
+slots whose meaning belongs to the individual mode. Until a mode documents a slot, it must leave
+the array untouched.
+
 The acid knobs map 1:1 to `_nMelody_old`: `slide`, `accent`, `oct_jump`. They are filtered
 through sharpness in the old project's "effective value" interface; here they are plain
 probabilities applied per note, and the invariant that they never reshuffle the line is tested

@@ -85,6 +85,9 @@ pub struct GenParams {
     pub accent: f32,
     pub slide: f32,
     pub octave: f32,
+    /// Generic bridge for mode-specific values before a typed `ModeParams` enum exists.
+    /// Meaning is documented per mode in `REFERENCE_MAPPING.md`; unused slots stay zero.
+    pub mode_data: [f32; 4],
 }
 
 impl Default for GenParams {
@@ -110,6 +113,7 @@ impl Default for GenParams {
             accent: 0.3,
             slide: 0.2,
             octave: 0.15,
+            mode_data: [0.0; 4],
         }
     }
 }

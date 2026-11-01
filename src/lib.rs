@@ -362,6 +362,7 @@ impl MelodyParams {
             accent: self.accent.value(),
             slide: self.slide.value(),
             octave: self.octave.value(),
+            mode_data: [0.0; 4],
         }
     }
 
