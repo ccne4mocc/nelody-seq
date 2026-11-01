@@ -538,10 +538,10 @@ fn hilbert_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32
 
 /// Ulam spiral: a square spiral plot with prime cells and the chosen onsets marked.
 fn ulam_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
-    poly(&mut v.edges, &[(10.0, 10.0), (P - 10.0, 10.0), (P - 10.0, P - 10.0), (10.0, P - 10.0)]);
+    poly(&mut v.edges, &[(2.0, 2.0), (P - 2.0, 2.0), (P - 2.0, P - 2.0), (2.0, P - 2.0)]);
     let mut started = false;
     for i in 0..n {
-        let p = (10.0 + pat.orbit[i] * (P - 20.0), P - 10.0 - pat.theta[i] * (P - 20.0));
+        let p = (2.0 + pat.orbit[i] * (P - 4.0), P - 2.0 - pat.theta[i] * (P - 4.0));
         if !started { mv(&mut v.lines, p.0, p.1); started = true; } else { ln(&mut v.lines, p.0, p.1) }
         if pat.state[i] == 1 || pat.hit[i] {
             v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.0 } else { 2.0 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });

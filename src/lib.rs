@@ -192,10 +192,15 @@ pub enum LfoTarget {
 pub mod scope {
     pub const MODE: i32 = 1 << 0;
     pub const LENGTH: i32 = 1 << 1;
-    pub const RHYTHM: i32 = 1 << 2;
-    pub const TONE: i32 = 1 << 3;
-    pub const FEEL: i32 = 1 << 4;
-    pub const ALL: i32 = MODE | LENGTH | RHYTHM | TONE | FEEL;
+    /// Mode-specific second option: pulses, degree, notes, dice per bar, …
+    pub const HITS: i32 = 1 << 2;
+    pub const TUNING: i32 = 1 << 3;
+    pub const CLOCK: i32 = 1 << 4;
+    pub const PHASE: i32 = 1 << 5;
+    pub const ACID: i32 = 1 << 6;
+    /// Velocity, bend, swing, probability.
+    pub const FEEL: i32 = 1 << 7;
+    pub const ALL: i32 = MODE | LENGTH | HITS | TUNING | CLOCK | PHASE | ACID | FEEL;
 }
 
 #[derive(Params)]
@@ -309,7 +314,7 @@ impl Default for MelodyParams {
             velocity: percentage_param("Global Velocity", 1.0),
             regenerate_every: IntParam::new("Regenerate After (lengths; 0 = Off)", 0, IntRange::Linear { min: 0, max: 256 }),
             randomize_after_lengths: IntParam::new("Randomize After (lengths; 0 = Off)", 0, IntRange::Linear { min: 0, max: 256 }),
-            randomize_scope: IntParam::new("Randomize Scope (Mode|Length|Rhythm|Tone|Feel)", scope::ALL, IntRange::Linear { min: 0, max: scope::ALL }),
+            randomize_scope: IntParam::new("Randomize Scope (Mode|Length|Hits|Tuning|Clock|Phase|Acid|Feel)", scope::ALL, IntRange::Linear { min: 0, max: scope::ALL }),
             seed: FloatParam::new("Seed", 0.271, FloatRange::Linear { min: 0.0, max: 1.0 }),
             phase: FloatParam::new("Phase", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
             osc_rate: FloatParam::new("Oscillator Cycles", 2.0, FloatRange::Linear { min: 0.125, max: 8.0 }),
@@ -802,7 +807,13 @@ impl Plugin for Nelody {
                 if let Some(cycle) = regeneration_cycle_at(k, self.loop_length, every, self.last_regen_cycle) {
                     p.variation.fetch_add(1, Relaxed);
                     self.shared.regen_pulse.fetch_add(1, Relaxed);
-                    let next_key = p.gen_params();
+                    let mut next_key = p.gen_params();
+                    // Rotation-only modes: vary the seed so regeneration changes the line, not just
+                    // its rotation.
+                    if matches!(p.mode.value(), Mode::RudinShapiro | Mode::ThueMorse | Mode::UlamPrimes) {
+                        let mut rng = crate::sequence::Rng::new(next_key.seed, next_key.variation, 0x5EED_5EED);
+                        next_key.seed = rng.unit();
+                    }
                     self.pattern = generate(&next_key);
                     self.loop_length = next_key.length as f64;
                     self.last_key = Some(next_key);
@@ -878,7 +889,7 @@ pub(crate) fn next_hit_after(hit: &[bool; MAX_STEPS], idx: usize, steps: usize) 
 
 impl ClapPlugin for Nelody {
     const CLAP_ID: &'static str = "com.nelody.nelody";
-    const CLAP_DESCRIPTION: Option<&'static str> = Some("Algorithmic melodic MIDI sequencer with 19 generators and microtonal tunings");
+    const CLAP_DESCRIPTION: Option<&'static str> = Some("Algorithmic melodic MIDI sequencer with 29 generators and microtonal tunings");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(contact::GITHUB);
     const CLAP_SUPPORT_URL: Option<&'static str> = Some(contact::SUPPORT);
     const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::NoteEffect, ClapFeature::Utility];
@@ -919,6 +930,11 @@ mod tests {
     }
 
     /// The UI addresses modes by index, so the enum order is a host-visible contract.
+    #[test]
+    fn mode_data_bridge_defaults_to_zero() {
+        assert_eq!(GenParams::default().mode_data, [0.0; 4]);
+    }
+
     #[test]
     fn mode_indices_match_the_ui() {
         for (index, mode) in [

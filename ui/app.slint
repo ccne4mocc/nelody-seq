@@ -68,46 +68,40 @@ component Selector inherits Rectangle {
     }
 }
 
-// Eight waveform thumbnails share one row. The paths come from `view::wave_icon_paths()`,
-// which samples the same `oscillator_value` the generator plays, so the icon is the waveform.
-component WaveGrid inherits Rectangle {
+// Collapsed waveform picker: shows the current shape, opens the full selectable icon list.
+// The popup itself is owned by AppWindow so it can overlay neighbouring controls.
+component WavePicker inherits Rectangle {
     in property <[string]> paths;
+    in property <[string]> names;
     in property <int> current;
     callback selected(int);
-    height: 30px;
-    HorizontalLayout {
-        spacing: 3px;
-        for i in root.paths.length: Rectangle {
-            horizontal-stretch: 1;
-            border-radius: 3px;
-            border-width: i == root.current ? 2px : 1px;
-            border-color: i == root.current ? Theme.c1 : Theme.border;
-            background: i == root.current ? Theme.c1.with-alpha(0.18) : (ta.has-hover ? Theme.control-hover : Theme.control);
-            Path {
-                x: 4px; y: 3px; width: parent.width - 8px; height: parent.height - 6px;
-                viewbox-x: 0; viewbox-y: 0; viewbox-width: 100; viewbox-height: 40;
-                commands: root.paths[i];
-                fill: transparent;
-                stroke: i == root.current ? Theme.c1 : Theme.text;
-                stroke-width: 1.4px;
-            }
-            ta := TouchArea {
-                clicked => { root.selected(i); }
-                // The wheel steps the waveform, matching every other picker.
-                scroll-event(e) => {
-                    if (e.delta-y != 0px) {
-                        root.selected(Math.max(0, Math.min(root.current + (e.delta-y > 0px ? 1 : -1), root.paths.length - 1)));
-                        accept
-                    } else {
-                        reject
-                    }
-                }
+    callback opened(length, length);
+    height: 28px; border-radius: 4px;
+    background: ta.has-hover ? Theme.control-hover : Theme.control;
+    border-width: 1px; border-color: Theme.border;
+    Text { x: 8px; width: Math.max(parent.width - 96px, 0px); height: parent.height; text: root.current < root.names.length ? root.names[root.current] : ""; color: Theme.text; font-size: 10px; vertical-alignment: center; overflow: elide; }
+    Path {
+        x: Math.max(parent.width - 76px, 6px); y: 4px;
+        width: Math.min(50px, parent.width - 28px); height: parent.height - 8px;
+        viewbox-x: 0; viewbox-y: 0; viewbox-width: 100; viewbox-height: 40;
+        commands: root.current < root.paths.length ? root.paths[root.current] : "";
+        fill: transparent; stroke: Theme.c1; stroke-width: 1.2px;
+    }
+    Text { x: parent.width - 22px; width: 16px; height: parent.height; text: "▾"; color: Theme.text-muted; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+    ta := TouchArea {
+        clicked => { root.opened(root.absolute-position.x, root.absolute-position.y + root.height); }
+        scroll-event(e) => {
+            if (e.delta-y != 0px) {
+                root.selected(Math.max(0, Math.min(root.current + (e.delta-y > 0px ? 1 : -1), root.paths.length - 1)));
+                accept
+            } else {
+                reject
             }
         }
     }
 }
 
-// One RANDOMIZE scope group. The five chips edit the bits of a single host parameter.
+// One RANDOMIZE scope group. The eight chips edit the bits of a single host parameter.
 component ScopeChip inherits Rectangle {
     in property <string> label;
     in property <bool> active;
@@ -123,12 +117,14 @@ component TuningChip inherits Rectangle {
     in property <string> label;
     in property <string> value;
     in property <bool> active: false;
+    // Center the label/value, used by the scale picker so it matches its dropdown entries.
+    in property <bool> centered: false;
     // The scale chip opens a panel, so a wheel there must not toggle it once per notch.
     in property <bool> wheel-cycles: true;
     callback cycled();
     height: 28px; border-radius: 4px;
     background: root.active ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 100%) : (ta.has-hover ? Theme.control-hover : Theme.control);
-    Text { x: 6px; width: parent.width - 12px; height: parent.height; text: "\{root.label}  \{root.value}"; color: root.active ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; overflow: elide; }
+    Text { x: 6px; width: parent.width - 12px; height: parent.height; text: "\{root.label}  \{root.value}"; color: root.active ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: root.centered ? center : left; vertical-alignment: center; overflow: elide; }
     ta := TouchArea {
         clicked => { root.cycled(); }
         scroll-event(e) => {
@@ -404,7 +400,7 @@ component RateField inherits Rectangle {
         root.focus-pending = true;
     }
     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.label; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-    Text { x: 8px; width: parent.width - 26px; height: parent.height; text: root.value; color: Theme.text; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+    Text { x: 4px; width: parent.width - 18px; height: parent.height; text: root.value; color: Theme.text; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
     Text { x: parent.width - 18px; width: 14px; height: parent.height; text: "▾"; color: Theme.text-muted; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
     ta := TouchArea {
         pointer-event(e) => {
@@ -492,7 +488,8 @@ component ModeDropdown inherits Rectangle {
         vertical-scrollbar-policy: as-needed;
         VerticalLayout {
             spacing: 3px; padding: 8px; alignment: start;
-            height: 13px + root.entries.length * 29px;
+            height: 33px + root.entries.length * 29px;
+            Rectangle { height: 20px; }
             for i in root.entries.length: Rectangle {
                 height: root.entries[i].header ? 20px : 26px;
                 border-radius: 3px;
@@ -521,6 +518,7 @@ component ModeDropdown inherits Rectangle {
 component DropdownList inherits Rectangle {
     in property <[string]> options;
     in property <int> current;
+    in property <bool> centered: false;
     callback selected(int);
     width: 300px; height: 360px;
     background: Theme.surface; border-width: 1px; border-color: Theme.border;
@@ -535,7 +533,7 @@ component DropdownList inherits Rectangle {
             for i in root.options.length: Rectangle {
                 height: 26px; border-radius: 3px;
                 background: i == root.current ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (item-touch.has-hover ? Theme.control-hover : Theme.control);
-                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.options[i]; color: i == root.current ? Theme.on-accent : Theme.text; font-size: 10px; vertical-alignment: center; overflow: elide; }
+                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.options[i]; color: i == root.current ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: root.centered ? center : left; vertical-alignment: center; overflow: elide; }
                 item-touch := TouchArea { clicked => { root.selected(i); } }
             }
         }
@@ -578,7 +576,7 @@ export component AppWindow inherits Window {
     // Fixed layout size: the window never resizes (a live resize glitched the GL surface),
     // so the host cannot be fought over it.
     in property <length> base-width: 860px;
-    in property <length> base-height: 760px;
+    in property <length> base-height: 675px;
     preferred-width: root.base-width; preferred-height: root.base-height;
     background: @linear-gradient(135deg, Theme.bg1 0%, Theme.bg2 50%, Theme.bg3 100%);
     in property <int> mode: 0;
@@ -629,8 +627,11 @@ export component AppWindow inherits Window {
     in property <int> scale-index: 0;
     in property <bool> scope-mode: true;
     in property <bool> scope-length: true;
-    in property <bool> scope-rhythm: true;
-    in property <bool> scope-tone: true;
+    in property <bool> scope-hits: true;
+    in property <bool> scope-tuning: true;
+    in property <bool> scope-clock: true;
+    in property <bool> scope-phase: true;
+    in property <bool> scope-acid: true;
     in property <bool> scope-feel: true;
     in property <string> settings-path: "";
     in property <string> credit-author: "";
@@ -647,16 +648,22 @@ export component AppWindow inherits Window {
     in property <int> theme-index: 0;
     in property <[ModeEntry]> mode-entries;
     in-out property <bool> mode-menu-open: false;
-    // Dropdown anchors. The window layout is fixed at 860x760, so the two menus hang directly
+    // Dropdown anchors. The window layout is fixed at 860x675, so the two menus hang directly
     // under the mode header and the Scale chip instead of sliding in from a window edge.
     in property <length> mode-menu-x: 384px;
     in property <length> mode-menu-y: 86px;
     in-out property <bool> rate-menu-open: false;
     in property <length> rate-menu-x: 55px;
     in property <length> rate-menu-y: 386px;
+    // Waveform picker popup: -1 closed, 0 oscillator, 1/2 LFO slots.
+    in-out property <int> wave-menu-target: -1;
+    in-out property <length> wave-menu-x: 0px;
+    in-out property <length> wave-menu-y: 0px;
+    // Randomize-scope popup anchored to the gear in the Randomize-after strip.
+    in-out property <bool> scope-menu-open: false;
+    in-out property <length> scope-menu-x: 0px;
+    in-out property <length> scope-menu-y: 0px;
     in-out property <bool> tuning-open: false;
-    in property <length> tuning-menu-x: 181px;
-    in property <length> tuning-menu-y: 424px;
     in-out property <bool> settings-open: false;
     // Settings still slide in from the right edge of the fixed 860px layout.
     in-out property <length> settings-x: root.base-width;
@@ -733,6 +740,13 @@ export component AppWindow inherits Window {
         if (key == 11) { return false; }                        // symmetry is a drum-only idea
         return true;
     }
+    pure function steps-max(mode: int) -> float {
+        // Short, closed-form modes do not benefit from four-digit step counts.
+        if (mode == 0 || mode == 6) { return 128; }
+        if (mode >= 14 && mode <= 18) { return 64; }
+        if (mode == 1 || mode == 3 || mode == 12 || mode == 19 || mode == 20 || mode == 27 || mode == 28) { return 256; }
+        return root.max-steps;
+    }
     pure function pulses-max(mode: int) -> float {
         if (mode == 5) { return 3; }     // Mozart dice per bar
         if (mode == 7) { return 15; }    // cellular generation
@@ -805,7 +819,7 @@ export component AppWindow inherits Window {
     }
     property <[string]> mode-names: [
         "Euclidean", "Golomb Ruler", "Logistic Map", "Eulerian Walk", "Arnold Circle Map",
-        "Mozart Dice", "Tonnetz Walk", "Rule 30", "Markov Walk", "Oscillator / Phase",
+        "Mozart Dice", "Tonnetz Walk", "Cellular Automaton", "Markov Walk", "Oscillator / Phase",
         "L-System Grammar", "Xenakis Sieve", "Fibonacci / Sturmian", "Bernoulli",
         "Acid Random", "Acid Euclid", "Acid Markov", "Acid Motif", "Acid Shift Register",
         "Thue-Morse", "Rudin-Shapiro", "Brownian Walk", "Lévy Flight", "Tent Map",
@@ -845,7 +859,7 @@ export component AppWindow inherits Window {
     // `text` is what the strip shows (with %/°/c), `number` is the same value in display units,
     // and `scale` converts typed display units back to the parameter's own units.
     property <[Opt]> opts: [
-        { label: "Steps", min: 1, max: root.max-steps, value: root.steps, text: root.round-steps ? "\{Math.round(root.steps)}" : "\{Math.round(root.steps * 1000) / 1000}", step: root.round-steps ? 1 : 0.01, number: root.round-steps ? "\{Math.round(root.steps)}" : "\{Math.round(root.steps * 1000) / 1000}", scale: 1 },
+        { label: "Steps", min: 1, max: Math.min(root.max-steps, root.steps-max(root.mode)), value: Math.min(root.steps, Math.min(root.max-steps, root.steps-max(root.mode))), text: root.round-steps ? "\{Math.round(Math.min(root.steps, root.steps-max(root.mode)))}" : "\{Math.round(Math.min(root.steps, root.steps-max(root.mode)) * 1000) / 1000}", step: root.round-steps ? 1 : 0.01, number: root.round-steps ? "\{Math.round(Math.min(root.steps, root.steps-max(root.mode)))}" : "\{Math.round(Math.min(root.steps, root.steps-max(root.mode)) * 1000) / 1000}", scale: 1 },
         { label: root.pulse-label(root.mode), min: 0, max: root.pulses-max(root.mode), value: Math.min(root.pulses, root.pulses-max(root.mode)), text: "\{Math.round(Math.min(root.pulses, root.pulses-max(root.mode)))}", step: 1, number: "\{Math.round(Math.min(root.pulses, root.pulses-max(root.mode)))}", scale: 1 },
         { label: "Rotate", min: 0, max: Math.max(root.cells - 1, 0), value: Math.min(root.rotate, Math.max(root.cells - 1, 0)), text: "\{Math.round(Math.min(root.rotate, Math.max(root.cells - 1, 0)))}", step: 1, number: "\{Math.round(Math.min(root.rotate, Math.max(root.cells - 1, 0)))}", scale: 1 },
         { label: root.density-label(root.mode), min: 0, max: 1, value: root.density, text: "\{Math.round(root.density * 100)}%", step: 0.01, number: "\{Math.round(root.density * 100)}", scale: 0.01 },
@@ -870,15 +884,15 @@ export component AppWindow inherits Window {
         { label: "EDO divisions", min: 1, max: 72, value: root.edo, text: "\{root.edo}", step: 1, number: "\{root.edo}", scale: 1 },
         { label: "Root cents", min: -50, max: 50, value: root.root-cents, text: "\{Math.round(root.root-cents)}c", step: 1, number: "\{Math.round(root.root-cents)}", scale: 1 },
         { label: "History bars", min: 1, max: root.history-max-bars, value: root.history-bars, text: "\{Math.round(root.history-bars)}", step: 1, number: "\{Math.round(root.history-bars)}", scale: 1 },
-        { label: "Rate", min: 0.25, max: 16, value: root.lfo1-rate, text: "\{Math.round(root.lfo1-rate * 100) / 100}", step: 0.25, number: "\{Math.round(root.lfo1-rate * 100) / 100}", scale: 1 },
+        { label: "Rate", min: 0.25, max: 16, value: root.lfo1-rate, text: "\{Math.round(root.lfo1-rate * 100) / 100} beats", step: 0.25, number: "\{Math.round(root.lfo1-rate * 100) / 100}", scale: 1 },
         { label: "Depth", min: 0, max: 1, value: root.lfo1-depth, text: "\{Math.round(root.lfo1-depth * 100)}%", step: 0.01, number: "\{Math.round(root.lfo1-depth * 100)}", scale: 0.01 },
         { label: "Phase", min: 0, max: 1, value: root.lfo1-phase, text: "\{Math.round(root.lfo1-phase * 360)}°", step: 0.01, number: "\{Math.round(root.lfo1-phase * 360)}", scale: 1.0 / 360.0 },
-        { label: "Rate", min: 0.25, max: 16, value: root.lfo2-rate, text: "\{Math.round(root.lfo2-rate * 100) / 100}", step: 0.25, number: "\{Math.round(root.lfo2-rate * 100) / 100}", scale: 1 },
+        { label: "Rate", min: 0.25, max: 16, value: root.lfo2-rate, text: "\{Math.round(root.lfo2-rate * 100) / 100} beats", step: 0.25, number: "\{Math.round(root.lfo2-rate * 100) / 100}", scale: 1 },
         { label: "Depth", min: 0, max: 1, value: root.lfo2-depth, text: "\{Math.round(root.lfo2-depth * 100)}%", step: 0.01, number: "\{Math.round(root.lfo2-depth * 100)}", scale: 0.01 },
         { label: "Phase", min: 0, max: 1, value: root.lfo2-phase, text: "\{Math.round(root.lfo2-phase * 360)}°", step: 0.01, number: "\{Math.round(root.lfo2-phase * 360)}", scale: 1.0 / 360.0 }
     ];
 
-    // Everything lives inside one fixed 860x760 coordinate space. The window never resizes;
+    // Everything lives inside one fixed 860x675 coordinate space. The window never resizes;
     // the matrix scrolls fixed-width cells instead of shrinking them, so nothing reflows.
     Rectangle {
         width: root.base-width; height: root.base-height;
@@ -910,13 +924,22 @@ export component AppWindow inherits Window {
         }
 
     VerticalLayout {
-        padding: 14px; spacing: 6px;
+        padding: 14px; spacing: 2px;
         HorizontalLayout {
             height: 34px; spacing: 6px;
             Text { text: "Nelody"; color: Theme.text; font-family: "FantasqueSansM Nerd Font Mono"; font-size: 24px; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
             Text { visible: root.track-name != ""; text: "· \{root.track-name}"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; overflow: elide; }
             Rectangle { horizontal-stretch: 1; }
-            Rectangle { width: 96px; height: 24px; border-radius: 4px; background: root.free-run ? Theme.c1.with-alpha(0.22) : Theme.control; Text { text: "Toggle free-run"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } free-touch := TouchArea { clicked => { root.toggle-free-run(); } } }
+            Text { text: "CLOCK RATE"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; }
+            rate-field := RateField {
+                width: 70px; height: 25px;
+                label: "";
+                value: root.rate < root.rate-names.length ? root.rate-names[root.rate] : "";
+                stepped(d) => { root.step-rate(d); }
+                submitted(s) => { root.rate-submitted(s); }
+                menu-requested => { root.rate-menu-open = true; root.mode-menu-open = false; root.tuning-open = false; root.settings-open = false; }
+            }
+            Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.free-run ? Theme.c1.with-alpha(0.22) : Theme.control; Text { text: "free-run"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } free-touch := TouchArea { clicked => { root.toggle-free-run(); } } }
             Text { text: root.free-run ? "FREE-RUN CLOCK: ON" : "SYNC: HOST TRANSPORT"; color: root.free-run ? Theme.c1 : Theme.text-muted; font-size: 9px; vertical-alignment: center; }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: generate-touch.has-hover ? Theme.hi : Theme.control; Text { text: root.generate-on ? "RE-GENERATE ↻" : "GENERATE ↻"; color: generate-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } generate-touch := TouchArea { clicked => { root.generate-pressed(); } } }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: randomize-touch.has-hover ? Theme.c3 : Theme.control; Text { text: "RANDOMIZE ⚄"; color: randomize-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } randomize-touch := TouchArea { clicked => { root.randomize-pressed(); } } }
@@ -928,11 +951,16 @@ export component AppWindow inherits Window {
             height: 300px; spacing: 10px;
             ModePanel { nodes: root.view-nodes; edges: root.view-edges; fills: root.view-fills; solid: root.view-solid; lines: root.view-lines; hand: root.view-hand; }
             VerticalLayout {
-                spacing: 3px;
+                spacing: 3px; alignment: start;
                 Rectangle {
                     height: 30px; border-radius: 4px;
                     background: mode-menu-touch.has-hover ? Theme.control-hover : Theme.control;
-                    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MODE  ·  \{root.mode-names[root.mode]}  ▾"; color: Theme.c1; font-size: 13px; font-weight: 700; vertical-alignment: center; overflow: elide; }
+                    HorizontalLayout {
+                        x: 8px; width: parent.width - 16px; height: parent.height; spacing: 6px;
+                        Text { text: "MODE  ·  \{root.mode-names[root.mode]}"; color: Theme.c1; font-size: 13px; font-weight: 700; vertical-alignment: center; }
+                        Text { horizontal-stretch: 1; text: root.mode-math; color: Theme.text-muted; font-size: 11px; font-italic: true; vertical-alignment: center; overflow: elide; }
+                        Text { text: "▾"; color: Theme.c1; font-size: 13px; font-weight: 700; vertical-alignment: center; }
+                    }
                     mode-menu-touch := TouchArea {
                         clicked => { root.tuning-open = false; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = !root.mode-menu-open; }
                         // Hover the current mode and scroll to step through the mode list without
@@ -948,11 +976,9 @@ export component AppWindow inherits Window {
                     }
                 }
                 Text { text: root.mode-help[root.mode]; color: Theme.text; font-size: 13px; wrap: word-wrap; }
-                // Live formula with the current snapshot substituted; pushed by Rust from the
-                // same helpers the generator calls, so it cannot drift from what is playing.
-                Text { text: root.mode-math; color: Theme.text-muted; font-size: 11px; wrap: word-wrap; }
-                Rectangle { height: 5px; }
-                Text { text: "GENERATOR OPTIONS  ·  DOUBLE-CLICK A STRIP TO TYPE"; color: Theme.text-muted; font-size: 9px; }
+                Rectangle { height: 2px; }
+                // A little more air between the description and the live generator controls.
+                Rectangle { height: 8px; }
                 HorizontalLayout { spacing: 5px;
                     OptSlider { opt: root.opts[0]; index: 0; changed(v) => { root.set-opt(0, v); } }
                     if root.shows-param(root.mode, 1): OptSlider { opt: root.opts[1]; index: 1; changed(v) => { root.set-opt(1, v); } }
@@ -966,55 +992,52 @@ export component AppWindow inherits Window {
                     if root.shows-param(root.mode, 6): OptSlider { opt: root.opts[6]; index: 6; changed(v) => { root.set-opt(6, v); } }
                     if root.shows-param(root.mode, 7): OptSlider { opt: root.opts[7]; index: 7; changed(v) => { root.set-opt(7, v); } }
                 }
-                HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[8]; index: 8; changed(v) => { root.set-opt(8, v); } } OptSlider { opt: root.opts[9]; index: 9; changed(v) => { root.set-opt(9, v); } } }
+                HorizontalLayout { spacing: 5px;
+                    OptSlider { opt: root.opts[8]; index: 8; changed(v) => { root.set-opt(8, v); } }
+                    // Velocity keeps half its old width; Swing sits beside it at the same width.
+                    OptSlider { width: 110px; opt: root.opts[9]; index: 9; changed(v) => { root.set-opt(9, v); } }
+                    OptSlider { width: 110px; opt: root.opts[13]; index: 13; changed(v) => { root.set-opt(13, v); } }
+                }
                 if root.mode == 9: HorizontalLayout {
-                    Text { text: root.osc-wave < root.wave-names.length ? "WAVE  ·  " + root.wave-names[root.osc-wave] : "WAVE"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-                    WaveGrid { horizontal-stretch: 1; paths: root.wave-paths; current: root.osc-wave; selected(i) => { root.set-osc-wave(i); } }
+                    WavePicker {
+                        width: 126px;
+                        paths: root.wave-paths; names: root.wave-names; current: root.osc-wave;
+                        selected(i) => { root.set-osc-wave(i); }
+                        opened(x, y) => { root.wave-menu-target = 0; root.wave-menu-x = x; root.wave-menu-y = y; }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                // Acid controls stay in the generator column, below the shared option rows.
+                if root.mode >= 14: Rectangle { height: 4px; }
+                if root.mode >= 14: HorizontalLayout {
+                    height: 28px; spacing: 5px;
+                    Text { text: "ACID"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
+                    OptSlider { horizontal-stretch: 1; opt: root.opts[15]; index: 15; changed(v) => { root.set-opt(15, v); } }
+                    OptSlider { horizontal-stretch: 1; opt: root.opts[16]; index: 16; changed(v) => { root.set-opt(16, v); } }
+                    OptSlider { horizontal-stretch: 1; opt: root.opts[17]; index: 17; changed(v) => { root.set-opt(17, v); } }
+                }
+                // Tuning follows the acid row, still inside the parameter column so the MIDI
+                // history can sit directly under the presentation field.
+                Rectangle { height: 6px; }
+                HorizontalLayout {
+                    height: 28px; spacing: 5px;
+                    Text { text: "TUNING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
+                    tuning-root := NumBox { width: 112px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
+                    // The scale list lives in a dropdown under this chip; the chip only shows the
+                    // current scale and opens the list.
+                    scale-chip := TuningChip { width: 140px; label: "SCALE"; value: root.tuning-name + "  ▾"; centered: true; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    height: 28px; spacing: 5px;
+                    Rectangle { width: 44px; }
+                    edo-row := NumBox { visible: root.edo-active; width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
+                    tuning-oct := NumBox { width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
+                    TuningChip { width: 68px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
+                    Rectangle { horizontal-stretch: 1; }
                 }
             }
         }
-        // Rate and swing are clock controls, so they get their own full-width row under the
-        // generator options instead of sharing the cramped options column.
-        HorizontalLayout {
-            height: 28px; spacing: 8px;
-            Text { text: "CLOCK"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; }
-            rate-field := RateField {
-                width: 130px;
-                label: "RATE";
-                value: root.rate < root.rate-names.length ? root.rate-names[root.rate] : "";
-                stepped(d) => { root.step-rate(d); }
-                submitted(s) => { root.rate-submitted(s); }
-                menu-requested => { root.rate-menu-open = true; root.mode-menu-open = false; root.tuning-open = false; root.settings-open = false; }
-            }
-            Rectangle { horizontal-stretch: 1; }
-            Text { text: "SWING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-            OptSlider { width: 230px; opt: root.opts[13]; index: 13; changed(v) => { root.set-opt(13, v); } }
-        }
-        // The drum lane chips became the melody's tuning row: same height, same chips. EDO lives
-        // here rather than in Settings so custom equal divisions stay next to the scale.
-        HorizontalLayout {
-            height: 28px; spacing: 5px;
-            Text { text: "TUNING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-            tuning-root := NumBox { width: 112px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
-            // The scale list lives in a dropdown under this chip; the chip only shows the
-            // current scale and opens the list.
-            TuningChip { width: 140px; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
-            // Keep EDO/Oct/NTS on the right while the Scale field keeps its compact half width.
-            Rectangle { horizontal-stretch: 1; }
-            edo-row := NumBox { visible: root.edo-active; width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
-            tuning-oct := NumBox { width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
-            TuningChip { width: 90px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
-        }
-        if root.mode >= 14: HorizontalLayout {
-            height: 28px; spacing: 5px;
-            Text { text: "ACID"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-            OptSlider { horizontal-stretch: 1; opt: root.opts[15]; index: 15; changed(v) => { root.set-opt(15, v); } }
-            OptSlider { horizontal-stretch: 1; opt: root.opts[16]; index: 16; changed(v) => { root.set-opt(16, v); } }
-            OptSlider { horizontal-stretch: 1; opt: root.opts[17]; index: 17; changed(v) => { root.set-opt(17, v); } }
-        }
-        HorizontalLayout { height: 18px; spacing: 8px;
-            Text { horizontal-stretch: 1; text: "MIDI HISTORY  ·  flows right to left  ·  \{root.history-range}  ·  note height = pitch, bright = accent"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-            }
         Rectangle {
             height: 190px; vertical-stretch: 1; border-radius: 4px;
             background: Theme.surface; border-width: 1px; border-color: Theme.border;
@@ -1022,6 +1045,29 @@ export component AppWindow inherits Window {
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-bg; fill: Theme.cell-off.with-alpha(0.55); }
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-grid; fill: transparent; stroke: Theme.border; stroke-width: 0.7px; }
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-notes; fill: Theme.c1; }
+            history-touch := TouchArea { }
+            if history-touch.has-hover: Rectangle {
+                x: 8px; y: 8px; width: parent.width - 148px; height: 22px;
+                border-radius: 3px; background: Theme.surface.with-alpha(0.92);
+                border-width: 1px; border-color: Theme.border;
+                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MIDI HISTORY  ·  flows right to left  ·  \{root.history-range}  ·  note height = pitch, bright = accent"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide; }
+            }
+            // Invert and mirror are pattern transforms, so they live on the history they
+            // transform, in the card's top-right corner.
+            Rectangle {
+                x: parent.width - 124px; y: 6px; width: 58px; height: 24px; border-radius: 4px;
+                background: root.invert-on ? Theme.c2.with-alpha(0.45) : Theme.control.with-alpha(0.9);
+                border-width: 1px; border-color: Theme.border;
+                Text { text: "INVERT"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                invert-touch := TouchArea { clicked => { root.toggle-invert(); } }
+            }
+            Rectangle {
+                x: parent.width - 62px; y: 6px; width: 58px; height: 24px; border-radius: 4px;
+                background: root.mirror-on ? Theme.c3.with-alpha(0.45) : Theme.control.with-alpha(0.9);
+                border-width: 1px; border-color: Theme.border;
+                Text { text: "MIRROR"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                mirror-touch := TouchArea { clicked => { root.toggle-mirror(); } }
+            }
         }
         // Two runtime LFOs. Targets are scheduling parameters only in this first phase, so the
         // modulation applies per block without regenerating the pattern.
@@ -1038,34 +1084,56 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     height: 30px; spacing: 5px;
                     Text { width: 34px; text: "LFO 1"; color: Theme.text; font-size: 9px; vertical-alignment: center; }
-                    WaveGrid { width: 170px; paths: root.wave-paths; current: root.lfo1-wave; selected(i) => { root.set-lfo-wave(1, i); } }
-                    OptSlider { width: 140px; opt: root.opts[24]; index: 24; changed(v) => { root.set-opt(24, v); } }
-                    OptSlider { width: 140px; opt: root.opts[25]; index: 25; changed(v) => { root.set-opt(25, v); } }
-                    OptSlider { width: 100px; opt: root.opts[26]; index: 26; changed(v) => { root.set-opt(26, v); } }
+                    WavePicker {
+                        width: 85px; paths: root.wave-paths; names: root.wave-names; current: root.lfo1-wave;
+                        selected(i) => { root.set-lfo-wave(1, i); }
+                        opened(x, y) => { root.wave-menu-target = 1; root.wave-menu-x = x; root.wave-menu-y = y - (root.wave-paths.length * 26px + 36px); }
+                    }
+                    OptSlider { width: 70px; opt: root.opts[24]; index: 24; changed(v) => { root.set-opt(24, v); } }
+                    OptSlider { width: 70px; opt: root.opts[25]; index: 25; changed(v) => { root.set-opt(25, v); } }
+                    OptSlider { width: 70px; opt: root.opts[26]; index: 26; changed(v) => { root.set-opt(26, v); } }
                     Selector { width: 140px; options: root.lfo-target-names; current: root.lfo1-target; text-size: 8px; selected(i) => { root.set-lfo-target(1, i); } }
                 }
                 HorizontalLayout {
                     height: 30px; spacing: 5px;
                     Text { width: 34px; text: "LFO 2"; color: Theme.text; font-size: 9px; vertical-alignment: center; }
-                    WaveGrid { width: 170px; paths: root.wave-paths; current: root.lfo2-wave; selected(i) => { root.set-lfo-wave(2, i); } }
-                    OptSlider { width: 140px; opt: root.opts[27]; index: 27; changed(v) => { root.set-opt(27, v); } }
-                    OptSlider { width: 140px; opt: root.opts[28]; index: 28; changed(v) => { root.set-opt(28, v); } }
-                    OptSlider { width: 100px; opt: root.opts[29]; index: 29; changed(v) => { root.set-opt(29, v); } }
+                    WavePicker {
+                        width: 85px; paths: root.wave-paths; names: root.wave-names; current: root.lfo2-wave;
+                        selected(i) => { root.set-lfo-wave(2, i); }
+                        opened(x, y) => { root.wave-menu-target = 2; root.wave-menu-x = x; root.wave-menu-y = y - (root.wave-paths.length * 26px + 36px); }
+                    }
+                    OptSlider { width: 70px; opt: root.opts[27]; index: 27; changed(v) => { root.set-opt(27, v); } }
+                    OptSlider { width: 70px; opt: root.opts[28]; index: 28; changed(v) => { root.set-opt(28, v); } }
+                    OptSlider { width: 70px; opt: root.opts[29]; index: 29; changed(v) => { root.set-opt(29, v); } }
                     Selector { width: 140px; options: root.lfo-target-names; current: root.lfo2-target; text-size: 8px; selected(i) => { root.set-lfo-target(2, i); } }
                 }
             }
         }
         HorizontalLayout {
             height: 27px; spacing: 5px;
-            Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.invert-on ? Theme.c2.with-alpha(0.35) : Theme.control; Text { text: "INVERT"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } invert-touch := TouchArea { clicked => { root.toggle-invert(); } } }
-            Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.mirror-on ? Theme.c3.with-alpha(0.35) : Theme.control; Text { text: "MIRROR"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } mirror-touch := TouchArea { clicked => { root.toggle-mirror(); } } }
-            OptSlider { width: 190px; opt: root.opts[12]; index: 12; changed(v) => { root.set-opt(12, v); } }
+            HorizontalLayout {
+                spacing: 0px;
+                OptSlider { width: 168px; opt: root.opts[12]; index: 12; changed(v) => { root.set-opt(12, v); } }
+                scope-gear := Rectangle {
+                    width: 25px; height: 25px; border-radius: 4px;
+                    background: root.scope-menu-open ? Theme.c2.with-alpha(0.5) : (scope-touch.has-hover ? Theme.control-hover : Theme.control);
+                    Text { text: "⚙"; color: Theme.text; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+                    scope-touch := TouchArea {
+                        clicked => {
+                            root.scope-menu-open = !root.scope-menu-open;
+                            root.scope-menu-x = scope-gear.absolute-position.x + scope-gear.width - 160px;
+                            root.scope-menu-y = scope-gear.absolute-position.y - 118px;
+                        }
+                        scroll-event(e) => { reject }
+                    }
+                }
+            }
             OptSlider { width: 240px; opt: root.opts[10]; index: 10; changed(v) => { root.set-opt(10, v); } }
             // Export lives with the history it exports, in the bottom-right corner of the
             // main view. Settings keeps only the destination folder.
             Text { horizontal-stretch: 1; height: 24px; text: root.export-status; color: Theme.text-muted; font-size: 9px; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
             Rectangle {
-                width: 140px; height: 24px; border-radius: 4px;
+                width: 100px; height: 24px; border-radius: 4px;
                 background: export-touch.has-hover ? Theme.c2 : Theme.control;
                 Text { text: "EXPORT MIDI"; color: export-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
                 export-touch := TouchArea { clicked => { root.export-midi(); } }
@@ -1075,10 +1143,10 @@ export component AppWindow inherits Window {
 
     // Mode and Scale are dropdowns. A transparent catcher closes whichever list is open on
     // the next click, and each list overlays the editor instead of taking a side panel.
-    if root.mode-menu-open || root.tuning-open || root.rate-menu-open: Rectangle {
+    if root.mode-menu-open || root.tuning-open || root.rate-menu-open || root.wave-menu-target >= 0 || root.scope-menu-open: Rectangle {
         x: 0px; y: 0px; width: root.base-width; height: root.base-height;
         background: #00000010;
-        TouchArea { clicked => { root.mode-menu-open = false; root.tuning-open = false; root.rate-menu-open = false; } }
+        TouchArea { clicked => { root.mode-menu-open = false; root.tuning-open = false; root.rate-menu-open = false; root.wave-menu-target = -1; root.scope-menu-open = false; } }
     }
     if root.mode-menu-open: ModeDropdown {
         x: root.mode-menu-x; y: root.mode-menu-y;
@@ -1086,17 +1154,81 @@ export component AppWindow inherits Window {
         entries: root.mode-entries; names: root.mode-names; current: root.mode;
         selected(i) => { root.set-mode(i); root.mode-menu-open = false; }
     }
+    // The Scale list follows its chip, which lives in the parameter column now.
     if root.tuning-open: DropdownList {
-        x: root.tuning-menu-x; y: root.tuning-menu-y;
-        width: 140px; height: 300px;
+        x: scale-chip.absolute-position.x; y: Math.min(scale-chip.absolute-position.y + scale-chip.height + 2px, root.base-height - 302px);
+        width: scale-chip.width; height: 300px;
         options: root.scale-names; current: root.scale-index;
         selected(i) => { root.set-scale(i); root.tuning-open = false; }
     }
     if root.rate-menu-open: DropdownList {
-        x: root.rate-menu-x; y: root.rate-menu-y;
-        width: 130px; height: 260px;
-        options: root.rate-names; current: root.rate;
+        x: rate-field.absolute-position.x; y: rate-field.absolute-position.y + rate-field.height + 2px;
+        width: 70px; height: 260px;
+        options: root.rate-names; current: root.rate; centered: true;
         selected(i) => { root.set-rate(i); root.rate-menu-open = false; }
+    }
+    // Collapsed waveform picker popup, shared by the oscillator and both LFO slots.
+    if root.wave-menu-target >= 0: Rectangle {
+        x: root.wave-menu-x; y: root.wave-menu-y;
+        width: root.wave-menu-target == 0 ? 126px : 85px; height: root.wave-paths.length * 26px + 8px;
+        border-radius: 4px; background: Theme.surface;
+        border-width: 1px; border-color: Theme.border;
+        drop-shadow-blur: 12px; drop-shadow-color: #00000055; drop-shadow-offset-y: 3px;
+        VerticalLayout {
+            padding: 4px; spacing: 2px;
+            for i in root.wave-paths.length: Rectangle {
+                height: 24px; border-radius: 3px;
+                background: (root.wave-menu-target == 0 && i == root.osc-wave) || (root.wave-menu-target == 1 && i == root.lfo1-wave) || (root.wave-menu-target == 2 && i == root.lfo2-wave) ? Theme.c1.with-alpha(0.18) : (row-touch.has-hover ? Theme.control-hover : Theme.control);
+                Path {
+                    x: 6px; y: 4px;
+                    width: root.wave-menu-target == 0 ? 54px : parent.width - 12px;
+                    height: parent.height - 8px;
+                    viewbox-x: 0; viewbox-y: 0; viewbox-width: 100; viewbox-height: 40;
+                    commands: root.wave-paths[i];
+                    fill: transparent; stroke: Theme.c1; stroke-width: 1.2px;
+                }
+                Text { visible: root.wave-menu-target == 0; x: 68px; width: parent.width - 74px; height: parent.height; text: i < root.wave-names.length ? root.wave-names[i] : ""; color: Theme.text; font-size: 10px; vertical-alignment: center; overflow: elide; }
+                row-touch := TouchArea {
+                    clicked => {
+                        if (root.wave-menu-target == 0) { root.set-osc-wave(i); }
+                        if (root.wave-menu-target == 1) { root.set-lfo-wave(1, i); }
+                        if (root.wave-menu-target == 2) { root.set-lfo-wave(2, i); }
+                        root.wave-menu-target = -1;
+                    }
+                }
+            }
+        }
+    }
+    // Randomize scope, anchored to the small gear beside the Randomize-after strip.
+    if root.scope-menu-open: Rectangle {
+        x: root.scope-menu-x; y: root.scope-menu-y;
+        width: 160px; height: 112px;
+        border-radius: 4px; background: Theme.surface;
+        border-width: 1px; border-color: Theme.border;
+        drop-shadow-blur: 12px; drop-shadow-color: #00000055; drop-shadow-offset-y: 3px;
+        VerticalLayout {
+            padding: 4px; spacing: 3px;
+            HorizontalLayout {
+                spacing: 3px;
+                ScopeChip { width: 72px; label: "MODE"; active: root.scope-mode; toggled => { root.toggle-scope(0); } }
+                ScopeChip { width: 72px; label: "LENGTH"; active: root.scope-length; toggled => { root.toggle-scope(1); } }
+            }
+            HorizontalLayout {
+                spacing: 3px;
+                ScopeChip { width: 72px; label: "HITS"; active: root.scope-hits; toggled => { root.toggle-scope(2); } }
+                ScopeChip { width: 72px; label: "TUNING"; active: root.scope-tuning; toggled => { root.toggle-scope(3); } }
+            }
+            HorizontalLayout {
+                spacing: 3px;
+                ScopeChip { width: 72px; label: "CLOCK"; active: root.scope-clock; toggled => { root.toggle-scope(4); } }
+                ScopeChip { width: 72px; label: "PHASE"; active: root.scope-phase; toggled => { root.toggle-scope(5); } }
+            }
+            HorizontalLayout {
+                spacing: 3px;
+                ScopeChip { width: 72px; label: "ACID"; active: root.scope-acid; toggled => { root.toggle-scope(6); } }
+                ScopeChip { width: 72px; label: "FEEL"; active: root.scope-feel; toggled => { root.toggle-scope(7); } }
+            }
+        }
     }
 
     // parked off-screen when closed, so the closing animation can play too; a bare
@@ -1114,7 +1246,12 @@ export component AppWindow inherits Window {
         background: Theme.surface; border-width: 1px; border-color: Theme.border;
         drop-shadow-blur: 16px; drop-shadow-color: #00000055; drop-shadow-offset-y: 4px;
         animate x { duration: 140ms; easing: ease-in-out; }
-        VerticalLayout {
+        // The panel is taller than the trimmed window on some themes; scroll instead of
+        // clipping the support block.
+        ScrollView {
+            width: parent.width; height: parent.height;
+            vertical-scrollbar-policy: as-needed;
+            VerticalLayout {
             padding: 12px; spacing: 8px;
             HorizontalLayout {
                 height: 24px;
@@ -1134,14 +1271,14 @@ export component AppWindow inherits Window {
                 background: root.round-steps ? Theme.c1.with-alpha(0.8) : (round-touch.has-hover ? Theme.control-hover : Theme.control);
                 Text {
                     x: 8px; width: parent.width - 16px;
-                    text: root.round-steps ? "WHOLE STEPS ONLY" : "FRACTIONAL STEPS";
+                    text: root.round-steps ? "WHOLE STEPS" : "FRACTIONAL STEPS";
                     color: root.round-steps ? Theme.on-accent : Theme.text;
                     font-size: 9px; vertical-alignment: center;
                 }
                 round-touch := TouchArea { clicked => { root.toggle-round-steps(); } }
             }
             Text {
-                text: "Whole steps snap the loop to the step grid. Fractional steps turn off in-plugin quantization, so the loop can wrap mid-step and drift against the grid.";
+                text: "Whole steps snap the loop to the step grid; fractional steps let it drift.";
                 color: Theme.text-muted; font-size: 9px; wrap: word-wrap;
             }
             Text { text: "PATTERN LIMIT"; color: Theme.text-muted; font-size: 9px; }
@@ -1161,16 +1298,6 @@ export component AppWindow inherits Window {
                 logging-touch := TouchArea { clicked => { root.toggle-logging(); } }
             }
             Text { text: "Writes mode and parameter snapshots to nelody.log in your home folder."; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
-            Text { text: "RANDOMIZE SCOPE"; color: Theme.text-muted; font-size: 9px; }
-            // Five bits of one host parameter (`randomize_scope`). Off keeps that group's
-            // current values; on lets RANDOMIZE rewrite it.
-            HorizontalLayout { spacing: 4px;
-                ScopeChip { label: "MODE"; active: root.scope-mode; toggled => { root.toggle-scope(0); } }
-                ScopeChip { label: "LENGTH"; active: root.scope-length; toggled => { root.toggle-scope(1); } }
-                ScopeChip { label: "RHYTHM"; active: root.scope-rhythm; toggled => { root.toggle-scope(2); } }
-                ScopeChip { label: "TONE"; active: root.scope-tone; toggled => { root.toggle-scope(3); } }
-                ScopeChip { label: "FEEL"; active: root.scope-feel; toggled => { root.toggle-scope(4); } }
-            }
             Text { text: "MIDI EXPORT FOLDER"; color: Theme.text-muted; font-size: 9px; }
             Rectangle {
                 height: 26px; border-radius: 4px;
@@ -1191,6 +1318,7 @@ export component AppWindow inherits Window {
             TextInput { read-only: true; text: root.credit-github; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
             TextInput { read-only: true; text: root.credit-support; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
             TextInput { read-only: true; text: root.credit-email; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
+            }
         }
     }
     }

@@ -21,7 +21,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 slint::include_modules!();
 const WIDTH: u32 = 860;
-const HEIGHT: u32 = 760;
+const HEIGHT: u32 = 675;
 /// Drawing size of the history roll, matching the Slint path viewbox.
 const HISTORY_W: f32 = 800.0;
 const HISTORY_H: f32 = 200.0;
@@ -38,6 +38,26 @@ fn log_line(text: &str) {
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "{}", text);
     }
+}
+
+/// Sorted, grouped mode list for the dropdown. Header rows carry index -1; option rows carry the
+/// stable host index so sorting never changes what the host sees.
+fn mode_entries() -> Vec<ModeEntry> {
+    let mut modes: Vec<(usize, Mode)> = (0..<Mode as Enum>::variants().len())
+        .map(|i| (i, Mode::from_index(i)))
+        .collect();
+    modes.sort_by_key(|(i, mode)| (mode.group().label(), *i));
+    let mut entries = Vec::new();
+    let mut last_group = "";
+    for (i, mode) in modes {
+        let group = mode.group().label();
+        if group != last_group {
+            entries.push(ModeEntry { group: SharedString::from(group), index: -1, header: true });
+            last_group = group;
+        }
+        entries.push(ModeEntry { group: SharedString::new(), index: i as i32, header: false });
+    }
+    entries
 }
 
 pub fn create(params: Arc<MelodyParams>, shared: Arc<Shared>) -> Box<dyn Editor> {
@@ -231,37 +251,46 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
     let slide = rng.unit();
     let accent = rng.unit();
     let octave = rng.unit();
-    // Swing stays put: it is a feel setting, not a generator setting.
+    let swing = 0.45 * rng.unit();
+    let nts = rng.unit() >= 0.25;
 
     if scope_enabled(p, scope::MODE) { set(ctx, &p.mode, mode); }
     if scope_enabled(p, scope::LENGTH) { set(ctx, &p.steps, steps); }
-    if scope_enabled(p, scope::RHYTHM) {
+    if scope_enabled(p, scope::HITS) {
         set(ctx, &p.pulses, pulses);
         set(ctx, &p.rotate, rotate);
         set(ctx, &p.density, density.clamp(0.0, 1.0));
     }
-    if scope_enabled(p, scope::TONE) {
-        set(ctx, &p.seed, seed);
-        set(ctx, &p.phase, phase);
-        set(ctx, &p.osc_rate, osc_rate);
-        set(ctx, &p.osc_wave, wave);
-        set(ctx, &p.ca_rule, ca_rule);
-        set(ctx, &p.symmetry, symmetry);
+    if scope_enabled(p, scope::TUNING) {
         set(ctx, &p.scale, scale);
         set(ctx, &p.root, root);
         set(ctx, &p.octaves, octaves);
         set(ctx, &p.edo, edo);
         set(ctx, &p.root_cents, root_cents);
     }
-    if scope_enabled(p, scope::FEEL) {
-        set(ctx, &p.probability, probability.clamp(0.0, 1.0));
-        set(ctx, &p.velocity, velocity.clamp(0.01, 1.0));
+    if scope_enabled(p, scope::CLOCK) {
         set(ctx, &p.rate, rate);
         let history_max = crate::history_bars_ceiling(p.step_ceiling(), rate);
         if p.history_bars.value() > history_max { set(ctx, &p.history_bars, history_max); }
+    }
+    if scope_enabled(p, scope::PHASE) {
+        set(ctx, &p.seed, seed);
+        set(ctx, &p.phase, phase);
+        set(ctx, &p.osc_rate, osc_rate);
+        set(ctx, &p.osc_wave, wave);
+        set(ctx, &p.ca_rule, ca_rule);
+        set(ctx, &p.symmetry, symmetry);
+    }
+    if scope_enabled(p, scope::ACID) {
         set(ctx, &p.slide, slide);
         set(ctx, &p.accent, accent);
         set(ctx, &p.octave, octave);
+    }
+    if scope_enabled(p, scope::FEEL) {
+        set(ctx, &p.probability, probability.clamp(0.0, 1.0));
+        set(ctx, &p.velocity, velocity.clamp(0.01, 1.0));
+        set(ctx, &p.swing, swing.clamp(0.0, 0.5));
+        set(ctx, &p.nts, nts);
     }
 }
 
@@ -441,7 +470,7 @@ impl Editor for SlintEditor {
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_toggle_scope(move |bit| {
-                    let mask = p.randomize_scope.value() ^ (1 << bit.clamp(0, 4));
+                    let mask = p.randomize_scope.value() ^ (1 << bit.clamp(0, 7));
                     set(&c, &p.randomize_scope, mask);
                 });
             }
@@ -473,7 +502,15 @@ impl Editor for SlintEditor {
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_generate_pressed(move || set(&c, &p.generate, !p.generate.value()));
+                ui.on_generate_pressed(move || {
+                    // Modes whose output is otherwise rotation-only: perturb the seed so Generate
+                    // produces a visibly different line instead of just rotating the same one.
+                    if matches!(p.mode.value(), Mode::RudinShapiro | Mode::ThueMorse | Mode::UlamPrimes) {
+                        let mut rng = Rng::new(p.seed.value(), p.variation.load(std::sync::atomic::Ordering::Relaxed), 0x5EED_5EED);
+                        set(&c, &p.seed, rng.unit());
+                    }
+                    set(&c, &p.generate, !p.generate.value());
+                });
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
@@ -531,23 +568,7 @@ impl Editor for SlintEditor {
             ui.set_lfo_target_names(ModelRc::new(VecModel::from(
                 <LfoTarget as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));
-            // Presentation grouping: sort by ModeGroup label, keeping host index inside each
-            // option. Header rows carry index -1 and are not selectable.
-            let mut modes: Vec<(usize, Mode)> = (0..<Mode as Enum>::variants().len())
-                .map(|i| (i, Mode::from_index(i)))
-                .collect();
-            modes.sort_by_key(|(i, mode)| (mode.group().label(), *i));
-            let mut entries: Vec<ModeEntry> = Vec::new();
-            let mut last_group = "";
-            for (i, mode) in modes {
-                let group = mode.group().label();
-                if group != last_group {
-                    entries.push(ModeEntry { group: SharedString::from(group), index: -1, header: true });
-                    last_group = group;
-                }
-                entries.push(ModeEntry { group: SharedString::new(), index: i as i32, header: false });
-            }
-            ui.set_mode_entries(ModelRc::new(VecModel::from(entries)));
+            ui.set_mode_entries(ModelRc::new(VecModel::from(mode_entries())));
             ui.set_settings_path(SharedString::from(crate::globals::config_path_display()));
             ui.set_credit_author(SharedString::from(crate::contact::AUTHOR));
             ui.set_credit_website(SharedString::from(crate::contact::WEBSITE));
@@ -618,8 +639,11 @@ impl Editor for SlintEditor {
             ui.set_swing(p.swing.value());
             ui.set_scope_mode(scope_enabled(p, scope::MODE));
             ui.set_scope_length(scope_enabled(p, scope::LENGTH));
-            ui.set_scope_rhythm(scope_enabled(p, scope::RHYTHM));
-            ui.set_scope_tone(scope_enabled(p, scope::TONE));
+            ui.set_scope_hits(scope_enabled(p, scope::HITS));
+            ui.set_scope_tuning(scope_enabled(p, scope::TUNING));
+            ui.set_scope_clock(scope_enabled(p, scope::CLOCK));
+            ui.set_scope_phase(scope_enabled(p, scope::PHASE));
+            ui.set_scope_acid(scope_enabled(p, scope::ACID));
             ui.set_scope_feel(scope_enabled(p, scope::FEEL));
             ui.set_seed(p.seed.value());
             ui.set_phase(p.phase.value());
@@ -744,6 +768,18 @@ mod tests {
         assert_eq!(pulse_limit(Mode::Sieve, 64), 2);
         assert_eq!(pulse_limit(Mode::AcidMotif, 64), 16);
         assert_eq!(pulse_limit(Mode::Euclidean, 16), 16);
+    }
+
+    #[test]
+    fn grouped_mode_entries_start_with_headers_and_keep_host_indices() {
+        let entries = mode_entries();
+        assert!(entries[0].header, "the first row must be a group header");
+        assert_eq!(entries[0].group.as_str(), "Acid");
+        assert!(entries.iter().any(|e| e.index == Mode::HilbertCurve.to_index() as i32));
+        // Every host index appears exactly once and all headers are in sorted group order.
+        let mut indices: Vec<i32> = entries.iter().filter(|e| !e.header).map(|e| e.index).collect();
+        indices.sort_unstable();
+        assert_eq!(indices, (0..<Mode as Enum>::variants().len() as i32).collect::<Vec<_>>());
     }
 
     #[test]

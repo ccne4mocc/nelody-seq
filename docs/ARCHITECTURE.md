@@ -139,7 +139,7 @@ first-run default is the host process working directory.
 | Parameter group | Parameters | Intended use |
 |---|---|---|
 | Pattern | `mode`, `steps` (1–1024), `max_steps` (64–1024), `round_steps`, `pulses`, `rotate`, `density`, `probability`, `velocity`, `regenerate_every`, `seed`, `generate`, `theme` | Pattern family, variation, palette. `steps` is bounded by `max_steps` at generation time; the default ceiling is 64, and changing it applies immediately because the arrays always have room for 1024 |
-| Randomization | `randomize_after_lengths`, `randomize_scope` (five-bit mask: Mode, Length, Rhythm, Tone, Feel) | Manual Randomize applies through the host setter; automatic randomization queues a request every N lengths while the editor is open. Randomize never touches swing |
+| Randomization | `randomize_after_lengths`, `randomize_scope` (eight-bit mask: Mode, Length, Hits, Tuning, Clock, Phase, Acid, Feel) | Manual Randomize applies through the host setter; automatic randomization queues a request every N lengths while the editor is open. Feel includes velocity, bend, swing and probability |
 | Algorithm shape | `phase`, `osc_rate`, `osc_wave` (8 waveforms), `ca_rule`, `symmetry` | Mode-specific; hidden in the UI when the selected mode never reads them. Waveform ids/names come from the `OscWave` enum |
 | Mode data bridge | `GenParams::mode_data: [f32; 4]` | Fixed slots for values a future typed `ModeParams` enum would own; currently zero-filled and documented per mode in `REFERENCE_MAPPING.md` |
 | Clock | `rate`, `gate`, `swing`, `freerun` | Beat grid, NoteOff duration, stopped-transport behaviour |
@@ -167,7 +167,7 @@ variation comes from Generate, Randomize and the knobs.
 
 - `ViewNode` is a panel coordinate in a 210×210 viewbox; the ModePanel renders it at 300px via
   `px-per-unit`. Keep new geometry in the 210-unit space; do not pre-scale.
-- The editor layout is fixed at 860×760 and the window never resizes.
+- The editor layout is fixed at 860×675 and the window never resizes.
 - The mode panel has five path slots: `edges` (framing), `fills` (translucent polygons), 
   `solid` (strong polygons), `lines` (contours) and `hand` (playhead). Acid piano-roll notes
   are solid when accented and fills otherwise; the L-system word strip and dice bars use the
