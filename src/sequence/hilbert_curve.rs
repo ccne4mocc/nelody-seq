@@ -1,6 +1,6 @@
 use super::{GenParams, Pattern, Rng};
 
-fn d2xy(order: u32, d: u32) -> (u32, u32) {
+pub(crate) fn point(order: u32, d: u32) -> (u32, u32) {
     let n = 1u32 << order;
     let (mut x, mut y) = (0u32, 0u32);
     let mut t = d;
@@ -37,7 +37,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut rng = Rng::new(p.seed, p.variation, 0xB11B_0001u64);
     for i in 0..n {
         let d = (i as u64 * total as u64 / n as u64) as u32;
-        let (x, y) = d2xy(order, d);
+        let (x, y) = point(order, d);
         let (mut ux, mut uy) = if size > 1 {
             (x as f32 / (size - 1) as f32, y as f32 / (size - 1) as f32)
         } else {

@@ -510,6 +510,23 @@ impl Editor for SlintEditor {
             ui.set_rate_names(ModelRc::new(VecModel::from(
                 <Rate as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));
+            // Presentation grouping: sort by ModeGroup label, keeping host index inside each
+            // option. Header rows carry index -1 and are not selectable.
+            let mut modes: Vec<(usize, Mode)> = (0..<Mode as Enum>::variants().len())
+                .map(|i| (i, Mode::from_index(i)))
+                .collect();
+            modes.sort_by_key(|(i, mode)| (mode.group().label(), *i));
+            let mut entries: Vec<ModeEntry> = Vec::new();
+            let mut last_group = "";
+            for (i, mode) in modes {
+                let group = mode.group().label();
+                if group != last_group {
+                    entries.push(ModeEntry { group: SharedString::from(group), index: -1, header: true });
+                    last_group = group;
+                }
+                entries.push(ModeEntry { group: SharedString::new(), index: i as i32, header: false });
+            }
+            ui.set_mode_entries(ModelRc::new(VecModel::from(entries)));
             ui.set_settings_path(SharedString::from(crate::globals::config_path_display()));
             ui.set_credit_author(SharedString::from(crate::contact::AUTHOR));
             ui.set_credit_website(SharedString::from(crate::contact::WEBSITE));

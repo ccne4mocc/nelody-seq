@@ -9,6 +9,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         .max(1)
         .min(n);
     let mu = 1.0 + p.density.clamp(0.0, 1.0) * 0.99;
+    out.nv = (mu * 1000.0) as usize;
     let mut x = (p.phase.clamp(0.01, 0.99) + p.seed * 0.01).clamp(0.01, 0.99);
     let mut scores = [0.0f32; MAX_STEPS];
     for i in 0..n {

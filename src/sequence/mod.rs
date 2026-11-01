@@ -35,6 +35,7 @@ mod walking_bass;
 // formulas, so these re-exports exist for `crate::view` alone.
 pub(crate) use circle_map::coupling as circle_coupling;
 pub(crate) use golomb::ruler_order;
+pub(crate) use hilbert_curve::point as hilbert_point;
 pub(crate) use logistic::r_of as logistic_r;
 pub(crate) use lsystem::threshold as lsystem_threshold;
 pub(crate) use oscillator::value as oscillator_value;

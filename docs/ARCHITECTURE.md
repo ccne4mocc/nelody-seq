@@ -202,6 +202,11 @@ variation comes from Generate, Randomize and the knobs.
 - Scrolling over the current-mode header steps to the next/previous mode and clamps at the
   ends (`step_mode` in `src/editor.rs`). The open mode list keeps the wheel for its own
   scrolling.
+- The mode dropdown is grouped by `Mode::group()`; `ModeEntry` rows carry a host index for
+  options and -1 for group headers. Sorting is display-only, so host indices never move.
+- New geometric modes use their natural 2-D view: Hilbert curve grid, Ulam spiral, Hénon
+  attractor. The Euclidean necklace stays a ring because the 2-D necklace is the clearest
+  reading of the rhythm.
 - Text entry needs more than Slint focus in a hosted editor: the baseview window claims native
   keyboard focus on pointer press, and inline editors focus/select-all on the next timer tick
   after their overlay becomes visible. Option strips and the clock field also detect two

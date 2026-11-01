@@ -19,6 +19,7 @@ export global Theme {
 }
 
 export struct ViewNode { x: length, y: length, r: length, on: bool, cur: bool, label: string }
+export struct ModeEntry { group: string, index: int, header: bool }
 export struct Opt { label: string, min: float, max: float, value: float, text: string, step: float, number: string, scale: float }
 
 // One numeric-entry session shared by every generator option strip. A global avoids wiring a
@@ -476,8 +477,47 @@ component RateField inherits Rectangle {
     }
 }
 
-// A compact dropdown list shared by the mode header and the Scale field. It is an in-window
-// overlay rather than a side panel so the editor underneath keeps its full width.
+// Mode picker with group headers. The host index stays in ModeEntry.index; header rows carry -1.
+component ModeDropdown inherits Rectangle {
+    in property <[ModeEntry]> entries;
+    in property <[string]> names;
+    in property <int> current;
+    callback selected(int);
+    width: 300px; height: 360px;
+    background: Theme.surface; border-width: 1px; border-color: Theme.border;
+    drop-shadow-blur: 16px; drop-shadow-color: #00000055; drop-shadow-offset-y: 4px;
+    clip: true;
+    ScrollView {
+        width: parent.width; height: parent.height;
+        vertical-scrollbar-policy: as-needed;
+        VerticalLayout {
+            spacing: 3px; padding: 8px; alignment: start;
+            height: 13px + root.entries.length * 29px;
+            for i in root.entries.length: Rectangle {
+                height: root.entries[i].header ? 20px : 26px;
+                border-radius: 3px;
+                background: root.entries[i].header
+                    ? transparent
+                    : (root.entries[i].index == root.current ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (item-touch.has-hover ? Theme.control-hover : Theme.control));
+                Text {
+                    x: 8px; width: parent.width - 16px; height: parent.height;
+                    text: root.entries[i].header ? root.entries[i].group : root.names[root.entries[i].index];
+                    color: root.entries[i].header ? Theme.text-muted : (root.entries[i].index == root.current ? Theme.on-accent : Theme.text);
+                    font-size: root.entries[i].header ? 8px : 10px;
+                    font-weight: root.entries[i].header ? 700 : 400;
+                    vertical-alignment: center; overflow: elide;
+                }
+                item-touch := TouchArea {
+                    enabled: !root.entries[i].header;
+                    clicked => { if (!root.entries[i].header) { root.selected(root.entries[i].index); } }
+                }
+            }
+        }
+    }
+}
+
+// A compact dropdown list shared by the Scale and Rate fields. It is an in-window overlay
+// rather than a side panel so the editor underneath keeps its full width.
 component DropdownList inherits Rectangle {
     in property <[string]> options;
     in property <int> current;
@@ -594,6 +634,7 @@ export component AppWindow inherits Window {
     out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || edo-row.editing || midi-root-box.editing || cents-box.editing || hist-box.editing || rate-field.editing || OptEdit.index >= 0;
     in-out property <string> export-status: "";
     in property <int> theme-index: 0;
+    in property <[ModeEntry]> mode-entries;
     in-out property <bool> mode-menu-open: false;
     // Dropdown anchors. The window layout is fixed at 860x760, so the two menus hang directly
     // under the mode header and the Scale chip instead of sliding in from a window edge.
@@ -988,10 +1029,10 @@ export component AppWindow inherits Window {
         background: #00000010;
         TouchArea { clicked => { root.mode-menu-open = false; root.tuning-open = false; root.rate-menu-open = false; } }
     }
-    if root.mode-menu-open: DropdownList {
+    if root.mode-menu-open: ModeDropdown {
         x: root.mode-menu-x; y: root.mode-menu-y;
         width: 300px; height: 360px;
-        options: root.mode-names; current: root.mode;
+        entries: root.mode-entries; names: root.mode-names; current: root.mode;
         selected(i) => { root.set-mode(i); root.mode-menu-open = false; }
     }
     if root.tuning-open: DropdownList {

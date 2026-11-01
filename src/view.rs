@@ -3,7 +3,8 @@
 
 use crate::modes::Mode;
 use crate::sequence::{
-    logistic_r, oscillator_value, oscillator_wave_count, CA_ROWS, MAX_STEPS, TONNETZ_START,
+    hilbert_point, logistic_r, oscillator_value, oscillator_wave_count, CA_ROWS, MAX_STEPS,
+    TONNETZ_START,
 };
 use std::f32::consts::TAU;
 use std::fmt::Write;
@@ -404,6 +405,151 @@ fn logistic_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i3
     }
 }
 
+/// Automatic binary words (Thue-Morse, Rudin-Shapiro): a two-line symbol strip plus contour.
+fn binary_word_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+    let cols = 16usize;
+    let rows = n.div_ceil(cols).max(1);
+    let cell = (P - 12.0) / cols as f32;
+    let rh = (58.0 / rows as f32).min(cell);
+    for i in 0..n {
+        let (cx, cy) = (6.0 + (i % cols) as f32 * cell, P - 6.0 - (i / cols) as f32 * rh);
+        let bit = pat.lsym[i] & 1;
+        let dst = if pat.hit[i] { &mut v.solid } else { &mut v.fills };
+        poly(dst, &[(cx + 0.6, cy - rh + 0.6), (cx + cell - 0.6, cy - rh + 0.6), (cx + cell - 0.6, cy - 0.6), (cx + 0.6, cy - 0.6)]);
+        if bit == 1 {
+            line(&mut v.edges, (cx + cell * 0.2, cy - rh * 0.5), (cx + cell * 0.8, cy - rh * 0.5));
+        } else {
+            line(&mut v.edges, (cx + cell * 0.5, cy - rh * 0.75), (cx + cell * 0.5, cy - rh * 0.25));
+        }
+    }
+    if cur >= 0 {
+        let i = cur as usize;
+        let (cx, cy) = (6.0 + (i % cols) as f32 * cell, P - 6.0 - (i / cols) as f32 * rh);
+        poly(&mut v.hand, &[(cx, cy - rh), (cx + cell, cy - rh), (cx + cell, cy), (cx, cy)]);
+    }
+    let mut started = false;
+    for i in 0..n {
+        let p = (x_of(i, n), 12.0 + (1.0 - pat.u[i]) * 100.0);
+        if !started { mv(&mut v.lines, p.0, p.1); started = true; } else { ln(&mut v.lines, p.0, p.1) }
+    }
+}
+
+/// Random-walk panels: the path through every step, with the selected onsets emphasized.
+fn walk_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+    let mut started = false;
+    for i in 0..n {
+        let p = (x_of(i, n), y_of(pat.orbit[i]));
+        if !started { mv(&mut v.lines, p.0, p.1); started = true; } else { ln(&mut v.lines, p.0, p.1) }
+        if pat.hit[i] {
+            v.nodes.push(Node { x: p.0, y: p.1, r: 4.0, on: true, cur: cur == i as i32, label: String::new() });
+        }
+    }
+    playhead_column(v, n, cur);
+}
+
+/// Tent map: the map curve for the current μ and the orbit points the generator visited.
+fn tent_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+    let mu = (pat.nv as f32 / 1000.0).clamp(1.0, 2.0);
+    let mut started = false;
+    for k in 0..=80 {
+        let x = k as f32 / 80.0;
+        let y = mu * x.min(1.0 - x);
+        let p = (12.0 + x * (P - 24.0), P - 12.0 - y * (P - 24.0));
+        if !started { mv(&mut v.edges, p.0, p.1); started = true; } else { ln(&mut v.edges, p.0, p.1) }
+    }
+    for i in 0..n {
+        let x = pat.orbit[i];
+        let y = mu * x.min(1.0 - x);
+        let p = (12.0 + x * (P - 24.0), P - 12.0 - y * (P - 24.0));
+        v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.0 } else { 1.8 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });
+    }
+    playhead_column(v, n, cur);
+}
+
+/// Hénon attractor: the normalized (x, y) orbit in a square, not a time strip.
+fn henon_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+    poly(&mut v.edges, &[(10.0, 10.0), (P - 10.0, 10.0), (P - 10.0, P - 10.0), (10.0, P - 10.0)]);
+    for i in 0..n {
+        let p = (10.0 + pat.orbit[i] * (P - 20.0), P - 10.0 - pat.theta[i] * (P - 20.0));
+        v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.0 } else { 1.8 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });
+    }
+    playhead_column(v, n, cur);
+}
+
+/// Absolute-pitch modes (arpeggiator, walking bass): a compact piano roll of `semis`.
+fn absolute_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+    let (mut lo, mut hi) = (0i32, 12i32);
+    for i in 0..n {
+        if pat.hit[i] {
+            lo = lo.min(pat.semis[i] as i32);
+            hi = hi.max(pat.semis[i] as i32 + 1);
+        }
+    }
+    lo = lo.div_euclid(12) * 12;
+    hi = (hi.div_euclid(12) + 1) * 12;
+    if hi - lo < 12 { hi = lo + 12; }
+    let rows = (hi - lo).max(1) as f32;
+    let rh = (P - 24.0) / rows;
+    let y_of = |p: i32| 12.0 + (hi - 1 - p) as f32 * rh;
+    for p in (lo..hi).step_by(12) {
+        line(&mut v.edges, (8.0, y_of(p)), (P - 8.0, y_of(p)));
+    }
+    let sw = (P - 16.0) / n.max(1) as f32;
+    for i in 0..n {
+        if !pat.hit[i] { continue; }
+        let x = 8.0 + i as f32 * sw;
+        let y = y_of(pat.semis[i] as i32);
+        let dst = if pat.acc[i] >= 0.9 { &mut v.solid } else { &mut v.fills };
+        poly(dst, &[(x + 0.8, y - rh * 0.35), (x + sw - 0.8, y - rh * 0.35), (x + sw - 0.8, y + rh * 0.35), (x + 0.8, y + rh * 0.35)]);
+    }
+    playhead_column(v, n, cur);
+}
+
+/// Hilbert curve: a real 2-D space-filling path, with the sampled steps highlighted on it.
+fn hilbert_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+    let order = (pat.nv.clamp(1, 5)) as u32;
+    let size = 1u32 << order;
+    let total = size * size;
+    let grid = |gx: u32, gy: u32| -> (f32, f32) {
+        if size <= 1 {
+            (C, C)
+        } else {
+            (10.0 + gx as f32 * (P - 20.0) / (size - 1) as f32, P - 10.0 - gy as f32 * (P - 20.0) / (size - 1) as f32)
+        }
+    };
+    for k in 0..=size {
+        let q = 10.0 + k as f32 * (P - 20.0) / size as f32;
+        line(&mut v.edges, (q, 10.0), (q, P - 10.0));
+        line(&mut v.edges, (10.0, P - q), (P - 10.0, P - q));
+    }
+    let mut prev: Option<(f32, f32)> = None;
+    for d in 0..total {
+        let (gx, gy) = hilbert_point(order, d);
+        let p = grid(gx, gy);
+        if let Some(q) = prev { line(&mut v.edges, q, p); }
+        prev = Some(p);
+    }
+    for i in 0..n {
+        let p = (10.0 + pat.orbit[i] * (P - 20.0), P - 10.0 - pat.theta[i] * (P - 20.0));
+        v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 3.8 } else { 1.5 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });
+    }
+    playhead_column(v, n, cur);
+}
+
+/// Ulam spiral: a square spiral plot with prime cells and the chosen onsets marked.
+fn ulam_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+    poly(&mut v.edges, &[(10.0, 10.0), (P - 10.0, 10.0), (P - 10.0, P - 10.0), (10.0, P - 10.0)]);
+    let mut started = false;
+    for i in 0..n {
+        let p = (10.0 + pat.orbit[i] * (P - 20.0), P - 10.0 - pat.theta[i] * (P - 20.0));
+        if !started { mv(&mut v.lines, p.0, p.1); started = true; } else { ln(&mut v.lines, p.0, p.1) }
+        if pat.state[i] == 1 || pat.hit[i] {
+            v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.0 } else { 2.0 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });
+        }
+    }
+    playhead_column(v, n, cur);
+}
+
 pub fn build(kind: Mode, pat: &crate::sequence::Pattern, steps: usize, cur: i32, root: i32, osc_wave: usize) -> View {
     let n = steps.clamp(1, MAX_STEPS);
     let cur = if cur >= 0 && (cur as usize) < n { cur } else { -1 };
@@ -537,12 +683,13 @@ pub fn build(kind: Mode, pat: &crate::sequence::Pattern, steps: usize, cur: i32,
         Mode::AcidRandom | Mode::AcidEuclid | Mode::AcidMarkov | Mode::AcidMotif | Mode::AcidShift => {
             acid_view(&mut v, pat, n, cur);
         }
-        // Phase 3 replaces these with dedicated geometry; the generic strip/roll views keep the
-        // first pass compiling and show the same contour the generators feed the scheduler.
-        Mode::ThueMorse | Mode::RudinShapiro => lsystem_view(&mut v, pat, n, cur),
-        Mode::Brownian | Mode::LevyFlight | Mode::TentMap | Mode::HenonMap => bernoulli_view(&mut v, pat, n, cur),
-        Mode::Arpeggiator | Mode::WalkingBass => acid_view(&mut v, pat, n, cur),
-        Mode::HilbertCurve | Mode::UlamPrimes => bernoulli_view(&mut v, pat, n, cur),
+        Mode::ThueMorse | Mode::RudinShapiro => binary_word_view(&mut v, pat, n, cur),
+        Mode::Brownian | Mode::LevyFlight => walk_view(&mut v, pat, n, cur),
+        Mode::TentMap => tent_view(&mut v, pat, n, cur),
+        Mode::HenonMap => henon_view(&mut v, pat, n, cur),
+        Mode::Arpeggiator | Mode::WalkingBass => absolute_view(&mut v, pat, n, cur),
+        Mode::HilbertCurve => hilbert_view(&mut v, pat, n, cur),
+        Mode::UlamPrimes => ulam_view(&mut v, pat, n, cur),
     }
     for s in [&mut v.edges, &mut v.fills, &mut v.lines, &mut v.solid, &mut v.hand] {
         if s.is_empty() {

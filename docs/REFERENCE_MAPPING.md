@@ -74,6 +74,15 @@ mapping highlights, for modes where the knob name is wrong in the generic sense:
 | 8 Markov | Walk activity | Rest probability | Leapiness (via osc_rate) |
 | 11 Sieve | Union terms (0–2) | Fraction of members kept | Residue shift |
 | 14–18 acid | Note count / motif length / register width | Root bias / leapiness | Mutation / register flip |
+| 19–20 Thue-Morse / Rudin-Shapiro | Target hits (weighted toward 1s) | Keep fraction | Word offset |
+| 21 Brownian | Target hits | Step size | Drift |
+| 22 Lévy Flight | Target hits | Tail weight | Drift |
+| 23 Tent Map | Target hits | Map μ | Initial x |
+| 24 Hénon Map | Target hits | Chaos a | Initial x |
+| 25 Arpeggiator | Chord tones (1–4) | Step gate | Direction (up/down/up-down/random) |
+| 26 Walking Bass | Chord tones (1–4) | Chromatic approach chance | Direction (below/above/mixed) |
+| 27 Hilbert Curve | Curve order (1–5) | Step gate | Quarter-turn rotation |
+| 28 Ulam Primes | Target hits | Prime keep fraction | — |
 | Symmetry | Hidden entirely (`shows-param` returns false for key 11) — a drum-only idea | | |
 
 `GenParams::mode_data` is the Phase-5 bridge for future typed mode parameters: fixed, zero-filled
