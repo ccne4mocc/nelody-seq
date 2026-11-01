@@ -271,15 +271,6 @@ export component AppWindow inherits Window {
     preferred-width: root.base-width; preferred-height: root.base-height;
     background: @linear-gradient(135deg, Theme.bg1 0%, Theme.bg2 50%, Theme.bg3 100%);
     in property <int> mode: 0;
-    // The mode list is taller than its viewport, and the wheel now changes the mode instead
-    // of scrolling it, so the list has to follow the selection. 32px per row (28px + 4px
-    // spacing), 300px viewport plus the list's own padding, so the cap follows the mode count.
-    // A Flickable/ScrollView viewport moves up by going NEGATIVE; the previous positive value
-    // was clamped to 0, so modes 8-15 could be selected but never scrolled into view.
-    in-out property <length> mode-scroll-y: 0px;
-    changed mode => {
-        root.mode-scroll-y = -Math.max(0px, Math.min(mode * 32px - 116px, root.mode-names.length * 32px - 332px));
-    }
     in property <float> steps: 16;
     in property <float> max-steps: 1024;
     in property <bool> round-steps: true;
@@ -665,8 +656,13 @@ export component AppWindow inherits Window {
         ScrollView {
             width: parent.width; height: parent.height;
             vertical-scrollbar-policy: as-needed;
-            VerticalLayout { spacing: 3px; padding: 12px;
-                Text { text: "MODE"; color: Theme.c1; font-size: 12px; font-weight: 700; }
+            // The list starts at the top edge. A bare layout stretches to the viewport, and its
+            // unbounded heading then absorbs every spare pixel, pushing Euclidean down the panel.
+            // Give the content its real height and align it to the start so no item can grow.
+            VerticalLayout {
+                spacing: 3px; padding: 12px; alignment: start;
+                height: 42px + root.mode-names.length * 29px;
+                Text { height: 18px; text: "MODE"; color: Theme.c1; font-size: 12px; font-weight: 700; vertical-alignment: center; }
                 for i in root.mode-names.length: Rectangle {
                     height: 26px; border-radius: 3px;
                     background: i == root.mode ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (menu-touch.has-hover ? Theme.control-hover : Theme.control);
