@@ -861,7 +861,7 @@ export component AppWindow inherits Window {
             height: 28px; spacing: 8px;
             Text { text: "CLOCK"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; }
             rate-field := RateField {
-                width: 200px;
+                width: 130px;
                 label: "RATE";
                 value: root.rate < root.rate-names.length ? root.rate-names[root.rate] : "";
                 stepped(d) => { root.step-rate(d); }
@@ -880,7 +880,7 @@ export component AppWindow inherits Window {
             tuning-root := NumBox { width: 112px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
             // The scale list lives in a dropdown under this chip; the chip only shows the
             // current scale and opens the list.
-            TuningChip { width: 160px; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
+            TuningChip { width: 140px; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
             // Keep EDO/Oct/NTS on the right while the Scale field keeps its compact half width.
             Rectangle { horizontal-stretch: 1; }
             edo-row := NumBox { visible: root.edo-active; width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
@@ -937,13 +937,13 @@ export component AppWindow inherits Window {
     }
     if root.tuning-open: DropdownList {
         x: root.tuning-menu-x; y: root.tuning-menu-y;
-        width: 160px; height: 300px;
+        width: 140px; height: 300px;
         options: root.scale-names; current: root.scale-index;
         selected(i) => { root.set-scale(i); root.tuning-open = false; }
     }
     if root.rate-menu-open: DropdownList {
         x: root.rate-menu-x; y: root.rate-menu-y;
-        width: 200px; height: 260px;
+        width: 130px; height: 260px;
         options: root.rate-names; current: root.rate;
         selected(i) => { root.set-rate(i); root.rate-menu-open = false; }
     }
