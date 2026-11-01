@@ -217,15 +217,25 @@ component NumBox inherits Rectangle {
         color: Theme.text; font-size: 11px;
         horizontal-alignment: right; vertical-alignment: center;
         text: root.format-value(root.value);
-        // Only accept complete numbers; a lone "-" or "1." must not be committed.
+        // Typing is live but incomplete text must survive: a lone "-" or "1." is not an error,
+        // it is the beginning of a negative or fractional number. Resetting the field there made
+        // negative root cents impossible to type, so only complete numbers are committed.
         edited => {
             if (self.text.is-float()) { root.changed(root.clamp-value(self.text.to-float())); }
-            else { self.text = root.format-value(root.value); }
         }
-        accepted => { self.text = root.format-value(root.value); }
+        accepted => {
+            if (self.text.is-float()) { root.changed(root.clamp-value(self.text.to-float())); }
+            self.text = root.format-value(root.value);
+        }
+        changed has-focus => {
+            // Clicking a spin-box value selects the old number, so typing replaces it instead
+            // of appending digits to whatever was stored before.
+            if (self.has-focus) { self.select-all(); }
+        }
         key-pressed(event) => {
             if (event.text == Key.UpArrow) { root.nudge(1); return accept; }
             if (event.text == Key.DownArrow) { root.nudge(-1); return accept; }
+            if (event.text == Key.Escape) { self.text = root.format-value(root.value); return accept; }
             return reject;
         }
     }
@@ -695,6 +705,7 @@ export component AppWindow inherits Window {
                 Text { text: "SETTINGS"; color: Theme.c1; font-size: 12px; font-weight: 700; vertical-alignment: center; }
                 Rectangle { width: 74px; height: 22px; border-radius: 4px; background: close-settings.has-hover ? Theme.hi : Theme.control; Text { text: "CLOSE"; color: close-settings.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } close-settings := TouchArea { clicked => { root.settings-open = false; } } }
             }
+            Text { text: "Click a number and type; Enter commits, Esc reverts, the wheel nudges."; color: Theme.text-muted; font-size: 8px; wrap: word-wrap; }
             Text { text: "COLOUR THEME"; color: Theme.text-muted; font-size: 9px; }
             Selector { options: ["Sketch", "Neon", "Lava", "Forest"]; current: root.theme-index; text-size: 10px; selected(i) => { root.set-theme(i); } }
             Text { text: "CONFIG FILE"; color: Theme.text-muted; font-size: 9px; }
