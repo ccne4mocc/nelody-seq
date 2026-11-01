@@ -21,9 +21,9 @@ pitch slides, legato and accents travel over MIDI channel 1.
 - **Clock rates** from 1/4 to 1/64, including dotted and triplet divisions, edited in one
   field that steps with the wheel and accepts a typed rate name.
 - **Tuning row + acid sliders** where the drum-lane chips were: Root, a Scale chip that opens
-  the left-hand tuning panel, EDO divisions, Octaves and an NTS bend chip; the acid slider row
-  appears for modes 14+. Settings slide-in keeps the max-steps, root MIDI note, root cents,
-  history window and logging toggle. MIDI history always records.
+  a scale dropdown, EDO divisions, Octaves and an NTS bend chip; the acid slider row appears
+  for modes 14+. Settings slide-in keeps the max-steps, root MIDI note, root cents, history
+  window and logging toggle. MIDI history always records.
 - **MIDI file export** of the current loop (mono, slide holds, swing) with the same
   editor→`generate()` path the audio scheduler uses. The button sits under the MIDI history;
   Settings only stores the folder.

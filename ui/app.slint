@@ -363,6 +363,32 @@ component RateField inherits Rectangle {
     }
 }
 
+// A compact dropdown list shared by the mode header and the Scale field. It is an in-window
+// overlay rather than a side panel so the editor underneath keeps its full width.
+component DropdownList inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    callback selected(int);
+    width: 300px; height: 360px;
+    background: Theme.surface; border-width: 1px; border-color: Theme.border;
+    drop-shadow-blur: 16px; drop-shadow-color: #00000055; drop-shadow-offset-y: 4px;
+    clip: true;
+    ScrollView {
+        width: parent.width; height: parent.height;
+        vertical-scrollbar-policy: as-needed;
+        VerticalLayout {
+            spacing: 3px; padding: 8px; alignment: start;
+            height: 13px + root.options.length * 29px;
+            for i in root.options.length: Rectangle {
+                height: 26px; border-radius: 3px;
+                background: i == root.current ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (item-touch.has-hover ? Theme.control-hover : Theme.control);
+                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.options[i]; color: i == root.current ? Theme.on-accent : Theme.text; font-size: 10px; vertical-alignment: center; overflow: elide; }
+                item-touch := TouchArea { clicked => { root.selected(i); } }
+            }
+        }
+    }
+}
+
 component ModePanel inherits Rectangle {
     in property <[ViewNode]> nodes;
     in property <string> edges: "M0 0";
@@ -451,23 +477,18 @@ export component AppWindow inherits Window {
     in-out property <string> export-status: "";
     in property <int> theme-index: 0;
     in-out property <bool> mode-menu-open: false;
-    in-out property <length> mode-menu-x: root.base-width;
-    changed mode-menu-open => {
-        root.mode-menu-x = root.mode-menu-open ? root.base-width - 260px : root.base-width;
-    }
+    // Dropdown anchors. The window layout is fixed at 860x760, so the two menus hang directly
+    // under the mode header and the Scale chip instead of sliding in from a window edge.
+    in property <length> mode-menu-x: 384px;
+    in property <length> mode-menu-y: 86px;
+    in-out property <bool> tuning-open: false;
+    in property <length> tuning-menu-x: 181px;
+    in property <length> tuning-menu-y: 424px;
     in-out property <bool> settings-open: false;
-    // Settings slide in from the right edge of the fixed 860px layout; see the panel at the
-    // bottom of this component.
+    // Settings still slide in from the right edge of the fixed 860px layout.
     in-out property <length> settings-x: root.base-width;
     changed settings-open => {
         root.settings-x = root.settings-open ? root.base-width - 300px : root.base-width;
-    }
-    // The twelve scale names do not fit in the tuning row, so the Scale chip opens a list that
-    // slides in from the left: the mirror image of Settings on the right.
-    in-out property <bool> tuning-open: false;
-    in-out property <length> tuning-x: -300px;
-    changed tuning-open => {
-        root.tuning-x = root.tuning-open ? 0px : -300px;
     }
     in property <bool> free-run: false;
     in property <bool> invert-on: false;
@@ -737,8 +758,8 @@ export component AppWindow inherits Window {
             height: 28px; spacing: 5px;
             Text { text: "TUNING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
             tuning-root := NumBox { width: 112px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
-            // The scale list lives in the left-hand TUNING panel; this chip only shows the
-            // current scale and opens that panel.
+            // The scale list lives in a dropdown under this chip; the chip only shows the
+            // current scale and opens the list.
             TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.settings-open = false; root.mode-menu-open = false; } }
             edo-row := NumBox { width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
             tuning-oct := NumBox { width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
@@ -779,65 +800,24 @@ export component AppWindow inherits Window {
         }
     }
 
-    // Tuning picker: the scale list, in the same side-panel language as Settings but from the
-    // left. Only the list lives here; the row keeps Root, Octaves, EDO and NTS visible.
-    if root.tuning-x > -300px: Rectangle {
+    // Mode and Scale are dropdowns. A transparent catcher closes whichever list is open on
+    // the next click, and each list overlays the editor instead of taking a side panel.
+    if root.mode-menu-open || root.tuning-open: Rectangle {
         x: 0px; y: 0px; width: root.base-width; height: root.base-height;
-        background: #00000044;
-        TouchArea { clicked => { root.tuning-open = false; } }
+        background: #00000010;
+        TouchArea { clicked => { root.mode-menu-open = false; root.tuning-open = false; } }
     }
-    Rectangle {
-        x: root.tuning-x; y: 0px; width: 300px; height: root.base-height;
-        background: Theme.surface; border-width: 1px; border-color: Theme.border;
-        drop-shadow-blur: 16px; drop-shadow-color: #00000055; drop-shadow-offset-y: 4px;
-        animate x { duration: 140ms; easing: ease-in-out; }
-        VerticalLayout {
-            padding: 12px; spacing: 6px; alignment: start;
-            HorizontalLayout {
-                height: 24px;
-                Text { text: "TUNING"; color: Theme.c1; font-size: 12px; font-weight: 700; vertical-alignment: center; }
-                Rectangle { width: 74px; height: 22px; border-radius: 4px; background: close-tuning.has-hover ? Theme.hi : Theme.control; Text { text: "CLOSE"; color: close-tuning.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } close-tuning := TouchArea { clicked => { root.tuning-open = false; } } }
-            }
-            Text { text: "SCALE / TUNING TABLE"; color: Theme.text-muted; font-size: 9px; }
-            for i in root.scale-names.length: Rectangle {
-                height: 28px; border-radius: 3px;
-                background: i == root.scale-index ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (scale-touch.has-hover ? Theme.control-hover : Theme.control);
-                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.scale-names[i]; color: i == root.scale-index ? Theme.on-accent : Theme.text; font-size: 10px; vertical-alignment: center; overflow: elide; }
-                scale-touch := TouchArea { clicked => { root.set-scale(i); root.tuning-open = false; } }
-            }
-            Text { text: "Twelve built-in tables plus Equal (EDO) for custom divisions."; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
-        }
+    if root.mode-menu-open: DropdownList {
+        x: root.mode-menu-x; y: root.mode-menu-y;
+        width: 300px; height: 360px;
+        options: root.mode-names; current: root.mode;
+        selected(i) => { root.set-mode(i); root.mode-menu-open = false; }
     }
-
-    // Mode picker: slides in from the right edge like Settings, so the editor keeps its
-    // full width when the list is closed.
-    if root.mode-menu-x < root.base-width: Rectangle {
-        x: 0px; y: 0px; width: root.base-width; height: root.base-height;
-        background: #00000044;
-        TouchArea { clicked => { root.mode-menu-open = false; } }
-    }
-    Rectangle {
-        x: root.mode-menu-x; y: 0px; width: 260px; height: root.base-height;
-        background: Theme.surface; border-width: 1px; border-color: Theme.border;
-        animate x { duration: 140ms; easing: ease-in-out; }
-        ScrollView {
-            width: parent.width; height: parent.height;
-            vertical-scrollbar-policy: as-needed;
-            // The list starts at the top edge. A bare layout stretches to the viewport, and its
-            // unbounded heading then absorbs every spare pixel, pushing Euclidean down the panel.
-            // Give the content its real height and align it to the start so no item can grow.
-            VerticalLayout {
-                spacing: 3px; padding: 12px; alignment: start;
-                height: 42px + root.mode-names.length * 29px;
-                Text { height: 18px; text: "MODE"; color: Theme.c1; font-size: 12px; font-weight: 700; vertical-alignment: center; }
-                for i in root.mode-names.length: Rectangle {
-                    height: 26px; border-radius: 3px;
-                    background: i == root.mode ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (menu-touch.has-hover ? Theme.control-hover : Theme.control);
-                    Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.mode-names[i]; color: i == root.mode ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; overflow: elide; }
-                    menu-touch := TouchArea { clicked => { root.set-mode(i); root.mode-menu-open = false; } }
-                }
-            }
-        }
+    if root.tuning-open: DropdownList {
+        x: root.tuning-menu-x; y: root.tuning-menu-y;
+        width: 300px; height: 300px;
+        options: root.scale-names; current: root.scale-index;
+        selected(i) => { root.set-scale(i); root.tuning-open = false; }
     }
 
     // parked off-screen when closed, so the closing animation can play too; a bare
