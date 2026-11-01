@@ -30,6 +30,9 @@ pitch slides, legato and accents travel over MIDI channel 1.
 - **MIDI file export** of the current loop (mono, slide holds, swing) with the same
   editor→`generate()` path the audio scheduler uses. The button sits under the MIDI history;
   Settings only stores the folder.
+- **Two runtime LFOs** under the history card: waveform, rate in beats, depth, phase and a
+  target. The first phase targets Swing, Gate or Velocity, evaluated from host beat position
+  in the audio callback without regenerating the pattern or allocating.
 
 ## Build
 

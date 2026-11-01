@@ -178,6 +178,16 @@ pub enum OscWave {
     #[id = "noise"] #[name = "Noise"] Noise,
 }
 
+/// Runtime LFO target. Only parameters that can be modulated per block without regenerating
+/// the pattern are in this first phase; pattern-shaping targets need a loop-boundary rewrite.
+#[derive(Enum, PartialEq, Eq, Clone, Copy, Debug)]
+pub enum LfoTarget {
+    #[id = "none"] #[name = "None"] None,
+    #[id = "swing"] #[name = "Swing"] Swing,
+    #[id = "gate"] #[name = "Gate"] Gate,
+    #[id = "velocity"] #[name = "Velocity"] Velocity,
+}
+
 /// Which parameter groups RANDOMIZE is allowed to touch. One host parameter, five bits.
 pub mod scope {
     pub const MODE: i32 = 1 << 0;
@@ -218,6 +228,17 @@ pub struct MelodyParams {
     #[id = "rate"] pub rate: EnumParam<Rate>,
     #[id = "gate"] pub gate: FloatParam,
     #[id = "swing"] pub swing: FloatParam,
+    // --- LFO modulation (runtime overlay; targets affect scheduling, not project state) -----
+    #[id = "lfo1_wave"] pub lfo1_wave: EnumParam<OscWave>,
+    #[id = "lfo1_rate"] pub lfo1_rate: FloatParam,
+    #[id = "lfo1_depth"] pub lfo1_depth: FloatParam,
+    #[id = "lfo1_phase"] pub lfo1_phase: FloatParam,
+    #[id = "lfo1_target"] pub lfo1_target: EnumParam<LfoTarget>,
+    #[id = "lfo2_wave"] pub lfo2_wave: EnumParam<OscWave>,
+    #[id = "lfo2_rate"] pub lfo2_rate: FloatParam,
+    #[id = "lfo2_depth"] pub lfo2_depth: FloatParam,
+    #[id = "lfo2_phase"] pub lfo2_phase: FloatParam,
+    #[id = "lfo2_target"] pub lfo2_target: EnumParam<LfoTarget>,
     #[id = "generate"] pub generate: BoolParam,
     #[id = "invert"] pub invert: BoolParam,
     #[id = "mirror"] pub mirror: BoolParam,
@@ -245,6 +266,20 @@ pub struct MelodyParams {
     /// Window length for the piano-roll history, in bars (4/4: four beats per bar). The host id
     /// stays `history_beats` for project compatibility.
     #[id = "history_beats"] pub history_bars: FloatParam,
+}
+
+/// One LFO sample in `-depth..=depth`, evaluated against an absolute beat position.
+fn lfo_signal(wave: OscWave, rate_beats: f32, depth: f32, phase: f32, beat: f64) -> f32 {
+    let depth = depth.clamp(0.0, 1.0);
+    if depth <= 0.0 { return 0.0; }
+    let rate = rate_beats.clamp(0.25, 16.0) as f64;
+    let phase = (beat / rate + phase as f64).rem_euclid(1.0) as f32;
+    depth * (crate::sequence::oscillator_value(wave.to_index(), phase) * 2.0 - 1.0)
+}
+
+/// Fold an LFO signal into a base value and clamp it to the parameter's own range.
+fn lfo_modulate(base: f32, signal: f32, scale: f32, min: f32, max: f32) -> f32 {
+    (base + signal * scale).clamp(min, max)
 }
 
 fn percentage_param(name: &'static str, value: f32) -> FloatParam {
@@ -285,6 +320,16 @@ impl Default for MelodyParams {
             rate: EnumParam::new("Rate", Rate::Sixteenth),
             gate: FloatParam::new("Gate", 0.12, FloatRange::Linear { min: 0.02, max: 1.0 }),
             swing: FloatParam::new("Swing", 0.0, FloatRange::Linear { min: 0.0, max: 0.5 }),
+            lfo1_wave: EnumParam::new("LFO 1 Wave", OscWave::Sine),
+            lfo1_rate: FloatParam::new("LFO 1 Rate (beats)", 4.0, FloatRange::Linear { min: 0.25, max: 16.0 }),
+            lfo1_depth: FloatParam::new("LFO 1 Depth", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            lfo1_phase: FloatParam::new("LFO 1 Phase", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            lfo1_target: EnumParam::new("LFO 1 Target", LfoTarget::None),
+            lfo2_wave: EnumParam::new("LFO 2 Wave", OscWave::Triangle),
+            lfo2_rate: FloatParam::new("LFO 2 Rate (beats)", 8.0, FloatRange::Linear { min: 0.25, max: 16.0 }),
+            lfo2_depth: FloatParam::new("LFO 2 Depth", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            lfo2_phase: FloatParam::new("LFO 2 Phase", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            lfo2_target: EnumParam::new("LFO 2 Target", LfoTarget::None),
             generate: BoolParam::new("Generate", false),
             invert: BoolParam::new("Invert Pattern", false),
             mirror: BoolParam::new("Mirror Pattern", false),
@@ -364,6 +409,14 @@ impl MelodyParams {
             octave: self.octave.value(),
             mode_data: [0.0; 4],
         }
+    }
+
+    /// LFO 1/2 signals at an absolute host beat position.
+    pub(crate) fn lfo1_signal(&self, beat: f64) -> f32 {
+        lfo_signal(self.lfo1_wave.value(), self.lfo1_rate.value(), self.lfo1_depth.value(), self.lfo1_phase.value(), beat)
+    }
+    pub(crate) fn lfo2_signal(&self, beat: f64) -> f32 {
+        lfo_signal(self.lfo2_wave.value(), self.lfo2_rate.value(), self.lfo2_depth.value(), self.lfo2_phase.value(), beat)
     }
 
     /// MIDI note and microtonal detune for one pattern step. The detune is what `nts` sends as
@@ -705,7 +758,20 @@ impl Plugin for Nelody {
         let spb = p.rate.value().steps_per_beat();
         let step_len = 1.0 / spb;
         let s1 = end * spb;
-        let swing = p.swing.value().clamp(0.0, 0.5) as f64 * step_len;
+        // Runtime LFO overlay. Scheduling targets do not regenerate the pattern, so they can be
+        // updated every block; the evaluation is allocation-free.
+        let (lfo1, lfo2) = (p.lfo1_signal(start), p.lfo2_signal(start));
+        let (mut swing_value, mut gate_value, mut velocity_value) =
+            (p.swing.value(), p.gate.value(), p.velocity.value());
+        for (target, signal) in [(p.lfo1_target.value(), lfo1), (p.lfo2_target.value(), lfo2)] {
+            match target {
+                LfoTarget::Swing => swing_value = lfo_modulate(swing_value, signal, 0.25, 0.0, 0.5),
+                LfoTarget::Gate => gate_value = lfo_modulate(gate_value, signal, 0.5, 0.02, 1.0),
+                LfoTarget::Velocity => velocity_value = lfo_modulate(velocity_value, signal, 0.5, 0.01, 1.0),
+                LfoTarget::None => {}
+            }
+        }
+        let swing = swing_value.clamp(0.0, 0.5) as f64 * step_len;
         let swung = |k: i64| k as f64 * step_len + if k.rem_euclid(2) != 0 { swing } else { 0.0 };
         let mut k = resume_cursor(self.next_step, transport_jump, start, end, spb);
         let every = p.regenerate_every.value().max(0) as i64;
@@ -747,7 +813,7 @@ impl Plugin for Nelody {
                 if self.pattern.hit[idx] {
                     let t = timing(next_step);
                     let (note, cents) = p.pitch_for(&self.pattern, idx);
-                    let velocity = (p.velocity.value() * self.pattern.acc[idx]).clamp(0.01, 1.0);
+                    let velocity = (velocity_value * self.pattern.acc[idx]).clamp(0.01, 1.0);
                     // A sliding note is held right up to the next note (across any rests), not gated.
                     let hold = if self.pattern.slide[idx] {
                         next_hit_after(&self.pattern.hit, idx, self.pattern.steps)
@@ -755,7 +821,7 @@ impl Plugin for Nelody {
                     } else {
                         None
                     };
-                    let off_beat = next_step + hold.unwrap_or(p.gate.value() as f64) * step_len;
+                    let off_beat = next_step + hold.unwrap_or(gate_value as f64) * step_len;
                     let next = Active { note, cents, off_beat, slide: hold.is_some() };
                     let tr = transition(self.active.as_ref(), note);
                     match tr {
@@ -837,7 +903,9 @@ mod tests {
             "mode", "steps", "max_steps", "round_steps", "pulses", "rotate", "density",
             "probability", "velocity", "regenerate_every", "randomize_after_lengths",
             "randomize_scope", "theme", "seed", "phase", "osc_rate", "osc_wave", "ca_rule",
-            "symmetry", "rate", "gate", "swing", "generate", "invert", "mirror", "logging",
+            "symmetry", "rate", "gate", "swing", "lfo1_wave", "lfo1_rate", "lfo1_depth",
+            "lfo1_phase", "lfo1_target", "lfo2_wave", "lfo2_rate", "lfo2_depth", "lfo2_phase",
+            "lfo2_target", "generate", "invert", "mirror", "logging",
             "freerun", "root", "scale", "edo", "root_cents", "midi_root", "octaves", "slide",
             "accent", "oct_jump", "nts", "history_beats",
         ] {
@@ -866,6 +934,28 @@ mod tests {
         }
         assert_eq!(<Mode as Enum>::variants().len(), 29);
         assert_eq!(Mode::AcidRandom.to_index(), 14, "the acid row starts at 14");
+    }
+
+    #[test]
+    fn lfo_signal_is_bounded_and_tracks_the_beat_clock() {
+        // 4 beats per cycle: beat 0 is the sine midpoint, beat 1 is the peak.
+        assert!(lfo_signal(OscWave::Sine, 4.0, 1.0, 0.0, 0.0).abs() < 1e-6);
+        assert!((lfo_signal(OscWave::Sine, 4.0, 1.0, 0.0, 1.0) - 1.0).abs() < 1e-6);
+        assert!((lfo_signal(OscWave::Sine, 4.0, 1.0, 0.0, 3.0) + 1.0).abs() < 1e-6);
+        assert_eq!(lfo_signal(OscWave::Sine, 4.0, 0.0, 0.0, 1.0), 0.0);
+        for wave in [OscWave::Sine, OscWave::Saw, OscWave::Square, OscWave::Noise] {
+            for beat in [0.0, 0.3, 1.7, 9.5] {
+                let v = lfo_signal(wave, 2.5, 0.8, 0.4, beat);
+                assert!(v.is_finite() && v.abs() <= 0.8 + 1e-6, "{wave:?} {beat} {v}");
+            }
+        }
+    }
+
+    #[test]
+    fn lfo_modulation_clamps_to_the_target_range() {
+        assert!((lfo_modulate(0.25, 0.5, 0.25, 0.0, 0.5) - 0.375).abs() < 1e-6);
+        assert_eq!(lfo_modulate(0.45, 1.0, 0.5, 0.02, 1.0), 0.95);
+        assert_eq!(lfo_modulate(0.45, -1.0, 0.5, 0.02, 1.0), 0.02);
     }
 
     #[test]

@@ -85,7 +85,8 @@ or mutex is allocated in the callback; the editor applies randomization through 
 Regenerate-after-N-lengths swaps the pattern inside the callback by regenerating from a fresh
 `gen_params()` snapshot — generation is allocation-free (guarded by test) and bounded by the
 `max_steps` ceiling, so this is safe on the audio thread. Randomize-after-N-lengths only
-queues an atomic request.
+queues an atomic request. Two runtime LFOs are evaluated before scheduling each block; they
+modulate Swing, Gate or Velocity only, so no pattern regeneration is needed.
 
 ## Modes and the `max_steps` ceiling
 
@@ -142,6 +143,7 @@ first-run default is the host process working directory.
 | Algorithm shape | `phase`, `osc_rate`, `osc_wave` (8 waveforms), `ca_rule`, `symmetry` | Mode-specific; hidden in the UI when the selected mode never reads them. Waveform ids/names come from the `OscWave` enum |
 | Mode data bridge | `GenParams::mode_data: [f32; 4]` | Fixed slots for values a future typed `ModeParams` enum would own; currently zero-filled and documented per mode in `REFERENCE_MAPPING.md` |
 | Clock | `rate`, `gate`, `swing`, `freerun` | Beat grid, NoteOff duration, stopped-transport behaviour |
+| LFO | `lfo1_wave`, `lfo1_rate`, `lfo1_depth`, `lfo1_phase`, `lfo1_target` (and the same for LFO 2) | Two runtime LFOs. Rate is beats/cycle; targets are Swing/Gate/Velocity, folded into the scheduler per block from host beat position. Pattern-shaping targets and drag/drop links are deferred. Runtime modulation is not written back to host parameters and is not part of MIDI export |
 | Melody / tuning | `root` (pitch class), `scale` (12 tables or EDO), `octaves`, `edo`, `root_cents`, `midi_root`, `nts` | Pitch mapping. The tonic is `midi_root + root` semitones; non-12-TET detune is emitted as pitch bend while `nts` is on |
 | Acid flags | `slide`, `accent`, `oct_jump` | Per-note probabilities for the five acid modes. They only add or remove flags — never reshuffle the line (tested) |
 | Post-transforms | `invert`, `mirror`, `rotate` | Applied to the finished line: hit inversion, retrograde, circular rotation |

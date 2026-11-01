@@ -9,7 +9,7 @@ use crate::keys;
 use crate::midi_export;
 use crate::sequence::{generate, GenParams, Pattern, Rng, MAX_STEPS, MIN_MAX_STEPS};
 use crate::view::{self, View};
-use crate::{cell_count_for, scope, MelodyParams, Mode, OscWave, Rate, Shared, Theme as PluginTheme, Tuning};
+use crate::{cell_count_for, scope, LfoTarget, MelodyParams, Mode, OscWave, Rate, Shared, Theme as PluginTheme, Tuning};
 use nice_plug::prelude::*;
 use slint::platform::WindowEvent;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
@@ -174,6 +174,12 @@ fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
         21 => set(c, &p.edo, (value.round() as i32).clamp(1, crate::tuning::MAX_EDO as i32)),
         22 => set(c, &p.root_cents, value.clamp(-50.0, 50.0)),
         23 => set(c, &p.history_bars, value.clamp(1.0, p.history_bars_ceiling())),
+        24 => set(c, &p.lfo1_rate, value.clamp(0.25, 16.0)),
+        25 => set(c, &p.lfo1_depth, value.clamp(0.0, 1.0)),
+        26 => set(c, &p.lfo1_phase, value.clamp(0.0, 1.0)),
+        27 => set(c, &p.lfo2_rate, value.clamp(0.25, 16.0)),
+        28 => set(c, &p.lfo2_depth, value.clamp(0.0, 1.0)),
+        29 => set(c, &p.lfo2_phase, value.clamp(0.0, 1.0)),
         _ => {},
     }
 }
@@ -422,6 +428,18 @@ impl Editor for SlintEditor {
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_set_lfo_wave(move |slot, v| {
+                    let wave = OscWave::from_index(v.clamp(0, OscWave::variants().len() as i32 - 1) as usize);
+                    set(&c, if slot == 1 { &p.lfo1_wave } else { &p.lfo2_wave }, wave);
+                });
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_set_lfo_target(move |slot, v| {
+                    let target = LfoTarget::from_index(v.clamp(0, LfoTarget::variants().len() as i32 - 1) as usize);
+                    set(&c, if slot == 1 { &p.lfo1_target } else { &p.lfo2_target }, target);
+                });
+            }
+            {
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_toggle_scope(move |bit| {
                     let mask = p.randomize_scope.value() ^ (1 << bit.clamp(0, 4));
                     set(&c, &p.randomize_scope, mask);
@@ -509,6 +527,9 @@ impl Editor for SlintEditor {
             )));
             ui.set_rate_names(ModelRc::new(VecModel::from(
                 <Rate as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
+            )));
+            ui.set_lfo_target_names(ModelRc::new(VecModel::from(
+                <LfoTarget as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));
             // Presentation grouping: sort by ModeGroup label, keeping host index inside each
             // option. Header rows carry index -1 and are not selectable.
@@ -607,6 +628,16 @@ impl Editor for SlintEditor {
             ui.set_ca_rule(p.ca_rule.value() as f32);
             ui.set_symmetry(p.symmetry.value() as f32);
             ui.set_rate(p.rate.value().to_index() as i32);
+            ui.set_lfo1_wave(p.lfo1_wave.value().to_index() as i32);
+            ui.set_lfo1_rate(p.lfo1_rate.value());
+            ui.set_lfo1_depth(p.lfo1_depth.value());
+            ui.set_lfo1_phase(p.lfo1_phase.value());
+            ui.set_lfo1_target(p.lfo1_target.value().to_index() as i32);
+            ui.set_lfo2_wave(p.lfo2_wave.value().to_index() as i32);
+            ui.set_lfo2_rate(p.lfo2_rate.value());
+            ui.set_lfo2_depth(p.lfo2_depth.value());
+            ui.set_lfo2_phase(p.lfo2_phase.value());
+            ui.set_lfo2_target(p.lfo2_target.value().to_index() as i32);
             ui.set_free_run(p.free_run.value());
             ui.set_invert_on(p.invert.value());
             ui.set_mirror_on(p.mirror.value());

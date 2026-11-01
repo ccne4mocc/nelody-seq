@@ -603,6 +603,17 @@ export component AppWindow inherits Window {
     in property <float> regenerate-every: 0;
     in property <float> randomize-after-lengths: 0;
     in property <float> swing: 0;
+    in property <int> lfo1-wave: 0;
+    in property <float> lfo1-rate: 4.0;
+    in property <float> lfo1-depth: 0.0;
+    in property <float> lfo1-phase: 0.0;
+    in property <int> lfo1-target: 0;
+    in property <int> lfo2-wave: 1;
+    in property <float> lfo2-rate: 8.0;
+    in property <float> lfo2-depth: 0.0;
+    in property <float> lfo2-phase: 0.0;
+    in property <int> lfo2-target: 0;
+    in property <[string]> lfo-target-names;
     in property <float> seed: 0.271;
     in property <float> phase: 0.0;
     in property <float> osc-rate: 2.0;
@@ -692,6 +703,8 @@ export component AppWindow inherits Window {
     callback set-rate(int);
     callback rate-submitted(string);
     callback set-osc-wave(int);
+    callback set-lfo-wave(int, int);
+    callback set-lfo-target(int, int);
     callback set-theme(int);
     callback set-opt(int, float);
     callback toggle-round-steps();
@@ -856,7 +869,13 @@ export component AppWindow inherits Window {
         { label: "Root MIDI note", min: 0, max: 120, value: root.midi-root, text: "\{root.midi-root}", step: 1, number: "\{root.midi-root}", scale: 1 },
         { label: "EDO divisions", min: 1, max: 72, value: root.edo, text: "\{root.edo}", step: 1, number: "\{root.edo}", scale: 1 },
         { label: "Root cents", min: -50, max: 50, value: root.root-cents, text: "\{Math.round(root.root-cents)}c", step: 1, number: "\{Math.round(root.root-cents)}", scale: 1 },
-        { label: "History bars", min: 1, max: root.history-max-bars, value: root.history-bars, text: "\{Math.round(root.history-bars)}", step: 1, number: "\{Math.round(root.history-bars)}", scale: 1 }
+        { label: "History bars", min: 1, max: root.history-max-bars, value: root.history-bars, text: "\{Math.round(root.history-bars)}", step: 1, number: "\{Math.round(root.history-bars)}", scale: 1 },
+        { label: "Rate", min: 0.25, max: 16, value: root.lfo1-rate, text: "\{Math.round(root.lfo1-rate * 100) / 100}", step: 0.25, number: "\{Math.round(root.lfo1-rate * 100) / 100}", scale: 1 },
+        { label: "Depth", min: 0, max: 1, value: root.lfo1-depth, text: "\{Math.round(root.lfo1-depth * 100)}%", step: 0.01, number: "\{Math.round(root.lfo1-depth * 100)}", scale: 0.01 },
+        { label: "Phase", min: 0, max: 1, value: root.lfo1-phase, text: "\{Math.round(root.lfo1-phase * 360)}°", step: 0.01, number: "\{Math.round(root.lfo1-phase * 360)}", scale: 1.0 / 360.0 },
+        { label: "Rate", min: 0.25, max: 16, value: root.lfo2-rate, text: "\{Math.round(root.lfo2-rate * 100) / 100}", step: 0.25, number: "\{Math.round(root.lfo2-rate * 100) / 100}", scale: 1 },
+        { label: "Depth", min: 0, max: 1, value: root.lfo2-depth, text: "\{Math.round(root.lfo2-depth * 100)}%", step: 0.01, number: "\{Math.round(root.lfo2-depth * 100)}", scale: 0.01 },
+        { label: "Phase", min: 0, max: 1, value: root.lfo2-phase, text: "\{Math.round(root.lfo2-phase * 360)}°", step: 0.01, number: "\{Math.round(root.lfo2-phase * 360)}", scale: 1.0 / 360.0 }
     ];
 
     // Everything lives inside one fixed 860x760 coordinate space. The window never resizes;
@@ -1003,6 +1022,38 @@ export component AppWindow inherits Window {
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-bg; fill: Theme.cell-off.with-alpha(0.55); }
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-grid; fill: transparent; stroke: Theme.border; stroke-width: 0.7px; }
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-notes; fill: Theme.c1; }
+        }
+        // Two runtime LFOs. Targets are scheduling parameters only in this first phase, so the
+        // modulation applies per block without regenerating the pattern.
+        Rectangle {
+            height: 88px; border-radius: 4px;
+            background: Theme.surface; border-width: 1px; border-color: Theme.border;
+            VerticalLayout {
+                padding: 5px; spacing: 3px;
+                HorizontalLayout {
+                    height: 12px;
+                    Text { text: "LFO MODULATION"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; }
+                    Text { horizontal-stretch: 1; text: "rate in beats · runtime overlay"; color: Theme.text-muted; font-size: 8px; horizontal-alignment: right; vertical-alignment: center; }
+                }
+                HorizontalLayout {
+                    height: 30px; spacing: 5px;
+                    Text { width: 34px; text: "LFO 1"; color: Theme.text; font-size: 9px; vertical-alignment: center; }
+                    WaveGrid { width: 170px; paths: root.wave-paths; current: root.lfo1-wave; selected(i) => { root.set-lfo-wave(1, i); } }
+                    OptSlider { width: 140px; opt: root.opts[24]; index: 24; changed(v) => { root.set-opt(24, v); } }
+                    OptSlider { width: 140px; opt: root.opts[25]; index: 25; changed(v) => { root.set-opt(25, v); } }
+                    OptSlider { width: 100px; opt: root.opts[26]; index: 26; changed(v) => { root.set-opt(26, v); } }
+                    Selector { width: 140px; options: root.lfo-target-names; current: root.lfo1-target; text-size: 8px; selected(i) => { root.set-lfo-target(1, i); } }
+                }
+                HorizontalLayout {
+                    height: 30px; spacing: 5px;
+                    Text { width: 34px; text: "LFO 2"; color: Theme.text; font-size: 9px; vertical-alignment: center; }
+                    WaveGrid { width: 170px; paths: root.wave-paths; current: root.lfo2-wave; selected(i) => { root.set-lfo-wave(2, i); } }
+                    OptSlider { width: 140px; opt: root.opts[27]; index: 27; changed(v) => { root.set-opt(27, v); } }
+                    OptSlider { width: 140px; opt: root.opts[28]; index: 28; changed(v) => { root.set-opt(28, v); } }
+                    OptSlider { width: 100px; opt: root.opts[29]; index: 29; changed(v) => { root.set-opt(29, v); } }
+                    Selector { width: 140px; options: root.lfo-target-names; current: root.lfo2-target; text-size: 8px; selected(i) => { root.set-lfo-target(2, i); } }
+                }
+            }
         }
         HorizontalLayout {
             height: 27px; spacing: 5px;
