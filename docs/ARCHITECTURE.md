@@ -113,7 +113,10 @@ snapshots the ring and `history::build` pairs NoteOn/NoteOff into segments, clip
 window, and emits three SVG paths (black-key row shading, C-row grid, note rectangles with
 octave-aligned ranges of at least two octaves). The window is `history_beats × 60 ms/BPM`, so
 the same setting reads the same at any tempo. A cent offset shifts the note inside its own
-row, so NTS pitches are visible as microtonal offsets.
+row, so NTS pitches are visible as microtonal offsets. Pairing keeps the ring's emission order
+for events in the same millisecond, and a NoteOff whose NoteOn already fell out of the ring is
+ignored rather than synthesised from the window edge; either mistake drew phantom notes
+across the full width.
 
 ## MIDI export
 

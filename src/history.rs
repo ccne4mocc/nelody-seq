@@ -70,7 +70,10 @@ fn rect(s: &mut String, x0: f32, y0: f32, x1: f32, y1: f32) {
 /// `events` may be unsorted / contain stale entries; `now_ms` is the right edge of the view.
 pub fn build(events: &mut Vec<Ev>, now_ms: u64, window_ms: u64, w: f32, h: f32) -> Roll {
     let t_min = now_ms as i64 - window_ms as i64;
-    events.sort_by_key(|e| (e.t_ms, e.on)); // off before on at the same instant
+    // Stable sort by time only. The ring is already in emission order, so an On that precedes
+    // its Off at the same millisecond must keep that order. Sorting Off first (the MIDI-file
+    // rule) pairs such a note backwards and leaves a phantom note across the window.
+    events.sort_by_key(|e| e.t_ms);
     let mut segs: Vec<Seg> = Vec::new();
     let mut open: [Option<(i64, f32)>; 128] = [None; 128];
     for e in events.iter() {
@@ -81,10 +84,11 @@ pub fn build(events: &mut Vec<Ev>, now_ms: u64, window_ms: u64, w: f32, h: f32) 
                 segs.push(Seg { start: s, end: t, note: n as u8, cents: c });
             }
             open[n] = Some((t, e.cents));
-        } else {
-            let (s, c) = open[n].take().unwrap_or((t_min.min(t), 0.0));
+        } else if let Some((s, c)) = open[n].take() {
             segs.push(Seg { start: s, end: t, note: n as u8, cents: c });
         }
+        // An Off with no matching On is a ring-wrap/stale event. Skipping it is essential:
+        // synthesising a start at `t_min` drew a note across the whole history panel.
     }
     for (n, o) in open.iter().enumerate() {
         if let Some((s, c)) = o {
@@ -192,6 +196,28 @@ mod tests {
             Ev { t_ms: 200, note: 64, vel: 0, on: false, cents: 0.0 },
         ];
         assert_eq!(build(&mut old, 20_000, 6_000, 600.0, 96.0).notes.trim(), "M0 0");
+    }
+
+    #[test]
+    fn stray_note_off_does_not_stretch_back_to_the_window_edge() {
+        // A ring wrapped between a note's On and Off leaves an Off with no matching On.
+        // Drawing it from `t_min` is what produced full-width phantom notes.
+        let mut evs = vec![Ev { t_ms: 3_000, note: 60, vel: 0, on: false, cents: 0.0 }];
+        let r = build(&mut evs, 5_000, 6_000, 600.0, 96.0);
+        assert_eq!(r.notes.trim(), "M0 0");
+    }
+
+    #[test]
+    fn same_millisecond_on_and_off_pair_as_a_short_note() {
+        // Short notes at fast rates can land On and Off in the same millisecond. Sorting Off
+        // before On at equal times orphaned the Off and left the On open to `now_ms`.
+        let mut evs = vec![
+            Ev { t_ms: 4_000, note: 60, vel: 90, on: true, cents: 0.0 },
+            Ev { t_ms: 4_000, note: 60, vel: 0, on: false, cents: 0.0 },
+        ];
+        let r = build(&mut evs, 5_000, 6_000, 600.0, 96.0);
+        assert!(r.notes.starts_with("M500.0"), "unexpected path: {}", r.notes);
+        assert!(!r.notes.starts_with("M0.0"), "note was drawn from the window edge");
     }
 
     #[test]
