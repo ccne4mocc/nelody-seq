@@ -336,6 +336,13 @@ export component AppWindow inherits Window {
     changed settings-open => {
         root.settings-x = root.settings-open ? root.base-width - 300px : root.base-width;
     }
+    // The twelve scale names do not fit in the tuning row, so the Scale chip opens a list that
+    // slides in from the left: the mirror image of Settings on the right.
+    in-out property <bool> tuning-open: false;
+    in-out property <length> tuning-x: -300px;
+    changed tuning-open => {
+        root.tuning-x = root.tuning-open ? 0px : -300px;
+    }
     in property <bool> free-run: false;
     in property <bool> invert-on: false;
     in property <bool> mirror-on: false;
@@ -525,7 +532,7 @@ export component AppWindow inherits Window {
             Text { text: root.free-run ? "FREE-RUN CLOCK: ON" : "SYNC: HOST TRANSPORT"; color: root.free-run ? Theme.c1 : Theme.text-muted; font-size: 9px; vertical-alignment: center; }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: generate-touch.has-hover ? Theme.hi : Theme.control; Text { text: root.generate-on ? "RE-GENERATE ↻" : "GENERATE ↻"; color: generate-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } generate-touch := TouchArea { clicked => { root.generate-pressed(); } } }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: randomize-touch.has-hover ? Theme.c3 : Theme.control; Text { text: "RANDOMIZE ⚄"; color: randomize-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } randomize-touch := TouchArea { clicked => { root.randomize-pressed(); } } }
-            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TouchArea { clicked => { root.settings-open = !root.settings-open; } } }
+            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TouchArea { clicked => { root.tuning-open = false; root.settings-open = !root.settings-open; } } }
         }
         HorizontalLayout {
             // 300px leaves room for the two- or three-sentence description plus the live math
@@ -538,7 +545,7 @@ export component AppWindow inherits Window {
                     height: 30px; border-radius: 4px;
                     background: mode-menu-touch.has-hover ? Theme.control-hover : Theme.control;
                     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MODE  ·  \{root.mode-names[root.mode]}  ▾"; color: Theme.c1; font-size: 13px; font-weight: 700; vertical-alignment: center; overflow: elide; }
-                    mode-menu-touch := TouchArea { clicked => { root.mode-menu-open = !root.mode-menu-open; } }
+                    mode-menu-touch := TouchArea { clicked => { root.tuning-open = false; root.settings-open = false; root.mode-menu-open = !root.mode-menu-open; } }
                 }
                 Text { text: root.mode-help[root.mode]; color: Theme.text; font-size: 13px; wrap: word-wrap; }
                 // Live formula with the current snapshot substituted; pushed by Rust from the
@@ -582,7 +589,9 @@ export component AppWindow inherits Window {
             height: 28px; spacing: 5px;
             Text { text: "TUNING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
             tuning-root := NumBox { width: 120px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
-            Selector { horizontal-stretch: 1; options: root.scale-names; current: root.scale-index; text-size: 9px; selected(i) => { root.set-scale(i); } }
+            // The scale list lives in the left-hand TUNING panel; this chip only shows the
+            // current scale and opens that panel.
+            TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; cycled => { root.tuning-open = !root.tuning-open; root.settings-open = false; root.mode-menu-open = false; } }
             tuning-oct := NumBox { width: 104px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
             TuningChip { width: 96px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
         }
@@ -609,6 +618,36 @@ export component AppWindow inherits Window {
             Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.invert-on ? Theme.c2.with-alpha(0.35) : Theme.control; Text { text: "INVERT"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } invert-touch := TouchArea { clicked => { root.toggle-invert(); } } }
             Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.mirror-on ? Theme.c3.with-alpha(0.35) : Theme.control; Text { text: "MIRROR"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } mirror-touch := TouchArea { clicked => { root.toggle-mirror(); } } }
             OptSlider { width: 230px; opt: root.opts[12]; changed(v) => { root.set-opt(12, v); } }
+        }
+    }
+
+    // Tuning picker: the scale list, in the same side-panel language as Settings but from the
+    // left. Only the list lives here; the row keeps Root, Octaves, EDO and NTS visible.
+    if root.tuning-x > -300px: Rectangle {
+        x: 0px; y: 0px; width: root.base-width; height: root.base-height;
+        background: #00000044;
+        TouchArea { clicked => { root.tuning-open = false; } }
+    }
+    Rectangle {
+        x: root.tuning-x; y: 0px; width: 300px; height: root.base-height;
+        background: Theme.surface; border-width: 1px; border-color: Theme.border;
+        drop-shadow-blur: 16px; drop-shadow-color: #00000055; drop-shadow-offset-y: 4px;
+        animate x { duration: 140ms; easing: ease-in-out; }
+        VerticalLayout {
+            padding: 12px; spacing: 6px; alignment: start;
+            HorizontalLayout {
+                height: 24px;
+                Text { text: "TUNING"; color: Theme.c1; font-size: 12px; font-weight: 700; vertical-alignment: center; }
+                Rectangle { width: 74px; height: 22px; border-radius: 4px; background: close-tuning.has-hover ? Theme.hi : Theme.control; Text { text: "CLOSE"; color: close-tuning.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } close-tuning := TouchArea { clicked => { root.tuning-open = false; } } }
+            }
+            Text { text: "SCALE / TUNING TABLE"; color: Theme.text-muted; font-size: 9px; }
+            for i in root.scale-names.length: Rectangle {
+                height: 28px; border-radius: 3px;
+                background: i == root.scale-index ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (scale-touch.has-hover ? Theme.control-hover : Theme.control);
+                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.scale-names[i]; color: i == root.scale-index ? Theme.on-accent : Theme.text; font-size: 10px; vertical-alignment: center; overflow: elide; }
+                scale-touch := TouchArea { clicked => { root.set-scale(i); root.tuning-open = false; } }
+            }
+            Text { text: "Twelve built-in tables plus Equal (EDO) for custom divisions."; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
         }
     }
 

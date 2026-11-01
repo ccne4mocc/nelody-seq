@@ -170,7 +170,8 @@ variation comes from Generate, Randomize and the knobs.
   `oscillator::value`). Two copies of one formula is how lines drift from what plays.
 - The MIDI history panel is three paths (`history-bg`, `history-grid`, `history-notes`) in a
   800×200 viewbox inside a 190px card, driven entirely from `history::build` output.
-- The tuning row chips (Root/Scale/Oct/NTS) replace the drum-lane chips; the acid slider row
+- The tuning row chips (Root/Scale/Oct/NTS) replace the drum-lane chips. The Scale chip opens
+  the left-hand tuning panel, mirroring the right-hand Settings panel; the acid slider row
   (Slide/Accent/Octave) appears only for `mode >= 14`.
 - The bottom record chip and the Settings MIDI-history toggle mirror the `history` parameter.
 - All UI controls call a parameter setter; the GUI must never become an independent source of
