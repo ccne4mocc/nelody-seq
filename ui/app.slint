@@ -386,7 +386,7 @@ export component AppWindow inherits Window {
     // DAW track hosting this instance; empty when the host does not report one.
     in property <string> track-name: "";
     // Any text field with keyboard focus. Rust reads this each frame (see `keys.rs`).
-    out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || midi-root-box.editing || edo-box.editing || cents-box.editing || hist-box.editing || OptEdit.index >= 0;
+    out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || edo-row.editing || midi-root-box.editing || cents-box.editing || hist-box.editing || OptEdit.index >= 0;
     in-out property <string> export-status: "";
     in property <int> theme-index: 0;
     in-out property <bool> mode-menu-open: false;
@@ -665,16 +665,18 @@ export component AppWindow inherits Window {
             Text { text: "SWING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
             OptSlider { width: 230px; opt: root.opts[13]; index: 13; changed(v) => { root.set-opt(13, v); } }
         }
-        // The drum lane chips became the melody's tuning row: same height, same chips.
+        // The drum lane chips became the melody's tuning row: same height, same chips. EDO lives
+        // here rather than in Settings so custom equal divisions stay next to the scale.
         HorizontalLayout {
             height: 28px; spacing: 5px;
             Text { text: "TUNING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-            tuning-root := NumBox { width: 120px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
+            tuning-root := NumBox { width: 112px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
             // The scale list lives in the left-hand TUNING panel; this chip only shows the
             // current scale and opens that panel.
             TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; cycled => { root.tuning-open = !root.tuning-open; root.settings-open = false; root.mode-menu-open = false; } }
-            tuning-oct := NumBox { width: 104px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
-            TuningChip { width: 96px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
+            edo-row := NumBox { width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
+            tuning-oct := NumBox { width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
+            TuningChip { width: 90px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
         }
         if root.mode >= 14: HorizontalLayout {
             height: 28px; spacing: 5px;
@@ -824,7 +826,6 @@ export component AppWindow inherits Window {
             Text { text: "Max steps applies immediately; no restart is needed."; color: Theme.text-muted; font-size: 9px; }
             Text { text: "TUNING"; color: Theme.text-muted; font-size: 9px; }
             midi-root-box := NumBox { label: "Root MIDI note"; value: root.midi-root; minimum: 0; maximum: 120; step: 1; changed(v) => { root.set-opt(20, v); } }
-            edo-box := NumBox { label: "EDO divisions"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
             cents-box := NumBox { label: "Root cents"; value: root.root-cents; minimum: -50; maximum: 50; step: 1; changed(v) => { root.set-opt(22, v); } }
             hist-box := NumBox { label: "History window (beats)"; value: root.history-beats; minimum: 1; maximum: 64; step: 1; changed(v) => { root.set-opt(23, v); } }
             Rectangle {

@@ -174,8 +174,9 @@ variation comes from Generate, Randomize and the knobs.
   not play; Slint only receives the finished paths.
 - The MIDI history panel is three paths (`history-bg`, `history-grid`, `history-notes`) in a
   800×200 viewbox inside a 190px card, driven entirely from `history::build` output.
-- The tuning row chips (Root/Scale/Oct/NTS) replace the drum-lane chips. The Scale chip opens
-  the left-hand tuning panel, mirroring the right-hand Settings panel; the acid slider row
+- The tuning row chips (Root/Scale/EDO/Oct/NTS) replace the drum-lane chips. The Scale chip
+  opens the left-hand tuning panel, mirroring the right-hand Settings panel; EDO divisions sit
+  in this row so custom equal divisions stay beside the scale. The acid slider row
   (Slide/Accent/Octave) appears only for `mode >= 14`.
 - The bottom record chip and the Settings MIDI-history toggle mirror the `history` parameter.
 - Generator option strips click/drag for a value and wheel for one step; double-click opens an

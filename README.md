@@ -19,9 +19,9 @@ pitch slides, legato and accents travel over MIDI channel 1.
 - **MIDI history** panel: every emitted note event is dropped into a lock-free ring in the
   audio thread and drawn right-to-left, sized in beats (1–64) from the host tempo.
 - **Tuning row + acid sliders** where the drum-lane chips were: Root, a Scale chip that opens
-  the left-hand tuning panel, Octaves and an NTS bend chip; the acid slider row appears for
-  modes 14+. Settings slide-in keeps the max-steps, root MIDI note, EDO, root cents, history
-  window, recording and logging toggles.
+  the left-hand tuning panel, EDO divisions, Octaves and an NTS bend chip; the acid slider row
+  appears for modes 14+. Settings slide-in keeps the max-steps, root MIDI note, root cents,
+  history window, recording and logging toggles.
 - **MIDI file export** of the current loop (mono, slide holds, swing) with the same
   editor→`generate()` path the audio scheduler uses. The button sits under the MIDI history;
   Settings only stores the folder.
