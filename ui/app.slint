@@ -19,7 +19,14 @@ export global Theme {
 }
 
 export struct ViewNode { x: length, y: length, r: length, on: bool, cur: bool, label: string }
-export struct Opt { label: string, min: float, max: float, value: float, text: string, step: float }
+export struct Opt { label: string, min: float, max: float, value: float, text: string, step: float, number: string, scale: float }
+
+// One numeric-entry session shared by every generator option strip. A global avoids wiring a
+// read-back callback for each OptSlider while still allowing only one inline editor at a time.
+export global OptEdit {
+    in-out property <int> index: -1;
+    in-out property <string> draft: "";
+}
 
 component Selector inherits Rectangle {
     in property <[string]> options;
@@ -120,9 +127,25 @@ component TuningChip inherits Rectangle {
 
 component OptSlider inherits Rectangle {
     in property <Opt> opt;
+    // Strip index used to address the shared editing session. The caller passes 0..23.
+    in property <int> index: -1;
     callback changed(float);
     height: 25px;
     border-radius: 4px; background: Theme.control; clip: true;
+    property <bool> editing: root.index >= 0 && OptEdit.index == root.index;
+
+    // Typed values use the same units the strip displays: 65 means 65% for Density, 180 means
+    // 180° for Phase, and scale maps that back to the parameter range before clamping.
+    function commit-entry() {
+        if (OptEdit.draft.is-float()) {
+            root.changed(Math.clamp(OptEdit.draft.to-float() * root.opt.scale, root.opt.min, root.opt.max));
+        }
+        OptEdit.index = -1;
+    }
+    function cancel-entry() {
+        OptEdit.index = -1;
+    }
+
     Rectangle {
         x: 0px; y: 0px; height: parent.height;
         width: parent.width * Math.clamp((root.opt.value - root.opt.min) / (root.opt.max - root.opt.min), 0, 1);
@@ -138,14 +161,44 @@ component OptSlider inherits Rectangle {
             }
         }
         moved => { if (ta.pressed) { root.changed(root.opt.min + Math.clamp(ta.mouse-x / ta.width, 0, 1) * (root.opt.max - root.opt.min)); } }
-        // Wheel editing is active only while this control is hovered. Snap to the
-        // parameter's step grid first, then move exactly one step per wheel notch.
+        // Double-click turns the strip into a numeric field. Wheel editing is active only while
+        // this control is hovered; snap to the parameter's step grid first, then move exactly
+        // one step per wheel notch.
+        double-clicked => {
+            if (root.index >= 0) {
+                OptEdit.draft = root.opt.number;
+                OptEdit.index = root.index;
+                entry.focus();
+            }
+        }
         scroll-event(e) => {
             if (e.delta-y != 0px) {
                 root.changed(Math.clamp(root.opt.min + Math.round((root.opt.value - root.opt.min) / root.opt.step + (e.delta-y > 0px ? 1 : -1)) * root.opt.step, root.opt.min, root.opt.max));
                 accept
             } else {
                 reject
+            }
+        }
+    }
+    // Always declared so focus() has a live element; only the option owning OptEdit.index is
+    // visible. Clicking elsewhere drops focus and commits, Enter commits, Escape reverts.
+    editor := Rectangle {
+        visible: root.editing;
+        x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+        border-radius: 3px; background: Theme.surface; border-width: 1px; border-color: Theme.c2;
+        entry := TextInput {
+            x: 6px; y: 0px; width: parent.width - 12px; height: parent.height;
+            text: OptEdit.draft;
+            color: Theme.text; font-size: 11px;
+            horizontal-alignment: right; vertical-alignment: center;
+            edited => { OptEdit.draft = self.text; }
+            accepted => { root.commit-entry(); }
+            changed has-focus => {
+                if (!self.has-focus && root.editing) { root.commit-entry(); }
+            }
+            key-pressed(event) => {
+                if (event.text == Key.Escape) { root.cancel-entry(); return accept; }
+                return reject;
             }
         }
     }
@@ -322,7 +375,7 @@ export component AppWindow inherits Window {
     // DAW track hosting this instance; empty when the host does not report one.
     in property <string> track-name: "";
     // Any text field with keyboard focus. Rust reads this each frame (see `keys.rs`).
-    out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || midi-root-box.editing || edo-box.editing || cents-box.editing || hist-box.editing;
+    out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || midi-root-box.editing || edo-box.editing || cents-box.editing || hist-box.editing || OptEdit.index >= 0;
     in-out property <string> export-status: "";
     in property <int> theme-index: 0;
     in-out property <bool> mode-menu-open: false;
@@ -481,32 +534,34 @@ export component AppWindow inherits Window {
         "Rolls one short motif and repeats it. Phase mutates later repeats by flipping notes, re-pitching them or shifting an octave.",
         "A Turing-machine shift register feeds rhythm, scale degree, accent, slide and octave from separate bit fields. Phase controls how often the feedback bit flips."
     ];
+    // `text` is what the strip shows (with %/°/c), `number` is the same value in display units,
+    // and `scale` converts typed display units back to the parameter's own units.
     property <[Opt]> opts: [
-        { label: "Steps", min: 1, max: root.max-steps, value: root.steps, text: root.round-steps ? "\{Math.round(root.steps)}" : "\{Math.round(root.steps * 1000) / 1000}", step: root.round-steps ? 1 : 0.01 },
-        { label: root.pulse-label(root.mode), min: 0, max: root.pulses-max(root.mode), value: Math.min(root.pulses, root.pulses-max(root.mode)), text: "\{Math.round(Math.min(root.pulses, root.pulses-max(root.mode)))}", step: 1 },
-        { label: "Rotate", min: 0, max: Math.max(root.cells - 1, 0), value: Math.min(root.rotate, Math.max(root.cells - 1, 0)), text: "\{Math.round(Math.min(root.rotate, Math.max(root.cells - 1, 0)))}", step: 1 },
-        { label: root.density-label(root.mode), min: 0, max: 1, value: root.density, text: "\{Math.round(root.density * 100)}%", step: 0.01 },
-        { label: "Seed", min: 0, max: 1, value: root.seed, text: "\{Math.round(root.seed * 1000) / 1000}", step: 0.001 },
-        { label: root.phase-label(root.mode), min: 0, max: 1, value: root.phase, text: "\{Math.round(root.phase * 360)}°", step: 0.01 },
-        { label: root.osc-label(root.mode), min: root.mode == 16 ? 1 : 0.125, max: root.mode == 16 ? 16 : 8, value: root.mode == 16 ? Math.max(root.osc-rate, 1) : root.osc-rate, text: root.mode == 16 ? "\{Math.round(Math.max(root.osc-rate, 1))}" : "\{Math.round(root.osc-rate * 100) / 100}", step: root.mode == 16 ? 1 : 0.125 },
-        { label: root.ca-label(root.mode), min: 0, max: 255, value: root.ca-rule, text: root.mode == 16 ? "\{Math.round(root.ca-rule / 255 * 100)}%" : "\{Math.round(root.ca-rule)}", step: 1 },
-        { label: "Probability", min: 0, max: 1, value: root.probability, text: "\{Math.round(root.probability * 100)}%", step: 0.01 },
-        { label: "Velocity", min: 0.01, max: 1, value: root.velocity, text: "\{Math.round(root.velocity * 100)}%", step: 0.01 },
-        { label: root.regen-label(root.mode), min: 0, max: 256, value: root.regenerate-every, text: "\{Math.round(root.regenerate-every)}", step: 1 },
-        { label: "Symmetry", min: 1, max: 8, value: root.symmetry, text: "\{Math.round(root.symmetry)}", step: 1 },
-        { label: "Randomize after lengths", min: 0, max: 256, value: root.randomize-after-lengths, text: "\{Math.round(root.randomize-after-lengths)}", step: 1 },
-        { label: "Swing", min: 0, max: 0.5, value: root.swing, text: "\{Math.round(root.swing * 300)}%", step: 0.01 },
+        { label: "Steps", min: 1, max: root.max-steps, value: root.steps, text: root.round-steps ? "\{Math.round(root.steps)}" : "\{Math.round(root.steps * 1000) / 1000}", step: root.round-steps ? 1 : 0.01, number: root.round-steps ? "\{Math.round(root.steps)}" : "\{Math.round(root.steps * 1000) / 1000}", scale: 1 },
+        { label: root.pulse-label(root.mode), min: 0, max: root.pulses-max(root.mode), value: Math.min(root.pulses, root.pulses-max(root.mode)), text: "\{Math.round(Math.min(root.pulses, root.pulses-max(root.mode)))}", step: 1, number: "\{Math.round(Math.min(root.pulses, root.pulses-max(root.mode)))}", scale: 1 },
+        { label: "Rotate", min: 0, max: Math.max(root.cells - 1, 0), value: Math.min(root.rotate, Math.max(root.cells - 1, 0)), text: "\{Math.round(Math.min(root.rotate, Math.max(root.cells - 1, 0)))}", step: 1, number: "\{Math.round(Math.min(root.rotate, Math.max(root.cells - 1, 0)))}", scale: 1 },
+        { label: root.density-label(root.mode), min: 0, max: 1, value: root.density, text: "\{Math.round(root.density * 100)}%", step: 0.01, number: "\{Math.round(root.density * 100)}", scale: 0.01 },
+        { label: "Seed", min: 0, max: 1, value: root.seed, text: "\{Math.round(root.seed * 1000) / 1000}", step: 0.001, number: "\{Math.round(root.seed * 1000) / 1000}", scale: 1 },
+        { label: root.phase-label(root.mode), min: 0, max: 1, value: root.phase, text: "\{Math.round(root.phase * 360)}°", step: 0.01, number: "\{Math.round(root.phase * 360)}", scale: 1.0 / 360.0 },
+        { label: root.osc-label(root.mode), min: root.mode == 16 ? 1 : 0.125, max: root.mode == 16 ? 16 : 8, value: root.mode == 16 ? Math.max(root.osc-rate, 1) : root.osc-rate, text: root.mode == 16 ? "\{Math.round(Math.max(root.osc-rate, 1))}" : "\{Math.round(root.osc-rate * 100) / 100}", step: root.mode == 16 ? 1 : 0.125, number: root.mode == 16 ? "\{Math.round(Math.max(root.osc-rate, 1))}" : "\{Math.round(root.osc-rate * 100) / 100}", scale: 1 },
+        { label: root.ca-label(root.mode), min: 0, max: 255, value: root.ca-rule, text: root.mode == 16 ? "\{Math.round(root.ca-rule / 255 * 100)}%" : "\{Math.round(root.ca-rule)}", step: 1, number: root.mode == 16 ? "\{Math.round(root.ca-rule / 255 * 100)}" : "\{Math.round(root.ca-rule)}", scale: root.mode == 16 ? 2.55 : 1 },
+        { label: "Probability", min: 0, max: 1, value: root.probability, text: "\{Math.round(root.probability * 100)}%", step: 0.01, number: "\{Math.round(root.probability * 100)}", scale: 0.01 },
+        { label: "Velocity", min: 0.01, max: 1, value: root.velocity, text: "\{Math.round(root.velocity * 100)}%", step: 0.01, number: "\{Math.round(root.velocity * 100)}", scale: 0.01 },
+        { label: root.regen-label(root.mode), min: 0, max: 256, value: root.regenerate-every, text: "\{Math.round(root.regenerate-every)}", step: 1, number: "\{Math.round(root.regenerate-every)}", scale: 1 },
+        { label: "Symmetry", min: 1, max: 8, value: root.symmetry, text: "\{Math.round(root.symmetry)}", step: 1, number: "\{Math.round(root.symmetry)}", scale: 1 },
+        { label: "Randomize after lengths", min: 0, max: 256, value: root.randomize-after-lengths, text: "\{Math.round(root.randomize-after-lengths)}", step: 1, number: "\{Math.round(root.randomize-after-lengths)}", scale: 1 },
+        { label: "Swing", min: 0, max: 0.5, value: root.swing, text: "\{Math.round(root.swing * 300)}%", step: 0.01, number: "\{Math.round(root.swing * 300)}", scale: 1.0 / 300.0 },
         // Index 14 is the max-steps box in Settings, not a slider.
-        { label: "Max steps", min: 64, max: 1024, value: root.max-steps, text: "\{Math.round(root.max-steps)}", step: 1 },
-        { label: "Slide", min: 0, max: 1, value: root.slide, text: "\{Math.round(root.slide * 100)}%", step: 0.01 },
-        { label: "Accent", min: 0, max: 1, value: root.accent, text: "\{Math.round(root.accent * 100)}%", step: 0.01 },
-        { label: "Octave jump", min: 0, max: 1, value: root.octave, text: "\{Math.round(root.octave * 100)}%", step: 0.01 },
-        { label: "Root pitch class", min: 0, max: 11, value: root.root-pc, text: "\{root.root-pc}", step: 1 },
-        { label: "Octaves", min: 1, max: 6, value: root.octaves, text: "\{root.octaves}", step: 1 },
-        { label: "Root MIDI note", min: 0, max: 120, value: root.midi-root, text: "\{root.midi-root}", step: 1 },
-        { label: "EDO divisions", min: 1, max: 72, value: root.edo, text: "\{root.edo}", step: 1 },
-        { label: "Root cents", min: -50, max: 50, value: root.root-cents, text: "\{Math.round(root.root-cents)}c", step: 1 },
-        { label: "History beats", min: 1, max: 64, value: root.history-beats, text: "\{Math.round(root.history-beats)}", step: 1 }
+        { label: "Max steps", min: 64, max: 1024, value: root.max-steps, text: "\{Math.round(root.max-steps)}", step: 1, number: "\{Math.round(root.max-steps)}", scale: 1 },
+        { label: "Slide", min: 0, max: 1, value: root.slide, text: "\{Math.round(root.slide * 100)}%", step: 0.01, number: "\{Math.round(root.slide * 100)}", scale: 0.01 },
+        { label: "Accent", min: 0, max: 1, value: root.accent, text: "\{Math.round(root.accent * 100)}%", step: 0.01, number: "\{Math.round(root.accent * 100)}", scale: 0.01 },
+        { label: "Octave jump", min: 0, max: 1, value: root.octave, text: "\{Math.round(root.octave * 100)}%", step: 0.01, number: "\{Math.round(root.octave * 100)}", scale: 0.01 },
+        { label: "Root pitch class", min: 0, max: 11, value: root.root-pc, text: "\{root.root-pc}", step: 1, number: "\{root.root-pc}", scale: 1 },
+        { label: "Octaves", min: 1, max: 6, value: root.octaves, text: "\{root.octaves}", step: 1, number: "\{root.octaves}", scale: 1 },
+        { label: "Root MIDI note", min: 0, max: 120, value: root.midi-root, text: "\{root.midi-root}", step: 1, number: "\{root.midi-root}", scale: 1 },
+        { label: "EDO divisions", min: 1, max: 72, value: root.edo, text: "\{root.edo}", step: 1, number: "\{root.edo}", scale: 1 },
+        { label: "Root cents", min: -50, max: 50, value: root.root-cents, text: "\{Math.round(root.root-cents)}c", step: 1, number: "\{Math.round(root.root-cents)}", scale: 1 },
+        { label: "History beats", min: 1, max: 64, value: root.history-beats, text: "\{Math.round(root.history-beats)}", step: 1, number: "\{Math.round(root.history-beats)}", scale: 1 }
     ];
 
     // Everything lives inside one fixed 860x760 coordinate space. The window never resizes;
@@ -553,22 +608,22 @@ export component AppWindow inherits Window {
                 // same helpers the generator calls, so it cannot drift from what is playing.
                 Text { text: root.mode-math; color: Theme.text-muted; font-size: 11px; wrap: word-wrap; }
                 Rectangle { height: 5px; }
-                Text { text: "GENERATOR OPTIONS"; color: Theme.text-muted; font-size: 9px; }
+                Text { text: "GENERATOR OPTIONS  ·  DOUBLE-CLICK A STRIP TO TYPE"; color: Theme.text-muted; font-size: 9px; }
                 HorizontalLayout { spacing: 5px;
-                    OptSlider { opt: root.opts[0]; changed(v) => { root.set-opt(0, v); } }
-                    if root.shows-param(root.mode, 1): OptSlider { opt: root.opts[1]; changed(v) => { root.set-opt(1, v); } }
-                    OptSlider { opt: root.opts[2]; changed(v) => { root.set-opt(2, v); } }
-                    OptSlider { opt: root.opts[3]; changed(v) => { root.set-opt(3, v); } }
+                    OptSlider { opt: root.opts[0]; index: 0; changed(v) => { root.set-opt(0, v); } }
+                    if root.shows-param(root.mode, 1): OptSlider { opt: root.opts[1]; index: 1; changed(v) => { root.set-opt(1, v); } }
+                    OptSlider { opt: root.opts[2]; index: 2; changed(v) => { root.set-opt(2, v); } }
+                    OptSlider { opt: root.opts[3]; index: 3; changed(v) => { root.set-opt(3, v); } }
                 }
                 HorizontalLayout {
                     spacing: 5px;
-                    OptSlider { opt: root.opts[4]; changed(v) => { root.set-opt(4, v); } }
-                    if root.shows-param(root.mode, 5): OptSlider { opt: root.opts[5]; changed(v) => { root.set-opt(5, v); } }
-                    if root.shows-param(root.mode, 6): OptSlider { opt: root.opts[6]; changed(v) => { root.set-opt(6, v); } }
-                    if root.shows-param(root.mode, 7): OptSlider { opt: root.opts[7]; changed(v) => { root.set-opt(7, v); } }
+                    OptSlider { opt: root.opts[4]; index: 4; changed(v) => { root.set-opt(4, v); } }
+                    if root.shows-param(root.mode, 5): OptSlider { opt: root.opts[5]; index: 5; changed(v) => { root.set-opt(5, v); } }
+                    if root.shows-param(root.mode, 6): OptSlider { opt: root.opts[6]; index: 6; changed(v) => { root.set-opt(6, v); } }
+                    if root.shows-param(root.mode, 7): OptSlider { opt: root.opts[7]; index: 7; changed(v) => { root.set-opt(7, v); } }
                 }
-                HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[8]; changed(v) => { root.set-opt(8, v); } } OptSlider { opt: root.opts[9]; changed(v) => { root.set-opt(9, v); } } }
-                HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[10]; changed(v) => { root.set-opt(10, v); } } if root.shows-param(root.mode, 11): OptSlider { opt: root.opts[11]; changed(v) => { root.set-opt(11, v); } } }
+                HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[8]; index: 8; changed(v) => { root.set-opt(8, v); } } OptSlider { opt: root.opts[9]; index: 9; changed(v) => { root.set-opt(9, v); } } }
+                HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[10]; index: 10; changed(v) => { root.set-opt(10, v); } } if root.shows-param(root.mode, 11): OptSlider { opt: root.opts[11]; index: 11; changed(v) => { root.set-opt(11, v); } } }
                 if root.mode == 9: HorizontalLayout {
                     Text { text: "WAVE"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
                     WaveGrid { horizontal-stretch: 1; options: root.wave-names; current: root.osc-wave; selected(i) => { root.set-osc-wave(i); } }
@@ -583,7 +638,7 @@ export component AppWindow inherits Window {
             Text { text: "RATE"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
             Selector { horizontal-stretch: 1; options: ["1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"]; current: root.rate; text-size: 9px; selected(i) => { root.set-rate(i); } }
             Text { text: "SWING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-            OptSlider { width: 230px; opt: root.opts[13]; changed(v) => { root.set-opt(13, v); } }
+            OptSlider { width: 230px; opt: root.opts[13]; index: 13; changed(v) => { root.set-opt(13, v); } }
         }
         // The drum lane chips became the melody's tuning row: same height, same chips.
         HorizontalLayout {
@@ -599,9 +654,9 @@ export component AppWindow inherits Window {
         if root.mode >= 14: HorizontalLayout {
             height: 28px; spacing: 5px;
             Text { text: "ACID"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-            OptSlider { horizontal-stretch: 1; opt: root.opts[15]; changed(v) => { root.set-opt(15, v); } }
-            OptSlider { horizontal-stretch: 1; opt: root.opts[16]; changed(v) => { root.set-opt(16, v); } }
-            OptSlider { horizontal-stretch: 1; opt: root.opts[17]; changed(v) => { root.set-opt(17, v); } }
+            OptSlider { horizontal-stretch: 1; opt: root.opts[15]; index: 15; changed(v) => { root.set-opt(15, v); } }
+            OptSlider { horizontal-stretch: 1; opt: root.opts[16]; index: 16; changed(v) => { root.set-opt(16, v); } }
+            OptSlider { horizontal-stretch: 1; opt: root.opts[17]; index: 17; changed(v) => { root.set-opt(17, v); } }
         }
         HorizontalLayout { spacing: 8px;
             Text { horizontal-stretch: 1; text: "MIDI HISTORY  ·  flows right to left  ·  \{root.history-range}  ·  note height = pitch, bright = accent"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
@@ -618,7 +673,7 @@ export component AppWindow inherits Window {
             height: 27px; spacing: 5px;
             Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.invert-on ? Theme.c2.with-alpha(0.35) : Theme.control; Text { text: "INVERT"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } invert-touch := TouchArea { clicked => { root.toggle-invert(); } } }
             Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.mirror-on ? Theme.c3.with-alpha(0.35) : Theme.control; Text { text: "MIRROR"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } mirror-touch := TouchArea { clicked => { root.toggle-mirror(); } } }
-            OptSlider { width: 230px; opt: root.opts[12]; changed(v) => { root.set-opt(12, v); } }
+            OptSlider { width: 230px; opt: root.opts[12]; index: 12; changed(v) => { root.set-opt(12, v); } }
         }
     }
 

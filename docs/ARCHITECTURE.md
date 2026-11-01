@@ -174,13 +174,16 @@ variation comes from Generate, Randomize and the knobs.
   the left-hand tuning panel, mirroring the right-hand Settings panel; the acid slider row
   (Slide/Accent/Octave) appears only for `mode >= 14`.
 - The bottom record chip and the Settings MIDI-history toggle mirror the `history` parameter.
+- Generator option strips click/drag for a value and wheel for one step; double-click opens an
+  inline numeric field in the strip's own display units. `OptEdit` in `app.slint` holds the one
+  active edit session so only one strip is editable at a time.
 - All UI controls call a parameter setter; the GUI must never become an independent source of
   sequencing state.
 - Mode order is stable and shared: `Mode` in `src/modes.rs` is the host parameter, the
   generator dispatch key and the UI index. A test pins all 19 indices; acid starts at 14.
 - Host-stolen keys (VST3 only): editing keys are claimed only while a Slint text field has
   focus; `text-focused` in `app.slint` must list every text field, including the tuning
-  NumBoxes.
+  NumBoxes and the inline generator-option editor (`OptEdit.index >= 0`).
 - Technical logging writes `~/nelody.log` from the editor thread only, when `logging` is on.
 
 ## Extension points
