@@ -281,7 +281,7 @@ export component AppWindow inherits Window {
         root.mode-scroll-y = -Math.max(0px, Math.min(mode * 32px - 116px, root.mode-names.length * 32px - 332px));
     }
     in property <float> steps: 16;
-    in property <float> max-steps: 64;
+    in property <float> max-steps: 1024;
     in property <bool> round-steps: true;
     // The grid cells the generator will fill, mirroring `cell_count_for`: snap rounds, free
     // length takes the ceiling. Header and bounds read this so they cannot disagree with the
@@ -395,7 +395,7 @@ export component AppWindow inherits Window {
         if (mode == 5) { return 3; }     // Mozart dice per bar
         if (mode == 7) { return 15; }    // cellular generation
         if (mode == 11) { return 2; }    // sieve union terms
-        if (mode == 18) { return 16; }   // acid motif length
+        if (mode == 17) { return 16; }   // acid motif length
         return root.cells;
     }
     pure function pulse-label(mode: int) -> string {
@@ -509,7 +509,7 @@ export component AppWindow inherits Window {
         }
 
     VerticalLayout {
-        padding: 14px; spacing: 8px;
+        padding: 14px; spacing: 6px;
         HorizontalLayout {
             height: 34px; spacing: 6px;
             Text { text: "Nelody"; color: Theme.text; font-family: "FantasqueSansM Nerd Font Mono"; font-size: 24px; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
@@ -555,7 +555,7 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[8]; changed(v) => { root.set-opt(8, v); } } OptSlider { opt: root.opts[9]; changed(v) => { root.set-opt(9, v); } } }
                 HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[10]; changed(v) => { root.set-opt(10, v); } } if root.shows-param(root.mode, 11): OptSlider { opt: root.opts[11]; changed(v) => { root.set-opt(11, v); } } }
-                if root.mode == 4: HorizontalLayout {
+                if root.mode == 9: HorizontalLayout {
                     Text { text: "WAVE"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
                     WaveGrid { horizontal-stretch: 1; options: root.wave-names; current: root.osc-wave; selected(i) => { root.set-osc-wave(i); } }
                 }
@@ -589,8 +589,7 @@ export component AppWindow inherits Window {
         }
         HorizontalLayout { spacing: 8px;
             Text { horizontal-stretch: 1; text: "MIDI HISTORY  ·  flows right to left  ·  \{root.history-range}  ·  note height = pitch, bright = accent"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-            Rectangle { width: 92px; height: 20px; border-radius: 3px; background: root.history-on ? Theme.c1.with-alpha(0.7) : Theme.control; Text { text: root.history-on ? "RECORD: ON" : "RECORD: OFF"; color: root.history-on ? Theme.on-accent : Theme.text; font-size: 8px; horizontal-alignment: center; vertical-alignment: center; } hist-touch := TouchArea { clicked => { root.toggle-history(); } } }
-        }
+            }
         Rectangle {
             height: 190px; border-radius: 4px;
             background: Theme.surface; border-width: 1px; border-color: Theme.border;

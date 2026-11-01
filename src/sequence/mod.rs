@@ -40,7 +40,7 @@ use crate::modes::Mode;
 /// `max_steps` ceiling (64 by default); 1024 is the largest value that ceiling can reach.
 pub const MAX_STEPS: usize = 1024;
 pub const MIN_MAX_STEPS: usize = 64;
-pub const DEFAULT_MAX_STEPS: usize = 64;
+pub const DEFAULT_MAX_STEPS: usize = 1024;
 pub const CA_ROWS: usize = 16;
 
 #[allow(clippy::approx_constant)] // the std constant is newer than the supported baseline
