@@ -78,7 +78,7 @@ bend and whether history stores the detune; `stop_all` resets the bend to centre
 
 The audio callback remains a bounded MIDI scheduler. It publishes current-step, tempo and
 randomization requests through lock-free atomics and appends packed note events to
-`Shared::ring` (512 AtomicU64 words, wrap-around, `history::pack_detuned`). No `Vec`, `String`
+`Shared::ring` (256 AtomicU64 words, wrap-around, `history::pack_detuned`). No `Vec`, `String`
 or mutex is allocated in the callback; the editor applies randomization through nice-plug's
 `ParamSetter` on its own thread.
 

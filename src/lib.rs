@@ -229,8 +229,9 @@ impl Default for MelodyParams {
     }
 }
 
-/// Number of note events kept for the piano-roll history.
-pub const HISTORY_LEN: usize = 512;
+/// Number of note events kept for the piano-roll history. 256 events is 128 notes, enough to
+/// cover the widest default history window without extending the audio-thread ring.
+pub const HISTORY_LEN: usize = 256;
 
 impl MelodyParams {
     /// Effective ceiling from the host parameter. Host state from an older build can be out of
@@ -800,6 +801,11 @@ mod tests {
         assert_eq!(transition(Some(&held(60, false)), 64), Transition::Retrigger);
         assert_eq!(transition(Some(&held(60, true)), 64), Transition::Legato);
         assert_eq!(transition(Some(&held(60, true)), 60), Transition::Tie);
+    }
+
+    #[test]
+    fn history_ring_holds_the_default_256_events() {
+        assert_eq!(HISTORY_LEN, 256);
     }
 
     #[test]
