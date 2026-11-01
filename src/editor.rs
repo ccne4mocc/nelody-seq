@@ -462,6 +462,9 @@ impl Editor for SlintEditor {
             ui.set_wave_names(ModelRc::new(VecModel::from(
                 OscWave::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));
+            ui.set_wave_paths(ModelRc::new(VecModel::from(
+                view::wave_icon_paths().into_iter().map(SharedString::from).collect::<Vec<_>>(),
+            )));
             ui.set_scale_names(ModelRc::new(VecModel::from(
                 <Tuning as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));

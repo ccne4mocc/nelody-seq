@@ -3,7 +3,7 @@
 
 use crate::modes::Mode;
 use crate::sequence::{
-    logistic_r, oscillator_wave_count, CA_ROWS, MAX_STEPS, TONNETZ_START,
+    logistic_r, oscillator_value, oscillator_wave_count, CA_ROWS, MAX_STEPS, TONNETZ_START,
 };
 use std::f32::consts::TAU;
 use std::fmt::Write;
@@ -114,6 +114,24 @@ fn poly(s: &mut String, pts: &[(f32, f32)]) {
 fn line(s: &mut String, a: (f32, f32), b: (f32, f32)) {
     mv(s, a.0, a.1);
     ln(s, b.0, b.1);
+}
+
+/// Thumbnail paths for the oscillator picker, one per waveform in the same order as
+/// `OscWave`. The icon viewbox is 100x40; every path is a sampled copy of the generator's own
+/// `oscillator_value`, so a button can never advertise a shape the mode does not play.
+pub fn wave_icon_paths() -> Vec<String> {
+    (0..oscillator_wave_count)
+        .map(|wave| {
+            let mut s = String::new();
+            for k in 0..=64 {
+                let phase = k as f32 / 64.0;
+                let x = 2.0 + phase * 96.0;
+                let y = 4.0 + (1.0 - oscillator_value(wave, phase)) * 32.0;
+                if k == 0 { mv(&mut s, x, y) } else { ln(&mut s, x, y) }
+            }
+            s
+        })
+        .collect()
 }
 
 fn y_of(u: f32) -> f32 {
@@ -549,6 +567,21 @@ mod tests {
                         assert!(v.nodes.iter().all(|n| n.x.is_finite() && n.y.is_finite()), "{kind:?}");
                     }
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn wave_icons_cover_every_waveform_with_distinct_finite_paths() {
+        let paths = wave_icon_paths();
+        assert_eq!(paths.len(), oscillator_wave_count);
+        for (i, path) in paths.iter().enumerate() {
+            assert!(path.starts_with('M'), "wave {i} has no path");
+            assert!(!path.contains("NaN") && !path.contains("inf"), "wave {i} is not finite");
+        }
+        for (i, a) in paths.iter().enumerate() {
+            for (j, b) in paths.iter().enumerate().skip(i + 1) {
+                assert_ne!(a, b, "waves {i} and {j} draw the same icon");
             }
         }
     }

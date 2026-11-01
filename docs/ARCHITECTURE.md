@@ -168,6 +168,9 @@ variation comes from Generate, Randomize and the knobs.
   (orbit, theta, lsym, ca, circuit, tri, roll, sieve_cls) or exported helpers
   (`logistic_r`, `circle_coupling`, `lsystem_threshold`, `ruler_order`, `sieve_classes`,
   `oscillator::value`). Two copies of one formula is how lines drift from what plays.
+- The waveform picker draws `view::wave_icon_paths()` in a 100×40 icon viewbox. Each icon is
+  sampled from `oscillator::value`, so the picker cannot advertise a shape the generator does
+  not play; Slint only receives the finished paths.
 - The MIDI history panel is three paths (`history-bg`, `history-grid`, `history-notes`) in a
   800×200 viewbox inside a 190px card, driven entirely from `history::build` output.
 - The tuning row chips (Root/Scale/Oct/NTS) replace the drum-lane chips. The Scale chip opens
