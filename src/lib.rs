@@ -67,6 +67,8 @@ impl Theme {
     }
 }
 
+/// Clock resolution. Existing ids are host state, so new divisions are appended, never
+/// renumbered; `RATE_ORDER` below decides the order the UI walks through.
 #[derive(Enum, PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Rate {
     #[id = "1_4"] #[name = "1/4"] Quarter,
@@ -75,10 +77,91 @@ pub enum Rate {
     #[id = "1_16"] #[name = "1/16"] Sixteenth,
     #[id = "1_16t"] #[name = "1/16T"] SixteenthTriplet,
     #[id = "1_32"] #[name = "1/32"] ThirtySecond,
+    #[id = "1_4_dot"] #[name = "1/4."] QuarterDotted,
+    #[id = "1_8_dot"] #[name = "1/8."] EighthDotted,
+    #[id = "1_16_dot"] #[name = "1/16."] SixteenthDotted,
+    #[id = "1_32t"] #[name = "1/32T"] ThirtySecondTriplet,
+    #[id = "1_32_dot"] #[name = "1/32."] ThirtySecondDotted,
+    #[id = "1_64"] #[name = "1/64"] SixtyFourth,
+    #[id = "1_64t"] #[name = "1/64T"] SixtyFourthTriplet,
+    #[id = "1_64_dot"] #[name = "1/64."] SixtyFourthDotted,
 }
 impl Rate {
-    fn steps_per_beat(self) -> f64 {
-        match self { Self::Quarter => 1.0, Self::Eighth => 2.0, Self::EighthTriplet => 3.0, Self::Sixteenth => 4.0, Self::SixteenthTriplet => 6.0, Self::ThirtySecond => 8.0 }
+    /// Musical display order: base, dotted, triplet for each note value. The enum's own order
+    /// is the host-state order and must not be used for stepping.
+    const RATE_ORDER: [Rate; 14] = [
+        Rate::Quarter, Rate::QuarterDotted,
+        Rate::Eighth, Rate::EighthDotted, Rate::EighthTriplet,
+        Rate::Sixteenth, Rate::SixteenthDotted, Rate::SixteenthTriplet,
+        Rate::ThirtySecond, Rate::ThirtySecondDotted, Rate::ThirtySecondTriplet,
+        Rate::SixtyFourth, Rate::SixtyFourthDotted, Rate::SixtyFourthTriplet,
+    ];
+
+    pub(crate) fn steps_per_beat(self) -> f64 {
+        match self {
+            Self::Quarter => 1.0,
+            Self::QuarterDotted => 1.0 / 1.5,
+            Self::Eighth => 2.0,
+            Self::EighthDotted => 2.0 / 1.5,
+            Self::EighthTriplet => 3.0,
+            Self::Sixteenth => 4.0,
+            Self::SixteenthDotted => 4.0 / 1.5,
+            Self::SixteenthTriplet => 6.0,
+            Self::ThirtySecond => 8.0,
+            Self::ThirtySecondDotted => 8.0 / 1.5,
+            Self::ThirtySecondTriplet => 12.0,
+            Self::SixtyFourth => 16.0,
+            Self::SixtyFourthDotted => 16.0 / 1.5,
+            Self::SixtyFourthTriplet => 24.0,
+        }
+    }
+
+    /// Next/previous rate in display order, clamped at the ends.
+    pub(crate) fn stepped(self, delta: i32) -> Rate {
+        let pos = Self::RATE_ORDER.iter().position(|r| *r == self).unwrap_or(0) as i32;
+        let last = Self::RATE_ORDER.len() as i32 - 1;
+        Self::RATE_ORDER[(pos + delta).clamp(0, last) as usize]
+    }
+
+    /// Parse a rate typed into the clock field. Accepts the enum's own labels plus common
+    /// aliases: `1/16T`, `1/16t`, `1/16.`, `1/16d`, `1/16dot`.
+    pub(crate) fn parse(text: &str) -> Option<Rate> {
+        let mut s = text.trim().to_ascii_lowercase();
+        s.retain(|c| !c.is_whitespace());
+        if s.is_empty() { return None; }
+        for (i, name) in <Rate as Enum>::variants().iter().enumerate() {
+            if name.eq_ignore_ascii_case(&s) { return Some(Rate::from_index(i)); }
+        }
+        let (base, dotted, triplet) = if let Some(b) = s.strip_suffix("dotted") {
+            (b, true, false)
+        } else if let Some(b) = s.strip_suffix("dot") {
+            (b, true, false)
+        } else if let Some(b) = s.strip_suffix('.') {
+            (b, true, false)
+        } else if let Some(b) = s.strip_suffix('d') {
+            (b, true, false)
+        } else if let Some(b) = s.strip_suffix('t') {
+            (b, false, true)
+        } else {
+            (s.as_str(), false, false)
+        };
+        match (base, dotted, triplet) {
+            ("1/4", false, false) => Some(Rate::Quarter),
+            ("1/4", true, false) => Some(Rate::QuarterDotted),
+            ("1/8", false, false) => Some(Rate::Eighth),
+            ("1/8", true, false) => Some(Rate::EighthDotted),
+            ("1/8", false, true) => Some(Rate::EighthTriplet),
+            ("1/16", false, false) => Some(Rate::Sixteenth),
+            ("1/16", true, false) => Some(Rate::SixteenthDotted),
+            ("1/16", false, true) => Some(Rate::SixteenthTriplet),
+            ("1/32", false, false) => Some(Rate::ThirtySecond),
+            ("1/32", true, false) => Some(Rate::ThirtySecondDotted),
+            ("1/32", false, true) => Some(Rate::ThirtySecondTriplet),
+            ("1/64", false, false) => Some(Rate::SixtyFourth),
+            ("1/64", true, false) => Some(Rate::SixtyFourthDotted),
+            ("1/64", false, true) => Some(Rate::SixtyFourthTriplet),
+            _ => None,
+        }
     }
 }
 
@@ -753,6 +836,55 @@ mod tests {
         }
         assert_eq!(<Mode as Enum>::variants().len(), 19);
         assert_eq!(Mode::AcidRandom.to_index(), 14, "the acid row starts at 14");
+    }
+
+    #[test]
+    fn rate_grid_covers_dotted_triplet_and_sixtyfourth_values() {
+        for (rate, spb) in [
+            (Rate::Quarter, 1.0),
+            (Rate::QuarterDotted, 1.0 / 1.5),
+            (Rate::Eighth, 2.0),
+            (Rate::EighthDotted, 2.0 / 1.5),
+            (Rate::EighthTriplet, 3.0),
+            (Rate::Sixteenth, 4.0),
+            (Rate::SixteenthDotted, 4.0 / 1.5),
+            (Rate::SixteenthTriplet, 6.0),
+            (Rate::ThirtySecond, 8.0),
+            (Rate::ThirtySecondDotted, 8.0 / 1.5),
+            (Rate::ThirtySecondTriplet, 12.0),
+            (Rate::SixtyFourth, 16.0),
+            (Rate::SixtyFourthDotted, 16.0 / 1.5),
+            (Rate::SixtyFourthTriplet, 24.0),
+        ] {
+            assert!((rate.steps_per_beat() - spb).abs() < 1e-12, "{rate:?}");
+        }
+    }
+
+    #[test]
+    fn rate_parser_accepts_display_names_and_aliases() {
+        for (i, name) in <Rate as Enum>::variants().iter().enumerate() {
+            assert_eq!(Rate::parse(name), Some(Rate::from_index(i)), "{name}");
+        }
+        assert_eq!(Rate::parse(" 1/8T "), Some(Rate::EighthTriplet));
+        assert_eq!(Rate::parse("1/16t"), Some(Rate::SixteenthTriplet));
+        assert_eq!(Rate::parse("1/16."), Some(Rate::SixteenthDotted));
+        assert_eq!(Rate::parse("1/16d"), Some(Rate::SixteenthDotted));
+        assert_eq!(Rate::parse("1/16dot"), Some(Rate::SixteenthDotted));
+        assert_eq!(Rate::parse("1/64"), Some(Rate::SixtyFourth));
+        assert_eq!(Rate::parse("1/64t"), Some(Rate::SixtyFourthTriplet));
+        assert_eq!(Rate::parse("1/64."), Some(Rate::SixtyFourthDotted));
+        for invalid in ["", "1/128", "16", "quarter", "1/4tt", "1/4dottedd"] {
+            assert_eq!(Rate::parse(invalid), None, "{invalid:?}");
+        }
+    }
+
+    #[test]
+    fn rate_wheel_walks_musical_order_and_clamps() {
+        assert_eq!(Rate::Quarter.stepped(1), Rate::QuarterDotted);
+        assert_eq!(Rate::QuarterDotted.stepped(1), Rate::Eighth);
+        assert_eq!(Rate::Eighth.stepped(-1), Rate::QuarterDotted);
+        assert_eq!(Rate::Quarter.stepped(-1), Rate::Quarter);
+        assert_eq!(Rate::SixtyFourthTriplet.stepped(1), Rate::SixtyFourthTriplet);
     }
 
     #[test]

@@ -175,6 +175,9 @@ variation comes from Generate, Randomize and the knobs.
 - The waveform picker draws `view::wave_icon_paths()` in a 100×40 icon viewbox. Each icon is
   sampled from `oscillator::value`, so the picker cannot advertise a shape the generator does
   not play; Slint only receives the finished paths.
+- Clock rate is one `RateField`. The wheel walks `Rate::RATE_ORDER` (base, dotted, triplet per
+  value); a double-click opens an inline text field that accepts the enum labels or aliases
+  (`1/16t`, `1/16.`, `1/16d`). The enum keeps host-state order; new divisions are appended.
 - The MIDI history panel is three paths (`history-bg`, `history-grid`, `history-notes`) in a
   800×200 viewbox inside a 190px card, driven entirely from `history::build` output.
 - The tuning row chips (Root/Scale/EDO/Oct/NTS) replace the drum-lane chips. The Scale chip

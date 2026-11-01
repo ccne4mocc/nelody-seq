@@ -18,6 +18,8 @@ pitch slides, legato and accents travel over MIDI channel 1.
   (toggleable) and drawn as a detune offset inside each piano-roll row.
 - **MIDI history** panel: every emitted note event is dropped into a lock-free ring in the
   audio thread and drawn right-to-left, sized in beats (1–64) from the host tempo.
+- **Clock rates** from 1/4 to 1/64, including dotted and triplet divisions, edited in one
+  field that steps with the wheel and accepts a typed rate name.
 - **Tuning row + acid sliders** where the drum-lane chips were: Root, a Scale chip that opens
   the left-hand tuning panel, EDO divisions, Octaves and an NTS bend chip; the acid slider row
   appears for modes 14+. Settings slide-in keeps the max-steps, root MIDI note, root cents,

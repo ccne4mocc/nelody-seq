@@ -204,7 +204,7 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
     let symmetry = 1 + rng.below(8) as i32;
     let probability = 0.35 + 0.65 * rng.unit();
     let velocity = 0.45 + 0.55 * rng.unit();
-    let rate = Rate::from_index(rng.below(6));
+    let rate = Rate::from_index(rng.below(<Rate as Enum>::variants().len()));
     let root = rng.below(12) as i32;
     let octaves = 1 + rng.below(6) as i32;
     let edo = 1 + rng.below(crate::tuning::MAX_EDO as usize) as i32;
@@ -383,7 +383,11 @@ impl Editor for SlintEditor {
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_set_rate(move |v| set(&c, &p.rate, Rate::from_index(v.clamp(0, 5) as usize)));
+                ui.on_step_rate(move |delta| set(&c, &p.rate, p.rate.value().stepped(delta)));
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_rate_submitted(move |text| {
+                    if let Some(rate) = Rate::parse(text.as_str()) { set(&c, &p.rate, rate); }
+                });
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
@@ -477,6 +481,9 @@ impl Editor for SlintEditor {
             )));
             ui.set_scale_names(ModelRc::new(VecModel::from(
                 <Tuning as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
+            )));
+            ui.set_rate_names(ModelRc::new(VecModel::from(
+                <Rate as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));
             ui.set_settings_path(SharedString::from(crate::globals::config_path_display()));
             ui.set_credit_author(SharedString::from(crate::contact::AUTHOR));
