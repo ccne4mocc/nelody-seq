@@ -185,6 +185,9 @@ variation comes from Generate, Randomize and the knobs.
   sequencing state.
 - Mode order is stable and shared: `Mode` in `src/modes.rs` is the host parameter, the
   generator dispatch key and the UI index. A test pins all 19 indices; acid starts at 14.
+- Scrolling over the current-mode header steps to the next/previous mode and clamps at the
+  ends (`step_mode` in `src/editor.rs`). The open mode list keeps the wheel for its own
+  scrolling.
 - Host-stolen keys (VST3 only): editing keys are claimed only while a Slint text field has
   focus; `text-focused` in `app.slint` must list every text field, including the tuning
   NumBoxes and the inline generator-option editor (`OptEdit.index >= 0`).

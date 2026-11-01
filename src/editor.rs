@@ -100,6 +100,20 @@ fn pulse_limit(mode: Mode, cells: i32) -> i32 {
     }
 }
 
+/// Next mode after a wheel notch. Clamping, not wrapping, matches every other picker.
+fn step_mode(current: i32, delta: i32, count: i32) -> i32 {
+    (current + delta).clamp(0, (count - 1).max(0))
+}
+
+/// One mode-selection path for the list and the mode-header wheel.
+fn apply_mode(c: &Arc<dyn GuiContext>, p: &MelodyParams, index: i32) {
+    let last = <Mode as Enum>::variants().len() as i32 - 1;
+    let mode = Mode::from_index(index.clamp(0, last) as usize);
+    set(c, &p.mode, mode);
+    let limit = pulse_limit(mode, p.cell_count());
+    if p.pulses.value() > limit { set(c, &p.pulses, limit); }
+}
+
 /// Slider and spin-box paths share this so clamping stays identical.
 fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
     let snap = p.round_steps.value();
@@ -360,13 +374,11 @@ impl Editor for SlintEditor {
             ui.set_midi_folder(SharedString::from(folder.as_str()));
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_set_mode(move |v| {
-                    let last = <Mode as Enum>::variants().len() as i32 - 1;
-                    let mode = Mode::from_index(v.clamp(0, last) as usize);
-                    set(&c, &p.mode, mode);
-                    if p.pulses.value() > pulse_limit(mode, p.cell_count()) {
-                        set(&c, &p.pulses, pulse_limit(mode, p.cell_count()));
-                    }
+                ui.on_set_mode(move |v| apply_mode(&c, &p, v));
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_step_mode(move |delta| {
+                    let count = <Mode as Enum>::variants().len() as i32;
+                    apply_mode(&c, &p, step_mode(p.mode.value().to_index() as i32, delta, count));
                 });
             }
             {
@@ -642,6 +654,15 @@ mod tests {
         assert_eq!(pulse_limit(Mode::Sieve, 64), 2);
         assert_eq!(pulse_limit(Mode::AcidMotif, 64), 16);
         assert_eq!(pulse_limit(Mode::Euclidean, 16), 16);
+    }
+
+    #[test]
+    fn mode_wheel_steps_clamp_at_both_ends() {
+        assert_eq!(step_mode(4, 1, 19), 5);
+        assert_eq!(step_mode(4, -1, 19), 3);
+        assert_eq!(step_mode(0, -1, 19), 0);
+        assert_eq!(step_mode(18, 1, 19), 18);
+        assert_eq!(step_mode(0, 1, 0), 0);
     }
 
     #[test]

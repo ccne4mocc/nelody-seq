@@ -439,6 +439,8 @@ export component AppWindow inherits Window {
     in property <string> view-hand: "M0 0";
     in property <string> mode-math: "";
     callback set-mode(int);
+    // One wheel notch over the current-mode header: -1 previous, +1 next.
+    callback step-mode(int);
     callback set-rate(int);
     callback set-osc-wave(int);
     callback set-theme(int);
@@ -612,7 +614,19 @@ export component AppWindow inherits Window {
                     height: 30px; border-radius: 4px;
                     background: mode-menu-touch.has-hover ? Theme.control-hover : Theme.control;
                     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MODE  ·  \{root.mode-names[root.mode]}  ▾"; color: Theme.c1; font-size: 13px; font-weight: 700; vertical-alignment: center; overflow: elide; }
-                    mode-menu-touch := TouchArea { clicked => { root.tuning-open = false; root.settings-open = false; root.mode-menu-open = !root.mode-menu-open; } }
+                    mode-menu-touch := TouchArea {
+                        clicked => { root.tuning-open = false; root.settings-open = false; root.mode-menu-open = !root.mode-menu-open; }
+                        // Hover the current mode and scroll to step through the mode list without
+                        // opening it. The list itself keeps the wheel for scrolling.
+                        scroll-event(e) => {
+                            if (e.delta-y != 0px) {
+                                root.step-mode(e.delta-y > 0px ? 1 : -1);
+                                accept
+                            } else {
+                                reject
+                            }
+                        }
+                    }
                 }
                 Text { text: root.mode-help[root.mode]; color: Theme.text; font-size: 13px; wrap: word-wrap; }
                 // Live formula with the current snapshot substituted; pushed by Rust from the
