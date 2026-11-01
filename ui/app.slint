@@ -122,6 +122,8 @@ component TuningChip inherits Rectangle {
     in property <string> label;
     in property <string> value;
     in property <bool> active: false;
+    // The scale chip opens a panel, so a wheel there must not toggle it once per notch.
+    in property <bool> wheel-cycles: true;
     callback cycled();
     height: 28px; border-radius: 4px;
     background: root.active ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 100%) : (ta.has-hover ? Theme.control-hover : Theme.control);
@@ -129,7 +131,7 @@ component TuningChip inherits Rectangle {
     ta := TouchArea {
         clicked => { root.cycled(); }
         scroll-event(e) => {
-            if (e.delta-y != 0px) { root.cycled(); accept } else { reject }
+            if (e.delta-y != 0px && root.wheel-cycles) { root.cycled(); accept } else { reject }
         }
     }
 }
@@ -165,23 +167,23 @@ component OptSlider inherits Rectangle {
     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.opt.text; color: Theme.text; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
     ta := TouchArea {
         pointer-event(e) => {
-            if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+            if (!root.editing && e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
                 root.changed(root.opt.min + Math.clamp(ta.mouse-x / ta.width, 0, 1) * (root.opt.max - root.opt.min));
             }
         }
-        moved => { if (ta.pressed) { root.changed(root.opt.min + Math.clamp(ta.mouse-x / ta.width, 0, 1) * (root.opt.max - root.opt.min)); } }
+        moved => { if (!root.editing && ta.pressed) { root.changed(root.opt.min + Math.clamp(ta.mouse-x / ta.width, 0, 1) * (root.opt.max - root.opt.min)); } }
         // Double-click turns the strip into a numeric field. Wheel editing is active only while
         // this control is hovered; snap to the parameter's step grid first, then move exactly
-        // one step per wheel notch.
+        // one step per wheel notch. While the editor is open the strip must leave both alone.
         double-clicked => {
-            if (root.index >= 0) {
+            if (!root.editing && root.index >= 0) {
                 OptEdit.draft = root.opt.number;
                 OptEdit.index = root.index;
                 entry.focus();
             }
         }
         scroll-event(e) => {
-            if (e.delta-y != 0px) {
+            if (!root.editing && e.delta-y != 0px) {
                 root.changed(Math.clamp(root.opt.min + Math.round((root.opt.value - root.opt.min) / root.opt.step + (e.delta-y > 0px ? 1 : -1)) * root.opt.step, root.opt.min, root.opt.max));
                 accept
             } else {
@@ -673,7 +675,7 @@ export component AppWindow inherits Window {
             tuning-root := NumBox { width: 112px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
             // The scale list lives in the left-hand TUNING panel; this chip only shows the
             // current scale and opens that panel.
-            TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; cycled => { root.tuning-open = !root.tuning-open; root.settings-open = false; root.mode-menu-open = false; } }
+            TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.settings-open = false; root.mode-menu-open = false; } }
             edo-row := NumBox { width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
             tuning-oct := NumBox { width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
             TuningChip { width: 90px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
