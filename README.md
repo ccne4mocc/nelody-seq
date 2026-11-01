@@ -17,7 +17,7 @@ pitch slides, legato and accents travel over MIDI channel 1.
   or any EDO up to 72, with a root-cents fine tune. Non-12-TET pitch is sent as pitch bend
   (toggleable) and drawn as a detune offset inside each piano-roll row.
 - **MIDI history** panel: every emitted note event is dropped into a lock-free ring in the
-  audio thread and drawn right-to-left, sized in beats (1–64) from the host tempo.
+  audio thread and drawn right-to-left, sized in 4/4 bars from the host tempo.
 - **Clock rates** from 1/4 to 1/64, including dotted and triplet divisions, edited in one
   field that steps with the wheel and accepts a typed rate name.
 - **Tuning row + acid sliders** where the drum-lane chips were: Root, a Scale chip that opens

@@ -242,7 +242,9 @@ pub struct MelodyParams {
     #[id = "oct_jump"] pub octave: FloatParam,
     /// Send microtonal tuning offsets as pitch bend.
     #[id = "nts"] pub nts: BoolParam,
-    #[id = "history_beats"] pub history_beats: FloatParam,
+    /// Window length for the piano-roll history, in bars (4/4: four beats per bar). The host id
+    /// stays `history_beats` for project compatibility.
+    #[id = "history_beats"] pub history_bars: FloatParam,
 }
 
 fn percentage_param(name: &'static str, value: f32) -> FloatParam {
@@ -305,7 +307,11 @@ impl Default for MelodyParams {
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
             nts: BoolParam::new("Microtonal Pitch Bend (NTS)", true),
-            history_beats: FloatParam::new("History Beats", 16.0, FloatRange::Linear { min: 1.0, max: 64.0 }),
+            history_bars: FloatParam::new(
+                "History Length (Bars)",
+                4.0,
+                FloatRange::Linear { min: 1.0, max: MAX_STEPS as f32 },
+            ),
         }
     }
 }

@@ -26,6 +26,8 @@ const HEIGHT: u32 = 760;
 const HISTORY_W: f32 = 800.0;
 const HISTORY_H: f32 = 200.0;
 const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+/// History length is expressed in 4/4 bars; the host tempo supplies the beat duration.
+const BEATS_PER_BAR: f32 = 4.0;
 
 /// Append one technical line to `nelody.log` in the user's home directory. GUI thread only.
 fn log_line(text: &str) {
@@ -160,7 +162,7 @@ fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
         20 => set(c, &p.midi_root, (value.round() as i32).clamp(0, 120)),
         21 => set(c, &p.edo, (value.round() as i32).clamp(1, crate::tuning::MAX_EDO as i32)),
         22 => set(c, &p.root_cents, value.clamp(-50.0, 50.0)),
-        23 => set(c, &p.history_beats, value.clamp(1.0, 64.0)),
+        23 => set(c, &p.history_bars, value.clamp(1.0, MAX_STEPS as f32)),
         _ => {},
     }
 }
@@ -311,16 +313,21 @@ fn push_view(ui: &AppWindow, v: &View) {
     ui.set_view_hand(SharedString::from(v.hand.as_str()));
 }
 
+/// Convert a history length in 4/4 bars to the editor-side millisecond window.
+fn history_window_ms(bars: f32, bpm: f32) -> u64 {
+    let bpm = if bpm.is_finite() && bpm > 0.0 { bpm } else { 120.0 };
+    ((bars.clamp(1.0, MAX_STEPS as f32) * BEATS_PER_BAR * 60_000.0 / bpm).round() as u64).max(250)
+}
+
 /// Push the right-to-left rolling history. The window is in milliseconds, derived from the host
-/// tempo and the user's beat count, so the same setting looks the same at any BPM.
+/// tempo and the user's bar count, so the same setting looks the same at any BPM.
 fn push_history(
     ui: &AppWindow,
     shared: &Shared,
     bpm: f32,
-    beats: f32,
+    bars: f32,
 ) {
-    let bpm = if bpm.is_finite() && bpm > 0.0 { bpm } else { 120.0 };
-    let window_ms = ((beats.clamp(1.0, 64.0) * 60_000.0 / bpm).round() as u64).max(250);
+    let window_ms = history_window_ms(bars, bpm);
     let now_ms = shared.epoch.elapsed().as_millis() as u64;
     let mut events = shared.snapshot();
     let roll = history::build(&mut events, now_ms, window_ms, HISTORY_W, HISTORY_H);
@@ -580,7 +587,7 @@ impl Editor for SlintEditor {
             ui.set_edo(p.edo.value());
             ui.set_edo_active(p.scale.value() == Tuning::Edo);
             ui.set_root_cents(p.root_cents.value());
-            ui.set_history_beats(p.history_beats.value());
+            ui.set_history_bars(p.history_bars.value());
             ui.set_nts_on(p.nts.value());
             ui.set_slide(p.slide.value());
             ui.set_accent(p.accent.value());
@@ -617,7 +624,7 @@ impl Editor for SlintEditor {
                 push_view(&ui, &v);
                 c.view_key = Some(view_key);
             }
-            push_history(&ui, &update_shared, update_shared.sample_tempo(), p.history_beats.value());
+            push_history(&ui, &update_shared, update_shared.sample_tempo(), p.history_bars.value());
         };
         let factory = move || {
             let ui = AppWindow::new()?;
@@ -676,6 +683,13 @@ mod tests {
         assert_eq!(step_mode(0, -1, 19), 0);
         assert_eq!(step_mode(18, 1, 19), 18);
         assert_eq!(step_mode(0, 1, 0), 0);
+    }
+
+    #[test]
+    fn history_lengths_are_four_four_bars() {
+        assert_eq!(history_window_ms(4.0, 120.0), 8_000);
+        assert_eq!(history_window_ms(4.0, 60.0), 16_000);
+        assert_eq!(history_window_ms(1.0, 0.0), 2_000);
     }
 
     #[test]

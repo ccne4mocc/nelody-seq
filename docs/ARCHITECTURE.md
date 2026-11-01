@@ -111,8 +111,8 @@ The bottom panel is a piano roll that scrolls right to left. `Shared::record` pa
 `(timestamp_ms, note, velocity, on/off, cents)` into one atomic word per event; the editor
 snapshots the ring and `history::build` pairs NoteOn/NoteOff into segments, clips them to the
 window, and emits three SVG paths (black-key row shading, C-row grid, note rectangles with
-octave-aligned ranges of at least two octaves). The window is `history_beats × 60 ms/BPM`, so
-the same setting reads the same at any tempo. A cent offset shifts the note inside its own
+octave-aligned ranges of at least two octaves). The window is `history_bars × 4 × 60 ms/BPM`
+(four beats per 4/4 bar), so the same setting reads the same at any tempo. A cent offset shifts the note inside its own
 row, so NTS pitches are visible as microtonal offsets. Pairing keeps the ring's emission order
 for events in the same millisecond, and a NoteOff whose NoteOn already fell out of the ring is
 ignored rather than synthesised from the window edge; either mistake drew phantom notes
@@ -142,7 +142,7 @@ first-run default is the host process working directory.
 | Melody / tuning | `root` (pitch class), `scale` (12 tables or EDO), `octaves`, `edo`, `root_cents`, `midi_root`, `nts` | Pitch mapping. The tonic is `midi_root + root` semitones; non-12-TET detune is emitted as pitch bend while `nts` is on |
 | Acid flags | `slide`, `accent`, `oct_jump` | Per-note probabilities for the five acid modes. They only add or remove flags — never reshuffle the line (tested) |
 | Post-transforms | `invert`, `mirror`, `rotate` | Applied to the finished line: hit inversion, retrograde, circular rotation |
-| History | `history_beats` | Window width of the always-recording piano-roll history, in beats |
+| History | `history_bars` (id `history_beats`) | Window width of the always-recording piano-roll history, in 4/4 bars |
 
 `velocity` multiplies each step's `Pattern.acc` (step accents × acid accent flags), clamped to
 1.0. `expressive quantization` such as per-step velocity drag is intentionally absent:

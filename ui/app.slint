@@ -620,7 +620,7 @@ export component AppWindow inherits Window {
     // EDO only changes a scale when the Equal (EDO) table is active.
     in property <bool> edo-active: false;
     in property <float> root-cents: 0;
-    in property <float> history-beats: 16;
+    in property <float> history-bars: 4;
     in property <bool> nts-on: true;
     in property <float> slide: 0.25;
     in property <float> accent: 0.3;
@@ -774,7 +774,7 @@ export component AppWindow inherits Window {
         { label: "Root MIDI note", min: 0, max: 120, value: root.midi-root, text: "\{root.midi-root}", step: 1, number: "\{root.midi-root}", scale: 1 },
         { label: "EDO divisions", min: 1, max: 72, value: root.edo, text: "\{root.edo}", step: 1, number: "\{root.edo}", scale: 1 },
         { label: "Root cents", min: -50, max: 50, value: root.root-cents, text: "\{Math.round(root.root-cents)}c", step: 1, number: "\{Math.round(root.root-cents)}", scale: 1 },
-        { label: "History beats", min: 1, max: 64, value: root.history-beats, text: "\{Math.round(root.history-beats)}", step: 1, number: "\{Math.round(root.history-beats)}", scale: 1 }
+        { label: "History bars", min: 1, max: 1024, value: root.history-bars, text: "\{Math.round(root.history-bars)}", step: 1, number: "\{Math.round(root.history-bars)}", scale: 1 }
     ];
 
     // Everything lives inside one fixed 860x760 coordinate space. The window never resizes;
@@ -1001,7 +1001,7 @@ export component AppWindow inherits Window {
             Text { text: "TUNING"; color: Theme.text-muted; font-size: 9px; }
             midi-root-box := NumBox { label: "Root MIDI note"; value: root.midi-root; minimum: 0; maximum: 120; step: 1; changed(v) => { root.set-opt(20, v); } }
             cents-box := NumBox { label: "Root cents"; value: root.root-cents; minimum: -50; maximum: 50; step: 1; changed(v) => { root.set-opt(22, v); } }
-            hist-box := NumBox { label: "History window (beats)"; value: root.history-beats; minimum: 1; maximum: 64; step: 1; changed(v) => { root.set-opt(23, v); } }
+            hist-box := NumBox { label: "History Length (Bars)"; value: root.history-bars; minimum: 1; maximum: 1024; step: 1; changed(v) => { root.set-opt(23, v); } }
             Text { text: "TECHNICAL SUPPORT"; color: Theme.text-muted; font-size: 9px; }
             Rectangle {
                 height: 26px; border-radius: 4px;
