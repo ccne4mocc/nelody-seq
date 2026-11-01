@@ -1,0 +1,744 @@
+import { ScrollView } from "std-widgets.slint";
+// Nelody: algorithm-first MIDI melody sequencer. Rust pushes deterministic pattern and view data.
+export global Theme {
+    in-out property <color> c1: #a67c00;
+    in-out property <color> c2: #3f6591;
+    in-out property <color> c3: #9c4f43;
+    in-out property <color> hi: #a93226;
+    in-out property <color> bg1: #f3eee2;
+    in-out property <color> bg2: #eee7d8;
+    in-out property <color> bg3: #e8dfcd;
+    in-out property <color> surface: #faf5e9;
+    in-out property <color> control: #e5dcc9;
+    in-out property <color> control-hover: #d7ccb5;
+    in-out property <color> text: #2f2b25;
+    in-out property <color> text-muted: #7a7061;
+    in-out property <color> border: #c7bca8;
+    in-out property <color> cell-off: #ded5c3;
+    in-out property <color> on-accent: #fdf9f0;
+}
+
+export struct ViewNode { x: length, y: length, r: length, on: bool, cur: bool, label: string }
+export struct Opt { label: string, min: float, max: float, value: float, text: string, step: float }
+
+component Selector inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    in property <length> text-size: 10px;
+    callback selected(int);
+    height: 28px;
+    HorizontalLayout {
+        spacing: 4px;
+        for i in root.options.length: Rectangle {
+            border-radius: 1px;
+            background: ta.has-hover ? Theme.control-hover : Theme.control;
+            if i == root.current: Rectangle {
+                border-radius: 4px;
+                background: @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%);
+            }
+            Text {
+                width: parent.width; height: parent.height;
+                text: root.options[i];
+                color: i == root.current ? Theme.on-accent : Theme.text;
+                font-size: root.text-size;
+                horizontal-alignment: center; vertical-alignment: center;
+                overflow: elide;
+            }
+            ta := TouchArea {
+                clicked => { root.selected(i); }
+                // Enum parameters (rate, waveform, theme) can be stepped with the wheel too.
+                scroll-event(e) => {
+                    if (e.delta-y != 0px) {
+                        root.selected((root.current + (e.delta-y > 0px ? 1 : -1)) < 0 ? 0 : ((root.current + (e.delta-y > 0px ? 1 : -1)) >= root.options.length ? root.options.length - 1 : root.current + (e.delta-y > 0px ? 1 : -1)));
+                        accept
+                    } else {
+                        reject
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Eight waveform names do not fit the options column in one legible row, so the picker
+// lays them out as a 2x4 grid. Names come from Rust (`OscWave::variants()`), so adding a
+// waveform only touches the enum.
+component WaveGrid inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    callback selected(int);
+    height: 46px;
+    GridLayout {
+        spacing: 3px;
+        for i in root.options.length: Rectangle {
+            border-radius: 3px;
+            background: i == root.current ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (ta.has-hover ? Theme.control-hover : Theme.control);
+            Text { text: root.options[i]; color: i == root.current ? Theme.on-accent : Theme.text; font-size: 8px; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+            ta := TouchArea {
+                clicked => { root.selected(i); }
+                // The wheel steps the waveform, matching every other picker.
+                scroll-event(e) => {
+                    if (e.delta-y != 0px) {
+                        root.selected(Math.max(0, Math.min(root.current + (e.delta-y > 0px ? 1 : -1), root.options.length - 1)));
+                        accept
+                    } else {
+                        reject
+                    }
+                }
+            }
+        }
+    }
+}
+
+// One RANDOMIZE scope group. The five chips edit the bits of a single host parameter.
+component ScopeChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback toggled();
+    height: 22px; border-radius: 4px;
+    background: root.active ? Theme.c1.with-alpha(0.8) : (ta.has-hover ? Theme.control-hover : Theme.control);
+    Text { text: root.label; color: root.active ? Theme.on-accent : Theme.text; font-size: 8px; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+    ta := TouchArea { clicked => { root.toggled(); } }
+}
+
+// One tuning-row chip: shows a value and advances it on click (and on wheel).
+component TuningChip inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> active: false;
+    callback cycled();
+    height: 28px; border-radius: 4px;
+    background: root.active ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 100%) : (ta.has-hover ? Theme.control-hover : Theme.control);
+    Text { x: 6px; width: parent.width - 12px; height: parent.height; text: "\{root.label}  \{root.value}"; color: root.active ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; overflow: elide; }
+    ta := TouchArea {
+        clicked => { root.cycled(); }
+        scroll-event(e) => {
+            if (e.delta-y != 0px) { root.cycled(); accept } else { reject }
+        }
+    }
+}
+
+component OptSlider inherits Rectangle {
+    in property <Opt> opt;
+    callback changed(float);
+    height: 25px;
+    border-radius: 4px; background: Theme.control; clip: true;
+    Rectangle {
+        x: 0px; y: 0px; height: parent.height;
+        width: parent.width * Math.clamp((root.opt.value - root.opt.min) / (root.opt.max - root.opt.min), 0, 1);
+        background: @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%);
+        opacity: 0.3;
+    }
+    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.opt.label; color: Theme.text; font-size: 11px; vertical-alignment: center; }
+    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.opt.text; color: Theme.text; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+    ta := TouchArea {
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                root.changed(root.opt.min + Math.clamp(ta.mouse-x / ta.width, 0, 1) * (root.opt.max - root.opt.min));
+            }
+        }
+        moved => { if (ta.pressed) { root.changed(root.opt.min + Math.clamp(ta.mouse-x / ta.width, 0, 1) * (root.opt.max - root.opt.min)); } }
+        // Wheel editing is active only while this control is hovered. Snap to the
+        // parameter's step grid first, then move exactly one step per wheel notch.
+        scroll-event(e) => {
+            if (e.delta-y != 0px) {
+                root.changed(Math.clamp(root.opt.min + Math.round((root.opt.value - root.opt.min) / root.opt.step + (e.delta-y > 0px ? 1 : -1)) * root.opt.step, root.opt.min, root.opt.max));
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+}
+// Slint's SpinBox is <int>-only, so this carries fractional values such as 16.5 steps.
+// Text entry plus arrow keys plus wheel, with no pixel-density limit on the value.
+component NumBox inherits Rectangle {
+    in property <string> label;
+    in property <float> value: 0;
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <float> step: 1;
+    in property <int> decimals: 0;
+    callback changed(float);
+
+    height: 26px;
+    border-radius: 4px;
+    background: Theme.control; border-width: 1px; border-color: Theme.border;
+    horizontal-stretch: 1;
+    // True while the number field has keyboard focus; the root reads it so Rust can decide
+    // whether a key the host tried to keep is meant for typing.
+    out property <bool> editing: input.has-focus;
+
+    function clamp-value(v: float) -> float {
+        return Math.clamp(v, root.minimum, root.maximum);
+    }
+    function nudge(dir: float) {
+        root.changed(root.clamp-value(root.value + dir * root.step));
+    }
+    function format-value(v: float) -> string {
+        if (root.decimals <= 0) { return Math.round(v); }
+        return Math.round(v * 100) / 100;
+    }
+
+    Text {
+        x: 6px; width: parent.width - 12px;
+        text: root.label;
+        color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide;
+    }
+    down := Rectangle {
+        x: parent.width - 34px; y: 1px; width: 16px; height: parent.height - 2px;
+        border-radius: 3px; background: down-touch.has-hover ? Theme.control-hover : Theme.control;
+        Text { text: "-"; color: Theme.text; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+        down-touch := TouchArea { clicked => { root.nudge(-1); } }
+    }
+    up := Rectangle {
+        x: parent.width - 17px; y: 1px; width: 16px; height: parent.height - 2px;
+        border-radius: 3px; background: up-touch.has-hover ? Theme.control-hover : Theme.control;
+        Text { text: "+"; color: Theme.text; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+        up-touch := TouchArea { clicked => { root.nudge(1); } }
+    }
+    // Wheel nudges anywhere on the control. Declared before `input` so it sits underneath the
+    // text field: clicks and typing still reach the TextInput, and since TextInput has no
+    // scroll handler the wheel falls through to this area.
+    wheel := TouchArea {
+        // Keep the wheel area off the two buttons: this TouchArea is declared after them, so a
+        // full-width one would sit on top and swallow every button click.
+        x: 0px; y: 0px; width: parent.width - 34px; height: parent.height;
+        scroll-event(e) => {
+            if (e.delta-y != 0px) {
+                root.nudge(e.delta-y > 0px ? 1 : -1);
+                return accept;
+            }
+            return reject;
+        }
+    }
+    input := TextInput {
+        x: 6px; width: parent.width - 42px; height: parent.height;
+        color: Theme.text; font-size: 11px;
+        horizontal-alignment: right; vertical-alignment: center;
+        text: root.format-value(root.value);
+        // Only accept complete numbers; a lone "-" or "1." must not be committed.
+        edited => {
+            if (self.text.is-float()) { root.changed(root.clamp-value(self.text.to-float())); }
+            else { self.text = root.format-value(root.value); }
+        }
+        accepted => { self.text = root.format-value(root.value); }
+        key-pressed(event) => {
+            if (event.text == Key.UpArrow) { root.nudge(1); return accept; }
+            if (event.text == Key.DownArrow) { root.nudge(-1); return accept; }
+            return reject;
+        }
+    }
+}
+
+component ModePanel inherits Rectangle {
+    in property <[ViewNode]> nodes;
+    in property <string> edges: "M0 0";
+    in property <string> fills: "M0 0";
+    in property <string> solid: "M0 0";
+    in property <string> lines: "M0 0";
+    in property <string> hand: "M0 0";
+    // view.rs builds every panel in a 210-unit space. The paths scale through the viewbox;
+    // the node rectangles are scaled by hand so dots and labels grow with the box.
+    property <float> px-per-unit: 1.4285714;   // 300px square drawing / 210-unit geometry
+    property <length> draw-offset-x: 30px;      // letterbox the square drawing in the wider card
+    width: 360px; height: 300px;
+    background: transparent; border-radius: 6px; clip: true;
+    Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.edges; fill: transparent; stroke: Theme.border; stroke-width: 1px; }
+    Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.fills; fill: Theme.c2.with-alpha(0.35); }
+    Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.solid; fill: Theme.c1.with-alpha(0.85); }
+    Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.lines; fill: transparent; stroke: Theme.c3; stroke-width: 1.4px; }
+    Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.hand; fill: transparent; stroke: Theme.hi; stroke-width: 2px; }
+    for n in root.nodes: Rectangle {
+        // Pebble-box positions change every step; the tween reads as motion. Other panels'
+        // nodes are static, so the animation never shows there.
+        animate x, y { duration: 120ms; }
+        x: root.draw-offset-x + (n.x - n.r) * root.px-per-unit; y: (n.y - n.r) * root.px-per-unit;
+        width: n.r * 2 * root.px-per-unit; height: n.r * 2 * root.px-per-unit;
+        border-radius: n.r * root.px-per-unit;
+        background: n.cur ? Theme.hi : (n.on ? Theme.c1 : Theme.cell-off);
+        border-width: 1px; border-color: Theme.border;
+        Text { width: parent.width; height: parent.height; text: n.label; font-size: 7px * root.px-per-unit; color: (n.cur || n.on) ? Theme.on-accent : Theme.text; horizontal-alignment: center; vertical-alignment: center; }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Nelody";
+    // Fixed layout size: the window never resizes (a live resize glitched the GL surface),
+    // so the host cannot be fought over it.
+    in property <length> base-width: 860px;
+    in property <length> base-height: 760px;
+    preferred-width: root.base-width; preferred-height: root.base-height;
+    background: @linear-gradient(135deg, Theme.bg1 0%, Theme.bg2 50%, Theme.bg3 100%);
+    in property <int> mode: 0;
+    // The mode list is taller than its viewport, and the wheel now changes the mode instead
+    // of scrolling it, so the list has to follow the selection. 32px per row (28px + 4px
+    // spacing), 300px viewport plus the list's own padding, so the cap follows the mode count.
+    // A Flickable/ScrollView viewport moves up by going NEGATIVE; the previous positive value
+    // was clamped to 0, so modes 8-15 could be selected but never scrolled into view.
+    in-out property <length> mode-scroll-y: 0px;
+    changed mode => {
+        root.mode-scroll-y = -Math.max(0px, Math.min(mode * 32px - 116px, root.mode-names.length * 32px - 332px));
+    }
+    in property <float> steps: 16;
+    in property <float> max-steps: 64;
+    in property <bool> round-steps: true;
+    // The grid cells the generator will fill, mirroring `cell_count_for`: snap rounds, free
+    // length takes the ceiling. Header and bounds read this so they cannot disagree with the
+    // matrix when the host leaves a fractional value stored while snapping is on.
+    property <int> cells: root.round-steps ? Math.round(root.steps) : Math.ceil(root.steps);
+    in-out property <int> current-step: 0;
+    in property <float> pulses: 5;
+    in property <float> rotate: 0;
+    in property <float> density: 0.65;
+    in property <float> probability: 1.0;
+    in property <float> velocity: 1.0;
+    in property <float> regenerate-every: 0;
+    in property <float> randomize-after-lengths: 0;
+    in property <float> swing: 0;
+    in property <float> seed: 0.271;
+    in property <float> phase: 0.0;
+    in property <float> osc-rate: 2.0;
+    in property <float> ca-rule: 30;
+    in property <float> symmetry: 4;
+    in property <int> rate: 3;
+    in property <int> osc-wave: 0;
+    in property <[string]> wave-names;
+    in property <bool> scope-mode: true;
+    in property <bool> scope-length: true;
+    in property <bool> scope-rhythm: true;
+    in property <bool> scope-tone: true;
+    in property <bool> scope-feel: true;
+    in property <string> settings-path: "";
+    in property <string> credit-author: "";
+    in property <string> credit-website: "";
+    in property <string> credit-github: "";
+    in property <string> credit-support: "";
+    in property <string> credit-email: "";
+    in property <string> midi-folder: "";
+    // DAW track hosting this instance; empty when the host does not report one.
+    in property <string> track-name: "";
+    // Any text field with keyboard focus. Rust reads this each frame (see `keys.rs`).
+    out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || midi-root-box.editing || edo-box.editing || cents-box.editing || hist-box.editing;
+    in-out property <string> export-status: "";
+    in property <int> theme-index: 0;
+    in-out property <bool> mode-menu-open: false;
+    in-out property <length> mode-menu-x: root.base-width;
+    changed mode-menu-open => {
+        root.mode-menu-x = root.mode-menu-open ? root.base-width - 260px : root.base-width;
+    }
+    in-out property <bool> settings-open: false;
+    // Settings slide in from the right edge of the fixed 860px layout; see the panel at the
+    // bottom of this component.
+    in-out property <length> settings-x: root.base-width;
+    changed settings-open => {
+        root.settings-x = root.settings-open ? root.base-width - 300px : root.base-width;
+    }
+    in property <bool> free-run: false;
+    in property <bool> invert-on: false;
+    in property <bool> mirror-on: false;
+    in property <bool> logging-on: false;
+    in property <bool> generate-on: false;
+    // --- Melody / tuning row -----------------------------------------------------------
+    in property <string> tuning-name: "Minor";
+    in property <int> root-pc: 0;
+    in property <int> octaves: 2;
+    in property <int> midi-root: 48;
+    in property <int> edo: 12;
+    in property <float> root-cents: 0;
+    in property <float> history-beats: 16;
+    in property <bool> nts-on: true;
+    in property <bool> history-on: true;
+    in property <float> slide: 0.25;
+    in property <float> accent: 0.3;
+    in property <float> octave: 0.15;
+    // --- MIDI history (bottom slot, flows right -> left) -------------------------------
+    in property <string> history-bg: "M0 0";
+    in property <string> history-grid: "M0 0";
+    in property <string> history-notes: "M0 0";
+    in property <string> history-range: "";
+    in property <[ViewNode]> view-nodes;
+    in property <string> view-edges: "M0 0";
+    in property <string> view-fills: "M0 0";
+    in property <string> view-solid: "M0 0";
+    in property <string> view-lines: "M0 0";
+    in property <string> view-hand: "M0 0";
+    in property <string> mode-math: "";
+    callback set-mode(int);
+    callback set-rate(int);
+    callback set-osc-wave(int);
+    callback set-theme(int);
+    callback set-opt(int, float);
+    callback toggle-round-steps();
+    callback cycle-scale();
+    callback toggle-nts();
+    callback toggle-history();
+    callback toggle-free-run();
+    callback toggle-invert();
+    callback toggle-mirror();
+    callback toggle-logging();
+    callback generate-pressed();
+    callback randomize-pressed();
+    callback toggle-scope(int);
+    callback set-midi-folder(string);
+    callback export-midi();
+
+    // Only expose mode-specific controls the selected mode actually uses, and label them with
+    // what they mean in that mode. `GenParams` still carries every field; this is presentation.
+    pure function shows-param(mode: int, key: int) -> bool {
+        if (key == 6) { return mode == 9 || mode == 8; }        // osc cycles: Oscillator, Markov
+        if (key == 7) { return mode == 7 || mode == 11; }       // CA rule: Cellular, Sieve
+        if (key == 11) { return false; }                        // symmetry is a drum-only idea
+        return true;
+    }
+    pure function pulses-max(mode: int) -> float {
+        if (mode == 5) { return 3; }     // Mozart dice per bar
+        if (mode == 7) { return 15; }    // cellular generation
+        if (mode == 11) { return 2; }    // sieve union terms
+        if (mode == 18) { return 16; }   // acid motif length
+        return root.cells;
+    }
+    pure function pulse-label(mode: int) -> string {
+        if (mode == 1) { return "Ruler order"; }
+        if (mode == 2) { return "Target hits"; }
+        if (mode == 3) { return "Degree"; }
+        if (mode == 4) { return "Requested hits"; }
+        if (mode == 5) { return "Dice per bar"; }
+        if (mode == 6) { return "Triad span"; }
+        if (mode == 7) { return "Generation"; }
+        if (mode == 8) { return "Walk activity"; }
+        if (mode == 9) { return "Requested hits"; }
+        if (mode == 10) { return "Grammar cutoff"; }
+        if (mode == 11) { return "Sieve terms"; }
+        if (mode == 12) { return "Slope"; }
+        if (mode == 13) { return "Onset chance"; }
+        if (mode == 14) { return "Notes"; }
+        if (mode == 15) { return "Notes"; }
+        if (mode == 16) { return "Notes"; }
+        if (mode == 17) { return "Motif length"; }
+        if (mode == 18) { return "Register bits"; }
+        return "Pulses";
+    }
+    pure function density-label(mode: int) -> string {
+        if (mode == 2) { return "Growth (r)"; }
+        if (mode == 8) { return "Leapiness"; }
+        if (mode == 13) { return "Onset chance"; }
+        if (mode == 14 || mode == 15) { return "Root bias"; }
+        if (mode == 16) { return "Leapiness"; }
+        return "Density";
+    }
+    pure function phase-label(mode: int) -> string {
+        if (mode == 4) { return "Coupling"; }
+        if (mode == 8) { return "Step/leap"; }
+        if (mode == 17) { return "Mutation"; }
+        if (mode == 18) { return "Register flip"; }
+        return "Osc phase";
+    }
+    pure function osc-label(mode: int) -> string {
+        if (mode == 8) { return "Leap bias"; }
+        return "Osc cycles";
+    }
+    pure function ca-label(mode: int) -> string {
+        if (mode == 11) { return "Sieve moduli"; }
+        return "CA rule";
+    }
+    pure function regen-label(mode: int) -> string {
+        return "Regenerate after (lengths, 0=off)";
+    }
+    property <[string]> mode-names: ["Euclidean", "Golomb Ruler", "Logistic Map", "Eulerian Walk", "Arnold Circle Map", "Mozart Dice", "Tonnetz Walk", "Rule 30", "Markov Walk", "Oscillator / Phase", "L-System Grammar", "Xenakis Sieve", "Fibonacci / Sturmian", "Bernoulli", "Acid Random", "Acid Euclid", "Acid Markov", "Acid Motif", "Acid Shift Register"];
+    property <[string]> mode-help: [
+        "Places pulses as evenly as possible around the step ring, then walks the pitch contour by 1/φ per onset. Density thins the onsets; Seed and Phase move the whole necklace.",
+        "Maps the marks of an optimal Golomb ruler onto the bar, so no inter-onset interval repeats. Gap length sets the pitch step, which gives the phrase its wide, non-metrical leaps.",
+        "Iterates x[n+1] = r·x[n]·(1−x[n]) with r set by density. The highest orbit samples become onsets and the orbit value itself becomes the pitch contour.",
+        "Builds a balanced digraph over a rest plus seven scale degrees, then walks every edge once with Hierholzer's algorithm. The circuit becomes a melody line; unused vertices read as rests.",
+        "Runs the Arnold circle map θ' = θ + Ω − K/2π·sin(2πθ). Pure rotation gives a steady pulse; increasing coupling locks it into a repeating figure. The pitch follows the phase.",
+        "Rolls one to three dice per bar and indexes a bank of eleven one-bar cells, Mozart-style. Each cell carries both a rhythm and a melodic shape.",
+        "Walks P/L/R neo-Riemannian transforms on a Tonnetz lattice and arpeggiates each triad. The panel draws the triangles, so the harmonic path is visible while it plays.",
+        "Runs Wolfram's Rule 30 on a ring, one row per generation. The selected generation becomes the rhythm and the neighbourhood sum becomes the pitch contour.",
+        "A first-order Markov walk over rest and seven scale degrees. Density sets note activity and the oscillator knob sets leapiness; the panel draws the degree graph.",
+        "Samples one of eight waveforms at each step. The waveform both ranks the onsets and supplies the pitch contour, so the drawn curve is the melody's shape.",
+        "Rewrites a two-symbol grammar for up to twelve generations and reads the resulting word as contour and rhythm. A favours rising steps, B favours falling ones.",
+        "Builds a Xenakis sieve M = (m₁,r₁) ∪ (m₂,r₂) \\ (m₃,r₃). Members become onsets; the residue class decides the pitch degree. Density keeps a fraction of the members.",
+        "Generates a Sturmian word from an irrational slope and fires where floor((i+1)α) changes. The result is maximally even and the contour steps by the golden ratio.",
+        "Flips an independent Bernoulli coin per step. Density is the onset probability and each onset gets a seeded pitch class, so the line is unstable by design.",
+        "Picks exactly Pulses notes with a downbeat bias, then rolls a root-heavy scale degree for each. Accent, Slide and Octave are independent per-note flags.",
+        "Notes are a Euclidean rhythm; accents, slides and octave jumps are nested Euclidean rhythms over those notes. Knobs only add or remove flags, never reshuffle the line.",
+        "A two-state note/rest chain with the requested stationary density, plus a first-order pitch chain. Slides are more likely between close degrees.",
+        "Rolls one short motif and repeats it. Phase mutates later repeats by flipping notes, re-pitching them or shifting an octave.",
+        "A Turing-machine shift register feeds rhythm, scale degree, accent, slide and octave from separate bit fields. Phase controls how often the feedback bit flips."
+    ];
+    property <[Opt]> opts: [
+        { label: "Steps", min: 1, max: root.max-steps, value: root.steps, text: root.round-steps ? "\{Math.round(root.steps)}" : "\{Math.round(root.steps * 1000) / 1000}", step: root.round-steps ? 1 : 0.01 },
+        { label: root.pulse-label(root.mode), min: 0, max: root.pulses-max(root.mode), value: Math.min(root.pulses, root.pulses-max(root.mode)), text: "\{Math.round(Math.min(root.pulses, root.pulses-max(root.mode)))}", step: 1 },
+        { label: "Rotate", min: 0, max: Math.max(root.cells - 1, 0), value: Math.min(root.rotate, Math.max(root.cells - 1, 0)), text: "\{Math.round(Math.min(root.rotate, Math.max(root.cells - 1, 0)))}", step: 1 },
+        { label: root.density-label(root.mode), min: 0, max: 1, value: root.density, text: "\{Math.round(root.density * 100)}%", step: 0.01 },
+        { label: "Seed", min: 0, max: 1, value: root.seed, text: "\{Math.round(root.seed * 1000) / 1000}", step: 0.001 },
+        { label: root.phase-label(root.mode), min: 0, max: 1, value: root.phase, text: "\{Math.round(root.phase * 360)}°", step: 0.01 },
+        { label: root.osc-label(root.mode), min: root.mode == 16 ? 1 : 0.125, max: root.mode == 16 ? 16 : 8, value: root.mode == 16 ? Math.max(root.osc-rate, 1) : root.osc-rate, text: root.mode == 16 ? "\{Math.round(Math.max(root.osc-rate, 1))}" : "\{Math.round(root.osc-rate * 100) / 100}", step: root.mode == 16 ? 1 : 0.125 },
+        { label: root.ca-label(root.mode), min: 0, max: 255, value: root.ca-rule, text: root.mode == 16 ? "\{Math.round(root.ca-rule / 255 * 100)}%" : "\{Math.round(root.ca-rule)}", step: 1 },
+        { label: "Probability", min: 0, max: 1, value: root.probability, text: "\{Math.round(root.probability * 100)}%", step: 0.01 },
+        { label: "Velocity", min: 0.01, max: 1, value: root.velocity, text: "\{Math.round(root.velocity * 100)}%", step: 0.01 },
+        { label: root.regen-label(root.mode), min: 0, max: 256, value: root.regenerate-every, text: "\{Math.round(root.regenerate-every)}", step: 1 },
+        { label: "Symmetry", min: 1, max: 8, value: root.symmetry, text: "\{Math.round(root.symmetry)}", step: 1 },
+        { label: "Randomize after lengths", min: 0, max: 256, value: root.randomize-after-lengths, text: "\{Math.round(root.randomize-after-lengths)}", step: 1 },
+        { label: "Swing", min: 0, max: 0.5, value: root.swing, text: "\{Math.round(root.swing * 300)}%", step: 0.01 },
+        // Index 14 is the max-steps box in Settings, not a slider.
+        { label: "Max steps", min: 64, max: 1024, value: root.max-steps, text: "\{Math.round(root.max-steps)}", step: 1 },
+        { label: "Slide", min: 0, max: 1, value: root.slide, text: "\{Math.round(root.slide * 100)}%", step: 0.01 },
+        { label: "Accent", min: 0, max: 1, value: root.accent, text: "\{Math.round(root.accent * 100)}%", step: 0.01 },
+        { label: "Octave jump", min: 0, max: 1, value: root.octave, text: "\{Math.round(root.octave * 100)}%", step: 0.01 },
+        { label: "Root pitch class", min: 0, max: 11, value: root.root-pc, text: "\{root.root-pc}", step: 1 },
+        { label: "Octaves", min: 1, max: 6, value: root.octaves, text: "\{root.octaves}", step: 1 },
+        { label: "Root MIDI note", min: 0, max: 120, value: root.midi-root, text: "\{root.midi-root}", step: 1 },
+        { label: "EDO divisions", min: 1, max: 72, value: root.edo, text: "\{root.edo}", step: 1 },
+        { label: "Root cents", min: -50, max: 50, value: root.root-cents, text: "\{Math.round(root.root-cents)}c", step: 1 },
+        { label: "History beats", min: 1, max: 64, value: root.history-beats, text: "\{Math.round(root.history-beats)}", step: 1 }
+    ];
+
+    // Everything lives inside one fixed 860x760 coordinate space. The window never resizes;
+    // the matrix scrolls fixed-width cells instead of shrinking them, so nothing reflows.
+    Rectangle {
+        width: root.base-width; height: root.base-height;
+
+        // Faint graph paper belongs to the Sketch palette; the other themes keep the flat
+        // gradient. It sits below the layout so only the gaps between cards show it.
+        Rectangle {
+            visible: root.theme-index == 0;
+            for i in 38: Rectangle { y: (i + 1) * 20px; height: 1px; background: Theme.border.with-alpha(0.16); }
+            for i in 43: Rectangle { x: (i + 1) * 20px; width: 1px; height: parent.height; background: Theme.border.with-alpha(0.16); }
+        }
+
+    VerticalLayout {
+        padding: 14px; spacing: 8px;
+        HorizontalLayout {
+            height: 34px; spacing: 6px;
+            Text { text: "Nelody"; color: Theme.text; font-family: "FantasqueSansM Nerd Font Mono"; font-size: 24px; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
+            Text { visible: root.track-name != ""; text: "· \{root.track-name}"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; overflow: elide; }
+            Rectangle { horizontal-stretch: 1; }
+            Rectangle { width: 96px; height: 24px; border-radius: 4px; background: root.free-run ? Theme.c1.with-alpha(0.22) : Theme.control; Text { text: "Toggle free-run"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } free-touch := TouchArea { clicked => { root.toggle-free-run(); } } }
+            Text { text: root.free-run ? "FREE-RUN CLOCK: ON" : "SYNC: HOST TRANSPORT"; color: root.free-run ? Theme.c1 : Theme.text-muted; font-size: 9px; vertical-alignment: center; }
+            Rectangle { width: 112px; height: 30px; border-radius: 5px; background: generate-touch.has-hover ? Theme.hi : Theme.control; Text { text: root.generate-on ? "RE-GENERATE ↻" : "GENERATE ↻"; color: generate-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } generate-touch := TouchArea { clicked => { root.generate-pressed(); } } }
+            Rectangle { width: 112px; height: 30px; border-radius: 5px; background: randomize-touch.has-hover ? Theme.c3 : Theme.control; Text { text: "RANDOMIZE ⚄"; color: randomize-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } randomize-touch := TouchArea { clicked => { root.randomize-pressed(); } } }
+            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TouchArea { clicked => { root.settings-open = !root.settings-open; } } }
+        }
+        HorizontalLayout {
+            // 300px leaves room for the two- or three-sentence description plus the live math
+            // line without squeezing the option sliders.
+            height: 300px; spacing: 10px;
+            ModePanel { nodes: root.view-nodes; edges: root.view-edges; fills: root.view-fills; solid: root.view-solid; lines: root.view-lines; hand: root.view-hand; }
+            VerticalLayout {
+                spacing: 3px;
+                Rectangle {
+                    height: 30px; border-radius: 4px;
+                    background: mode-menu-touch.has-hover ? Theme.control-hover : Theme.control;
+                    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MODE  ·  \{root.mode-names[root.mode]}  ▾"; color: Theme.c1; font-size: 13px; font-weight: 700; vertical-alignment: center; overflow: elide; }
+                    mode-menu-touch := TouchArea { clicked => { root.mode-menu-open = !root.mode-menu-open; } }
+                }
+                Text { text: root.mode-help[root.mode]; color: Theme.text; font-size: 13px; wrap: word-wrap; }
+                // Live formula with the current snapshot substituted; pushed by Rust from the
+                // same helpers the generator calls, so it cannot drift from what is playing.
+                Text { text: root.mode-math; color: Theme.text-muted; font-size: 11px; wrap: word-wrap; }
+                Rectangle { height: 5px; }
+                Text { text: "GENERATOR OPTIONS"; color: Theme.text-muted; font-size: 9px; }
+                HorizontalLayout { spacing: 5px;
+                    OptSlider { opt: root.opts[0]; changed(v) => { root.set-opt(0, v); } }
+                    if root.shows-param(root.mode, 1): OptSlider { opt: root.opts[1]; changed(v) => { root.set-opt(1, v); } }
+                    OptSlider { opt: root.opts[2]; changed(v) => { root.set-opt(2, v); } }
+                    OptSlider { opt: root.opts[3]; changed(v) => { root.set-opt(3, v); } }
+                }
+                HorizontalLayout {
+                    spacing: 5px;
+                    OptSlider { opt: root.opts[4]; changed(v) => { root.set-opt(4, v); } }
+                    if root.shows-param(root.mode, 5): OptSlider { opt: root.opts[5]; changed(v) => { root.set-opt(5, v); } }
+                    if root.shows-param(root.mode, 6): OptSlider { opt: root.opts[6]; changed(v) => { root.set-opt(6, v); } }
+                    if root.shows-param(root.mode, 7): OptSlider { opt: root.opts[7]; changed(v) => { root.set-opt(7, v); } }
+                }
+                HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[8]; changed(v) => { root.set-opt(8, v); } } OptSlider { opt: root.opts[9]; changed(v) => { root.set-opt(9, v); } } }
+                HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[10]; changed(v) => { root.set-opt(10, v); } } if root.shows-param(root.mode, 11): OptSlider { opt: root.opts[11]; changed(v) => { root.set-opt(11, v); } } }
+                if root.mode == 4: HorizontalLayout {
+                    Text { text: "WAVE"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
+                    WaveGrid { horizontal-stretch: 1; options: root.wave-names; current: root.osc-wave; selected(i) => { root.set-osc-wave(i); } }
+                }
+            }
+        }
+        // Rate and swing are clock controls, so they get their own full-width row under the
+        // generator options instead of sharing the cramped options column.
+        HorizontalLayout {
+            height: 28px; spacing: 8px;
+            Text { text: "CLOCK"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; }
+            Text { text: "RATE"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
+            Selector { horizontal-stretch: 1; options: ["1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"]; current: root.rate; text-size: 9px; selected(i) => { root.set-rate(i); } }
+            Text { text: "SWING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
+            OptSlider { width: 230px; opt: root.opts[13]; changed(v) => { root.set-opt(13, v); } }
+        }
+        // The drum lane chips became the melody's tuning row: same height, same chips.
+        HorizontalLayout {
+            height: 28px; spacing: 5px;
+            Text { text: "TUNING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
+            tuning-root := NumBox { width: 120px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
+            TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name; active: true; cycled => { root.cycle-scale(); } }
+            tuning-oct := NumBox { width: 104px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
+            TuningChip { width: 96px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
+        }
+        if root.mode >= 14: HorizontalLayout {
+            height: 28px; spacing: 5px;
+            Text { text: "ACID"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
+            OptSlider { horizontal-stretch: 1; opt: root.opts[15]; changed(v) => { root.set-opt(15, v); } }
+            OptSlider { horizontal-stretch: 1; opt: root.opts[16]; changed(v) => { root.set-opt(16, v); } }
+            OptSlider { horizontal-stretch: 1; opt: root.opts[17]; changed(v) => { root.set-opt(17, v); } }
+        }
+        HorizontalLayout { spacing: 8px;
+            Text { horizontal-stretch: 1; text: "MIDI HISTORY  ·  flows right to left  ·  \{root.history-range}  ·  note height = pitch, bright = accent"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
+            Rectangle { width: 92px; height: 20px; border-radius: 3px; background: root.history-on ? Theme.c1.with-alpha(0.7) : Theme.control; Text { text: root.history-on ? "RECORD: ON" : "RECORD: OFF"; color: root.history-on ? Theme.on-accent : Theme.text; font-size: 8px; horizontal-alignment: center; vertical-alignment: center; } hist-touch := TouchArea { clicked => { root.toggle-history(); } } }
+        }
+        Rectangle {
+            height: 190px; border-radius: 4px;
+            background: Theme.surface; border-width: 1px; border-color: Theme.border;
+            clip: true;
+            Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-bg; fill: Theme.cell-off.with-alpha(0.55); }
+            Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-grid; fill: transparent; stroke: Theme.border; stroke-width: 0.7px; }
+            Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-notes; fill: Theme.c1; }
+        }
+        HorizontalLayout {
+            height: 27px; spacing: 5px;
+            Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.invert-on ? Theme.c2.with-alpha(0.35) : Theme.control; Text { text: "INVERT"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } invert-touch := TouchArea { clicked => { root.toggle-invert(); } } }
+            Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.mirror-on ? Theme.c3.with-alpha(0.35) : Theme.control; Text { text: "MIRROR"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } mirror-touch := TouchArea { clicked => { root.toggle-mirror(); } } }
+            OptSlider { width: 230px; opt: root.opts[12]; changed(v) => { root.set-opt(12, v); } }
+        }
+    }
+
+    // Mode picker: slides in from the right edge like Settings, so the editor keeps its
+    // full width when the list is closed.
+    if root.mode-menu-x < root.base-width: Rectangle {
+        x: 0px; y: 0px; width: root.base-width; height: root.base-height;
+        background: #00000044;
+        TouchArea { clicked => { root.mode-menu-open = false; } }
+    }
+    Rectangle {
+        x: root.mode-menu-x; y: 0px; width: 260px; height: root.base-height;
+        background: Theme.surface; border-width: 1px; border-color: Theme.border;
+        animate x { duration: 140ms; easing: ease-in-out; }
+        ScrollView {
+            width: parent.width; height: parent.height;
+            vertical-scrollbar-policy: as-needed;
+            VerticalLayout { spacing: 3px; padding: 12px;
+                Text { text: "MODE"; color: Theme.c1; font-size: 12px; font-weight: 700; }
+                for i in root.mode-names.length: Rectangle {
+                    height: 26px; border-radius: 3px;
+                    background: i == root.mode ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (menu-touch.has-hover ? Theme.control-hover : Theme.control);
+                    Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.mode-names[i]; color: i == root.mode ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; overflow: elide; }
+                    menu-touch := TouchArea { clicked => { root.set-mode(i); root.mode-menu-open = false; } }
+                }
+            }
+        }
+    }
+
+    // parked off-screen when closed, so the closing animation can play too; a bare
+    // `if settings-open` would make it vanish instead of sliding out.
+    // Tied to the animated position, not to the boolean: the scrim stays live while the panel
+    // is still travelling out, and is absent once it is parked, so it cannot swallow clicks
+    // meant for the editor underneath.
+    if root.settings-x < root.base-width: Rectangle {
+        x: 0px; y: 0px; width: root.base-width; height: root.base-height;
+        background: #00000066;
+        TouchArea { clicked => { root.settings-open = false; } }
+    }
+    Rectangle {
+        x: root.settings-x; y: 0px; width: 300px; height: root.base-height;
+        background: Theme.surface; border-width: 1px; border-color: Theme.border;
+        drop-shadow-blur: 16px; drop-shadow-color: #00000055; drop-shadow-offset-y: 4px;
+        animate x { duration: 140ms; easing: ease-in-out; }
+        VerticalLayout {
+            padding: 12px; spacing: 8px;
+            HorizontalLayout {
+                height: 24px;
+                Text { text: "SETTINGS"; color: Theme.c1; font-size: 12px; font-weight: 700; vertical-alignment: center; }
+                Rectangle { width: 74px; height: 22px; border-radius: 4px; background: close-settings.has-hover ? Theme.hi : Theme.control; Text { text: "CLOSE"; color: close-settings.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } close-settings := TouchArea { clicked => { root.settings-open = false; } } }
+            }
+            Text { text: "COLOUR THEME"; color: Theme.text-muted; font-size: 9px; }
+            Selector { options: ["Sketch", "Neon", "Lava", "Forest"]; current: root.theme-index; text-size: 10px; selected(i) => { root.set-theme(i); } }
+            Text { text: "CONFIG FILE"; color: Theme.text-muted; font-size: 9px; }
+            Text { text: root.settings-path; color: Theme.text-muted; font-size: 8px; wrap: word-wrap; }
+            Text { text: "STEP SPACING"; color: Theme.text-muted; font-size: 9px; }
+            // Turning rounding off lets the loop wrap between grid cells, so the pattern
+            // drifts against the step grid instead of landing on it.
+            Rectangle {
+                height: 26px; border-radius: 4px;
+                background: root.round-steps ? Theme.c1.with-alpha(0.8) : (round-touch.has-hover ? Theme.control-hover : Theme.control);
+                Text {
+                    x: 8px; width: parent.width - 16px;
+                    text: root.round-steps ? "WHOLE STEPS ONLY" : "FRACTIONAL STEPS";
+                    color: root.round-steps ? Theme.on-accent : Theme.text;
+                    font-size: 9px; vertical-alignment: center;
+                }
+                round-touch := TouchArea { clicked => { root.toggle-round-steps(); } }
+            }
+            Text {
+                text: "Whole steps snap the loop to the step grid. Fractional steps turn off in-plugin quantization, so the loop can wrap mid-step and drift against the grid.";
+                color: Theme.text-muted; font-size: 9px; wrap: word-wrap;
+            }
+            Text { text: "PATTERN LIMIT"; color: Theme.text-muted; font-size: 9px; }
+            max-steps-box := NumBox { label: "Max steps"; value: root.max-steps; minimum: 64; maximum: 1024; step: 1; changed(v) => { root.set-opt(14, v); } }
+            // The Pattern arrays are allocated for 1024 steps up front, so changing the ceiling
+            // never requires a host or plug-in restart.
+            Text { text: "Max steps applies immediately; no restart is needed."; color: Theme.text-muted; font-size: 9px; }
+            Text { text: "TUNING"; color: Theme.text-muted; font-size: 9px; }
+            midi-root-box := NumBox { label: "Root MIDI note"; value: root.midi-root; minimum: 0; maximum: 120; step: 1; changed(v) => { root.set-opt(20, v); } }
+            edo-box := NumBox { label: "EDO divisions"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
+            cents-box := NumBox { label: "Root cents"; value: root.root-cents; minimum: -50; maximum: 50; step: 1; changed(v) => { root.set-opt(22, v); } }
+            hist-box := NumBox { label: "History window (beats)"; value: root.history-beats; minimum: 1; maximum: 64; step: 1; changed(v) => { root.set-opt(23, v); } }
+            Rectangle {
+                height: 26px; border-radius: 4px;
+                background: root.history-on ? Theme.c1.with-alpha(0.8) : (hist-settings-touch.has-hover ? Theme.control-hover : Theme.control);
+                Text { x: 8px; width: parent.width - 16px; text: "MIDI HISTORY RECORDING"; color: root.history-on ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; }
+                hist-settings-touch := TouchArea { clicked => { root.toggle-history(); } }
+            }
+            Text { text: "TECHNICAL SUPPORT"; color: Theme.text-muted; font-size: 9px; }
+            Rectangle {
+                height: 26px; border-radius: 4px;
+                background: root.logging-on ? Theme.c1.with-alpha(0.8) : (logging-touch.has-hover ? Theme.control-hover : Theme.control);
+                Text { x: 8px; width: parent.width - 16px; text: root.logging-on ? "LOGGING: ON (nelody.log)" : "LOGGING: OFF"; color: root.logging-on ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; }
+                logging-touch := TouchArea { clicked => { root.toggle-logging(); } }
+            }
+            Text { text: "Writes mode and parameter snapshots to nelody.log in your home folder."; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
+            Text { text: "RANDOMIZE SCOPE"; color: Theme.text-muted; font-size: 9px; }
+            // Five bits of one host parameter (`randomize_scope`). Off keeps that group's
+            // current values; on lets RANDOMIZE rewrite it.
+            HorizontalLayout { spacing: 4px;
+                ScopeChip { label: "MODE"; active: root.scope-mode; toggled => { root.toggle-scope(0); } }
+                ScopeChip { label: "LENGTH"; active: root.scope-length; toggled => { root.toggle-scope(1); } }
+                ScopeChip { label: "RHYTHM"; active: root.scope-rhythm; toggled => { root.toggle-scope(2); } }
+                ScopeChip { label: "TONE"; active: root.scope-tone; toggled => { root.toggle-scope(3); } }
+                ScopeChip { label: "FEEL"; active: root.scope-feel; toggled => { root.toggle-scope(4); } }
+            }
+            Text { text: "MIDI EXPORT"; color: Theme.text-muted; font-size: 9px; }
+            Rectangle {
+                height: 26px; border-radius: 4px;
+                background: Theme.control; border-width: 1px; border-color: Theme.border;
+                midi-input := TextInput {
+                    x: 6px; width: parent.width - 12px; height: parent.height;
+                    text: root.midi-folder; color: Theme.text; font-size: 9px;
+                    vertical-alignment: center;
+                    edited => { root.set-midi-folder(self.text); }
+                    accepted => { root.set-midi-folder(self.text); }
+                }
+            }
+            Rectangle {
+                height: 26px; border-radius: 4px;
+                background: export-touch.has-hover ? Theme.c2 : Theme.control;
+                Text { text: "EXPORT MIDI (ONE LOOP)"; color: export-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                export-touch := TouchArea { clicked => { root.export-midi(); } }
+            }
+            Text { text: root.export-status; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
+            // Push the contact block to the bottom of the panel; the controls stay top-aligned.
+            Rectangle { vertical-stretch: 1; }
+            Text { text: "CREDITS / CONTACT"; color: Theme.text-muted; font-size: 9px; }
+            Text { text: "\{root.credit-author}  ·  Nelody"; color: Theme.text; font-size: 10px; }
+            TextInput { read-only: true; text: root.credit-website; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
+            TextInput { read-only: true; text: root.credit-github; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
+            TextInput { read-only: true; text: root.credit-support; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
+            TextInput { read-only: true; text: root.credit-email; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
+        }
+    }
+    }
+}

@@ -1,0 +1,42 @@
+[package]
+name = "nelody"
+version = "0.8.0"
+edition = "2021"
+description = "Algorithmic melodic MIDI sequencer plug-in (CLAP/VST3), Rust-based"
+license = "GPL-3.0-or-later"
+build = "build.rs"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+# Debug builds abort if `process()` allocates (invariant #1 in AGENTS.md). Off by default: it
+# installs a global allocator, and it conflicts with the counting allocator used by the tests.
+assert_process_allocs = ["nice-plug/assert_process_allocs"]
+
+[dependencies]
+# Pinned to a commit: the nice-plug repo has no stable release for this API line (crates.io
+# 0.4.x is a different, baseview-0.4 based editor API). See docs/ARCHITECTURE.md.
+nice-plug = { git = "https://github.com/AlexCharlton/nice-plug.git", rev = "50fed0ebabc3b880015d2a06e9436e4220b548f6", default-features = false, features = ["vst3"] }
+slint-baseview = { path = "vendor/slint-baseview" }
+slint = { version = "=1.16.1", default-features = false, features = ["std", "compat-1-2"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[build-dependencies]
+slint-build = "=1.16.1"
+
+[lints.clippy]
+needless_range_loop = "allow"
+manual_is_multiple_of = "allow"
+unusual_byte_groupings = "allow"
+redundant_closure = "allow"
+needless_borrow = "allow"
+
+[workspace]
+members = ["xtask"]
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+codegen-units = 1
