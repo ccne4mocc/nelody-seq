@@ -389,19 +389,28 @@ fn dice_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
 
 /// Logistic panel: the map's parabola and the orbit points the generator actually visited.
 fn logistic_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
-    let r = logistic_r(0.65) as f32;
-    let map = |x: f32| (r * x * (1.0 - x)).clamp(0.0, 1.0);
-    let mut started = false;
-    for k in 0..=80 {
-        let x = k as f32 / 80.0;
-        let px = 12.0 + x * (P - 24.0);
-        let py = 12.0 + map(x) * (P - 24.0);
-        if !started { mv(&mut v.edges, px, py); started = true; } else { ln(&mut v.edges, px, py) }
+    let r = logistic_r(0.65);
+    let (bx, by, w, hgt) = (18.0, P - 63.0, P - 36.0, P - 85.0);
+    mv(&mut v.edges, bx, by); ln(&mut v.edges, bx + w, by);
+    mv(&mut v.edges, bx, by); ln(&mut v.edges, bx, by - hgt);
+    for s in 0..=48 {
+        let x = s as f32 / 48.0;
+        let y = (r * x as f64 * (1.0 - x as f64)) as f32;
+        let px = bx + x * w;
+        let py = by - y * hgt;
+        if s == 0 { mv(&mut v.edges, px, py); } else { ln(&mut v.edges, px, py); }
     }
     for i in 0..n.saturating_sub(1) {
-        if !pat.hit[i] { continue; }
-        let a = (12.0 + pat.orbit[i] * (P - 24.0), 12.0 + pat.orbit[i + 1] * (P - 24.0));
-        v.nodes.push(Node { x: a.0, y: a.1, r: 3.0, on: true, cur: cur == i as i32, label: String::new() });
+        let x = bx + pat.orbit[i] * w;
+        let y = by - pat.orbit[i + 1] * hgt;
+        let on = pat.hit[i];
+        v.nodes.push(Node { x, y, r: if on { 4.0 } else { 2.0 }, on, cur: cur == i as i32, label: String::new() });
+    }
+    // slim orbit trace in the lower half
+    for i in 0..n {
+        let ox = 12.0 + (i as f32 + 0.5) / n as f32 * (P - 24.0);
+        let oy = P - 12.0 - pat.orbit[i] * 32.0;
+        if i == 0 { mv(&mut v.lines, ox, oy); } else { ln(&mut v.lines, ox, oy); }
     }
 }
 
