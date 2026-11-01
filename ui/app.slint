@@ -760,7 +760,9 @@ export component AppWindow inherits Window {
             tuning-root := NumBox { width: 112px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
             // The scale list lives in a dropdown under this chip; the chip only shows the
             // current scale and opens the list.
-            TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.settings-open = false; root.mode-menu-open = false; } }
+            TuningChip { width: 160px; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.settings-open = false; root.mode-menu-open = false; } }
+            // Keep EDO/Oct/NTS on the right while the Scale field keeps its compact half width.
+            Rectangle { horizontal-stretch: 1; }
             edo-row := NumBox { width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
             tuning-oct := NumBox { width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
             TuningChip { width: 90px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
@@ -815,7 +817,7 @@ export component AppWindow inherits Window {
     }
     if root.tuning-open: DropdownList {
         x: root.tuning-menu-x; y: root.tuning-menu-y;
-        width: 300px; height: 300px;
+        width: 160px; height: 300px;
         options: root.scale-names; current: root.scale-index;
         selected(i) => { root.set-scale(i); root.tuning-open = false; }
     }
