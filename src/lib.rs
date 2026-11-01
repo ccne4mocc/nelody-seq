@@ -332,6 +332,11 @@ impl MelodyParams {
         cell_count_for(self.steps.value(), self.round_steps.value(), self.step_ceiling())
     }
 
+    /// Longest history window the current pattern ceiling can fill, in 4/4 bars.
+    pub(crate) fn history_bars_ceiling(&self) -> f32 {
+        history_bars_ceiling(self.step_ceiling(), self.rate.value())
+    }
+
     pub(crate) fn gen_params(&self) -> GenParams {
         let cap = self.step_ceiling();
         let raw = self.steps.value().clamp(1.0, cap as f32);
@@ -385,6 +390,13 @@ fn cell_count_for(raw: f32, snap: bool, ceiling: usize) -> i32 {
     let cap = ceiling.clamp(MIN_MAX_STEPS, MAX_STEPS) as f32;
     let raw = raw.clamp(1.0, cap);
     (if snap { raw.round() } else { raw.ceil() }).clamp(1.0, cap) as i32
+}
+
+/// Longest history window, in 4/4 bars, that the current pattern ceiling can fill. One bar is
+/// four beats, and `Rate::steps_per_beat` says how many grid cells make a beat.
+pub(crate) fn history_bars_ceiling(max_steps: usize, rate: Rate) -> f32 {
+    let steps_per_bar = (rate.steps_per_beat() * 4.0).max(0.001);
+    (max_steps as f64 / steps_per_bar).max(1.0) as f32
 }
 
 /// Lock-free signals shared between the audio scheduler and the editor.
@@ -864,6 +876,14 @@ mod tests {
         ] {
             assert!((rate.steps_per_beat() - spb).abs() < 1e-12, "{rate:?}");
         }
+    }
+
+    #[test]
+    fn history_ceiling_tracks_the_pattern_length_in_bars() {
+        assert_eq!(history_bars_ceiling(1024, Rate::Sixteenth), 64.0);
+        assert_eq!(history_bars_ceiling(64, Rate::Sixteenth), 4.0);
+        assert_eq!(history_bars_ceiling(1024, Rate::Quarter), 256.0);
+        assert_eq!(history_bars_ceiling(1024, Rate::QuarterDotted), 384.0);
     }
 
     #[test]

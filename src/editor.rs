@@ -116,6 +116,13 @@ fn apply_mode(c: &Arc<dyn GuiContext>, p: &MelodyParams, index: i32) {
     if p.pulses.value() > limit { set(c, &p.pulses, limit); }
 }
 
+/// Change clock rate and keep the history window inside the new pattern-length ceiling.
+fn apply_rate(c: &Arc<dyn GuiContext>, p: &MelodyParams, rate: Rate) {
+    set(c, &p.rate, rate);
+    let max = crate::history_bars_ceiling(p.step_ceiling(), rate);
+    if p.history_bars.value() > max { set(c, &p.history_bars, max); }
+}
+
 /// Slider and spin-box paths share this so clamping stays identical.
 fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
     let snap = p.round_steps.value();
@@ -129,6 +136,8 @@ fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
         let limit = pulse_limit(p.mode.value(), cells);
         if p.pulses.value() > limit { set(c, &p.pulses, limit); }
         if p.rotate.value() >= cells { set(c, &p.rotate, cells - 1); }
+        let history_max = crate::history_bars_ceiling(cap as usize, p.rate.value());
+        if p.history_bars.value() > history_max { set(c, &p.history_bars, history_max); }
         return;
     }
     let cap = p.step_ceiling();
@@ -162,7 +171,7 @@ fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
         20 => set(c, &p.midi_root, (value.round() as i32).clamp(0, 120)),
         21 => set(c, &p.edo, (value.round() as i32).clamp(1, crate::tuning::MAX_EDO as i32)),
         22 => set(c, &p.root_cents, value.clamp(-50.0, 50.0)),
-        23 => set(c, &p.history_bars, value.clamp(1.0, MAX_STEPS as f32)),
+        23 => set(c, &p.history_bars, value.clamp(1.0, p.history_bars_ceiling())),
         _ => {},
     }
 }
@@ -240,6 +249,8 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
         set(ctx, &p.probability, probability.clamp(0.0, 1.0));
         set(ctx, &p.velocity, velocity.clamp(0.01, 1.0));
         set(ctx, &p.rate, rate);
+        let history_max = crate::history_bars_ceiling(p.step_ceiling(), rate);
+        if p.history_bars.value() > history_max { set(ctx, &p.history_bars, history_max); }
         set(ctx, &p.slide, slide);
         set(ctx, &p.accent, accent);
         set(ctx, &p.octave, octave);
@@ -390,15 +401,15 @@ impl Editor for SlintEditor {
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_step_rate(move |delta| set(&c, &p.rate, p.rate.value().stepped(delta)));
+                ui.on_step_rate(move |delta| apply_rate(&c, &p, p.rate.value().stepped(delta)));
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_set_rate(move |v| {
                     let last = <Rate as Enum>::variants().len() as i32 - 1;
-                    set(&c, &p.rate, Rate::from_index(v.clamp(0, last) as usize));
+                    apply_rate(&c, &p, Rate::from_index(v.clamp(0, last) as usize));
                 });
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_rate_submitted(move |text| {
-                    if let Some(rate) = Rate::parse(text.as_str()) { set(&c, &p.rate, rate); }
+                    if let Some(rate) = Rate::parse(text.as_str()) { apply_rate(&c, &p, rate); }
                 });
             }
             {
@@ -587,7 +598,11 @@ impl Editor for SlintEditor {
             ui.set_edo(p.edo.value());
             ui.set_edo_active(p.scale.value() == Tuning::Edo);
             ui.set_root_cents(p.root_cents.value());
-            ui.set_history_bars(p.history_bars.value());
+            let history_max = p.history_bars_ceiling();
+            let history_bars = p.history_bars.value().min(history_max);
+            if p.history_bars.value() > history_max { set(&update_context, &p.history_bars, history_max); }
+            ui.set_history_bars(history_bars);
+            ui.set_history_max_bars(history_max);
             ui.set_nts_on(p.nts.value());
             ui.set_slide(p.slide.value());
             ui.set_accent(p.accent.value());

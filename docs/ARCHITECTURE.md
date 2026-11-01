@@ -112,7 +112,9 @@ The bottom panel is a piano roll that scrolls right to left. `Shared::record` pa
 snapshots the ring and `history::build` pairs NoteOn/NoteOff into segments, clips them to the
 window, and emits three SVG paths (black-key row shading, C-row grid, note rectangles with
 octave-aligned ranges of at least two octaves). The window is `history_bars × 4 × 60 ms/BPM`
-(four beats per 4/4 bar), so the same setting reads the same at any tempo. A cent offset shifts the note inside its own
+(four beats per 4/4 bar), so the same setting reads the same at any tempo. Its ceiling is the
+pattern's own length in bars: `max_steps / (4 × rate.steps_per_beat())`. Changing Max Steps or
+the clock rate clamps the history window instead of leaving an impossible value in place. A cent offset shifts the note inside its own
 row, so NTS pitches are visible as microtonal offsets. Pairing keeps the ring's emission order
 for events in the same millisecond, and a NoteOff whose NoteOn already fell out of the ring is
 ignored rather than synthesised from the window edge; either mistake drew phantom notes
