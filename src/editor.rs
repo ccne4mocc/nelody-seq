@@ -573,6 +573,7 @@ impl Editor for SlintEditor {
             ui.set_octaves(p.octaves.value());
             ui.set_midi_root(p.midi_root.value());
             ui.set_edo(p.edo.value());
+            ui.set_edo_active(p.scale.value() == Tuning::Edo);
             ui.set_root_cents(p.root_cents.value());
             ui.set_history_beats(p.history_beats.value());
             ui.set_nts_on(p.nts.value());

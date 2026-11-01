@@ -501,6 +501,8 @@ export component AppWindow inherits Window {
     in property <int> octaves: 2;
     in property <int> midi-root: 48;
     in property <int> edo: 12;
+    // EDO only changes a scale when the Equal (EDO) table is active.
+    in property <bool> edo-active: false;
     in property <float> root-cents: 0;
     in property <float> history-beats: 16;
     in property <bool> nts-on: true;
@@ -763,7 +765,7 @@ export component AppWindow inherits Window {
             TuningChip { width: 160px; label: "SCALE"; value: root.tuning-name + "  ▾"; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.settings-open = false; root.mode-menu-open = false; } }
             // Keep EDO/Oct/NTS on the right while the Scale field keeps its compact half width.
             Rectangle { horizontal-stretch: 1; }
-            edo-row := NumBox { width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
+            edo-row := NumBox { visible: root.edo-active; width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
             tuning-oct := NumBox { width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
             TuningChip { width: 90px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
         }

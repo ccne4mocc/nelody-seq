@@ -182,8 +182,9 @@ variation comes from Generate, Randomize and the knobs.
   800×200 viewbox inside a 190px card, driven entirely from `history::build` output.
 - The tuning row chips (Root/Scale/EDO/Oct/NTS) replace the drum-lane chips. The Scale chip
   opens a dropdown list under the row; the mode header opens the same kind of list under
-  itself. EDO divisions sit in this row so custom equal divisions stay beside the scale. The
-  acid slider row (Slide/Accent/Octave) appears only for `mode >= 14`.
+  itself. EDO divisions sit in this row so custom equal divisions stay beside the scale, and
+  the EDO field is only visible while the Equal (EDO) table is selected. The acid slider row
+  (Slide/Accent/Octave) appears only for `mode >= 14`.
 - MIDI history always records; there is no record toggle to fall out of sync with the panel.
 - Generator option strips click/drag for a value and wheel for one step; double-click opens an
   inline numeric field in the strip's own display units. `OptEdit` in `app.slint` holds the one
