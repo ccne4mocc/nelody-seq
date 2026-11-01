@@ -159,7 +159,6 @@ pub struct MelodyParams {
     #[id = "oct_jump"] pub octave: FloatParam,
     /// Send microtonal tuning offsets as pitch bend.
     #[id = "nts"] pub nts: BoolParam,
-    #[id = "history"] pub history: BoolParam,
     #[id = "history_beats"] pub history_beats: FloatParam,
 }
 
@@ -223,7 +222,6 @@ impl Default for MelodyParams {
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
             nts: BoolParam::new("Microtonal Pitch Bend (NTS)", true),
-            history: BoolParam::new("MIDI History", true),
             history_beats: FloatParam::new("History Beats", 16.0, FloatRange::Linear { min: 1.0, max: 64.0 }),
         }
     }
@@ -731,7 +729,7 @@ mod tests {
             "randomize_scope", "theme", "seed", "phase", "osc_rate", "osc_wave", "ca_rule",
             "symmetry", "rate", "gate", "swing", "generate", "invert", "mirror", "logging",
             "freerun", "root", "scale", "edo", "root_cents", "midi_root", "octaves", "slide",
-            "accent", "oct_jump", "nts", "history", "history_beats",
+            "accent", "oct_jump", "nts", "history_beats",
         ] {
             assert!(ids.contains(&expected), "missing parameter {expected}");
         }

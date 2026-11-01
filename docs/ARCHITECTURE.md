@@ -142,7 +142,7 @@ first-run default is the host process working directory.
 | Melody / tuning | `root` (pitch class), `scale` (12 tables or EDO), `octaves`, `edo`, `root_cents`, `midi_root`, `nts` | Pitch mapping. The tonic is `midi_root + root` semitones; non-12-TET detune is emitted as pitch bend while `nts` is on |
 | Acid flags | `slide`, `accent`, `oct_jump` | Per-note probabilities for the five acid modes. They only add or remove flags — never reshuffle the line (tested) |
 | Post-transforms | `invert`, `mirror`, `rotate` | Applied to the finished line: hit inversion, retrograde, circular rotation |
-| History | `history`, `history_beats` | Whether notes are recorded into the piano roll and the window width in beats |
+| History | `history_beats` | Window width of the always-recording piano-roll history, in beats |
 
 `velocity` multiplies each step's `Pattern.acc` (step accents × acid accent flags), clamped to
 1.0. `expressive quantization` such as per-step velocity drag is intentionally absent:
@@ -181,7 +181,7 @@ variation comes from Generate, Randomize and the knobs.
   opens the left-hand tuning panel, mirroring the right-hand Settings panel; EDO divisions sit
   in this row so custom equal divisions stay beside the scale. The acid slider row
   (Slide/Accent/Octave) appears only for `mode >= 14`.
-- The bottom record chip and the Settings MIDI-history toggle mirror the `history` parameter.
+- MIDI history always records; there is no record toggle to fall out of sync with the panel.
 - Generator option strips click/drag for a value and wheel for one step; double-click opens an
   inline numeric field in the strip's own display units. `OptEdit` in `app.slint` holds the one
   active edit session so only one strip is editable at a time.

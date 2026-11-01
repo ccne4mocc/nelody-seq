@@ -413,8 +413,6 @@ impl Editor for SlintEditor {
                 });
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_toggle_nts(move || set(&c, &p.nts, !p.nts.value()));
-                let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_toggle_history(move || set(&c, &p.history, !p.history.value()));
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
@@ -571,7 +569,6 @@ impl Editor for SlintEditor {
             ui.set_root_cents(p.root_cents.value());
             ui.set_history_beats(p.history_beats.value());
             ui.set_nts_on(p.nts.value());
-            ui.set_history_on(p.history.value());
             ui.set_slide(p.slide.value());
             ui.set_accent(p.accent.value());
             ui.set_octave(p.octave.value());

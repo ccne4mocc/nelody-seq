@@ -424,7 +424,6 @@ export component AppWindow inherits Window {
     in property <float> root-cents: 0;
     in property <float> history-beats: 16;
     in property <bool> nts-on: true;
-    in property <bool> history-on: true;
     in property <float> slide: 0.25;
     in property <float> accent: 0.3;
     in property <float> octave: 0.15;
@@ -451,7 +450,6 @@ export component AppWindow inherits Window {
     callback cycle-scale();
     callback set-scale(int);
     callback toggle-nts();
-    callback toggle-history();
     callback toggle-free-run();
     callback toggle-invert();
     callback toggle-mirror();
@@ -830,12 +828,6 @@ export component AppWindow inherits Window {
             midi-root-box := NumBox { label: "Root MIDI note"; value: root.midi-root; minimum: 0; maximum: 120; step: 1; changed(v) => { root.set-opt(20, v); } }
             cents-box := NumBox { label: "Root cents"; value: root.root-cents; minimum: -50; maximum: 50; step: 1; changed(v) => { root.set-opt(22, v); } }
             hist-box := NumBox { label: "History window (beats)"; value: root.history-beats; minimum: 1; maximum: 64; step: 1; changed(v) => { root.set-opt(23, v); } }
-            Rectangle {
-                height: 26px; border-radius: 4px;
-                background: root.history-on ? Theme.c1.with-alpha(0.8) : (hist-settings-touch.has-hover ? Theme.control-hover : Theme.control);
-                Text { x: 8px; width: parent.width - 16px; text: "MIDI HISTORY RECORDING"; color: root.history-on ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; }
-                hist-settings-touch := TouchArea { clicked => { root.toggle-history(); } }
-            }
             Text { text: "TECHNICAL SUPPORT"; color: Theme.text-muted; font-size: 9px; }
             Rectangle {
                 height: 26px; border-radius: 4px;
