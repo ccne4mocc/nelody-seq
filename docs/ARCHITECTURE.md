@@ -197,10 +197,17 @@ variation comes from Generate, Randomize and the knobs.
 - Scrolling over the current-mode header steps to the next/previous mode and clamps at the
   ends (`step_mode` in `src/editor.rs`). The open mode list keeps the wheel for its own
   scrolling.
+- Text entry needs more than Slint focus in a hosted editor: the baseview window claims native
+  keyboard focus on pointer press, and inline editors focus/select-all on the next timer tick
+  after their overlay becomes visible. Option strips and the clock field also detect two
+  presses within 500 ms locally, because some host backends do not deliver Slint a usable
+  double-click count.
 - Host-stolen keys (VST3 only): editing keys are claimed only while a Slint text field has
   focus; `text-focused` in `app.slint` must list every text field, including the tuning
   NumBoxes, the clock `RateField`, and the inline generator-option editor
-  (`OptEdit.index >= 0`).
+  (`OptEdit.index >= 0`). The same flag calls
+  `SlintWindowHandler::set_prevent_key_event_propagation`, so character keys do not also reach
+  the host while a field is focused.
 - Technical logging writes `~/nelody.log` from the editor thread only, when `logging` is on.
 
 ## Extension points

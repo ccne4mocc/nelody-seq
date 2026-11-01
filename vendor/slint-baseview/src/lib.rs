@@ -479,7 +479,7 @@ impl<T: slint::ComponentHandle> baseview::WindowHandler for SlintWindowHandler<T
         }
     }
 
-    fn on_event(&mut self, _window: &mut baseview::Window, event: Event) -> EventStatus {
+    fn on_event(&mut self, window: &mut baseview::Window, event: Event) -> EventStatus {
         match event {
             Event::Mouse(mouse_event) => {
                 let slint_event = match mouse_event {
@@ -489,6 +489,11 @@ impl<T: slint::ComponentHandle> baseview::WindowHandler for SlintWindowHandler<T
                         WindowEvent::PointerMoved { position: pos }
                     }
                     baseview::MouseEvent::ButtonPressed { button, .. } => {
+                        // A parented editor window often receives the click without receiving
+                        // keyboard focus from the host. Slint then shows a focused TextInput
+                        // but no character keys arrive. Claiming focus here is what makes
+                        // click-then-type work in embedded DAW windows.
+                        window.focus();
                         let slint_button = match button {
                             baseview::MouseButton::Left => slint::platform::PointerEventButton::Left,
                             baseview::MouseButton::Right => {
@@ -600,8 +605,14 @@ impl<T: slint::ComponentHandle> baseview::WindowHandler for SlintWindowHandler<T
                     self.handle_window_info(&info);
                     EventStatus::Captured
                 }
-                BaseviewWindowEvent::Focused => EventStatus::Ignored,
-                BaseviewWindowEvent::Unfocused => EventStatus::Ignored,
+                BaseviewWindowEvent::Focused => {
+                    self.adapter.window.dispatch_event(WindowEvent::WindowActiveChanged(true));
+                    EventStatus::Captured
+                }
+                BaseviewWindowEvent::Unfocused => {
+                    self.adapter.window.dispatch_event(WindowEvent::WindowActiveChanged(false));
+                    EventStatus::Captured
+                }
                 BaseviewWindowEvent::WillClose => EventStatus::Ignored,
             },
         }

@@ -144,7 +144,20 @@ component OptSlider inherits Rectangle {
     height: 25px;
     border-radius: 4px; background: Theme.control; clip: true;
     property <bool> editing: root.index >= 0 && OptEdit.index == root.index;
+    property <bool> focus-pending: false;
+    // Backend-independent double-click detection. Some host backends do not deliver a usable
+    // click count, so two presses inside this window are treated as a double-click.
+    property <bool> click-armed: false;
+    property <length> first-click-x: 0px;
+    property <length> first-click-y: 0px;
 
+    function begin-entry() {
+        OptEdit.draft = root.opt.number;
+        OptEdit.index = root.index;
+        // The overlay becomes visible on the next layout pass; focusing it in this callback
+        // can land on an element that is not visible yet.
+        root.focus-pending = true;
+    }
     // Typed values use the same units the strip displays: 65 means 65% for Density, 180 means
     // 180° for Phase, and scale maps that back to the parameter range before clamping.
     function commit-entry() {
@@ -168,6 +181,16 @@ component OptSlider inherits Rectangle {
     ta := TouchArea {
         pointer-event(e) => {
             if (!root.editing && e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                if (root.click-armed
+                    && Math.abs(ta.mouse-x - root.first-click-x) < 12px
+                    && Math.abs(ta.mouse-y - root.first-click-y) < 12px) {
+                    root.click-armed = false;
+                    root.begin-entry();
+                } else {
+                    root.click-armed = true;
+                    root.first-click-x = ta.mouse-x;
+                    root.first-click-y = ta.mouse-y;
+                }
                 root.changed(root.opt.min + Math.clamp(ta.mouse-x / ta.width, 0, 1) * (root.opt.max - root.opt.min));
             }
         }
@@ -176,11 +199,7 @@ component OptSlider inherits Rectangle {
         // this control is hovered; snap to the parameter's step grid first, then move exactly
         // one step per wheel notch. While the editor is open the strip must leave both alone.
         double-clicked => {
-            if (!root.editing && root.index >= 0) {
-                OptEdit.draft = root.opt.number;
-                OptEdit.index = root.index;
-                entry.focus();
-            }
+            if (!root.editing && root.index >= 0) { root.begin-entry(); }
         }
         scroll-event(e) => {
             if (!root.editing && e.delta-y != 0px) {
@@ -212,6 +231,21 @@ component OptSlider inherits Rectangle {
                 return reject;
             }
         }
+    }
+    Timer {
+        interval: 1ms;
+        running: root.focus-pending && root.editing;
+        triggered => {
+            root.focus-pending = false;
+            entry.focus();
+            // Typing should replace the old value, not insert somewhere inside it.
+            entry.select-all();
+        }
+    }
+    Timer {
+        interval: 500ms;
+        running: root.click-armed;
+        triggered => { root.click-armed = false; }
     }
 }
 // Slint's SpinBox is <int>-only, so this carries fractional values such as 16.5 steps.
@@ -317,17 +351,38 @@ component RateField inherits Rectangle {
     border-radius: 4px; background: Theme.control; border-width: 1px; border-color: Theme.border;
     horizontal-stretch: 1;
     property <bool> edit-open: false;
+    property <bool> focus-pending: false;
+    property <bool> click-armed: false;
+    property <length> first-click-x: 0px;
+    property <length> first-click-y: 0px;
     in-out property <string> draft: "";
 
+    function begin-entry() {
+        root.draft = root.value;
+        root.edit-open = true;
+        // Same deferred focus as the generator strips: the field must be laid out before it
+        // can take keyboard focus.
+        root.focus-pending = true;
+    }
     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.label; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.value; color: Theme.text; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
     ta := TouchArea {
-        double-clicked => {
-            if (!root.edit-open) {
-                root.draft = root.value;
-                root.edit-open = true;
-                entry.focus();
+        pointer-event(e) => {
+            if (!root.edit-open && e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                if (root.click-armed
+                    && Math.abs(ta.mouse-x - root.first-click-x) < 12px
+                    && Math.abs(ta.mouse-y - root.first-click-y) < 12px) {
+                    root.click-armed = false;
+                    root.begin-entry();
+                } else {
+                    root.click-armed = true;
+                    root.first-click-x = ta.mouse-x;
+                    root.first-click-y = ta.mouse-y;
+                }
             }
+        }
+        double-clicked => {
+            if (!root.edit-open) { root.begin-entry(); }
         }
         scroll-event(e) => {
             if (!root.edit-open && e.delta-y != 0px) {
@@ -360,6 +415,21 @@ component RateField inherits Rectangle {
                 return reject;
             }
         }
+    }
+    Timer {
+        interval: 1ms;
+        running: root.focus-pending && root.edit-open;
+        triggered => {
+            root.focus-pending = false;
+            entry.focus();
+            // Typing should replace the old value, not insert somewhere inside it.
+            entry.select-all();
+        }
+    }
+    Timer {
+        interval: 500ms;
+        running: root.click-armed;
+        triggered => { root.click-armed = false; }
     }
 }
 

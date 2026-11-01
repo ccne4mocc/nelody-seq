@@ -602,7 +602,10 @@ impl Editor for SlintEditor {
                 c.gen_key = Some(gen_key);
             }
             // Read after the replayed keys were dispatched, so the host hook sees fresh focus.
-            update_shared.text_focus.store(ui.get_text_focused(), Relaxed);
+            let text_focused = ui.get_text_focused();
+            update_shared.text_focus.store(text_focused, Relaxed);
+            // Keep the host from acting on the same character keys Slint is inserting.
+            h.set_prevent_key_event_propagation(text_focused);
             let view_key = (gen_key, cur, p.root.value(), gen_key.osc_wave);
             if c.view_key != Some(view_key) {
                 let v = view::build(gen_key.kind, &c.pattern, c.pattern.steps, cur, p.root.value(), gen_key.osc_wave);
