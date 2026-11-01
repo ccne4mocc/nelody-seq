@@ -16,27 +16,27 @@ row back to its reference instead of guessing. Two references feed Nelody:
 The `Mode` enum in `src/modes.rs` is one list for host, generators and views. Acid starts at
 index 14 because the melody modes build the non-acid half of that split.
 
-| Index | Nelody mode | Origin | View in Nelody |
-|---:|---|---|---|
-| 0 | Euclidean | nDrums Euclidean (per-lane rings) collapsed to one ring + contour walk by 1/φ | Necklace ring, filled hit polygon, playhead hand |
-| 1 | Golomb Ruler | `_nMelody_old` Golomb | Ruler marks with every inter-mark gap as an arc |
-| 2 | Logistic Map | `_nMelody_old` Logistic | Parabola + the orbit points the generator visited |
-| 3 | Eulerian Walk | `_nMelody_old` Euler | Directed graph, Hierholzer circuit, rest vertex R |
-| 4 | Arnold Circle Map | `_nMelody_old` CircleMap | Phasor: outer circle, inner θ circle, unwrapped phase spiral |
-| 5 | Mozart Dice | `_nMelody_old` Dice (11-cell bank) | One cell per bar, rolled pitch as bar height |
-| 6 | Tonnetz Walk | nDrums Markov position filled by the melody project's Tonnetz | P/L/R lattice with visited triangles filled, walk line, note-name nodes |
-| 7 | Cellular Automaton | nDrums Cellular on one ring | CA space-time rings, selected generation solid, playhead column |
-| 8 | Markov Walk | nDrums Markov over the 7-degree melody graph | Graph over rest + 7 degrees, taken edges drawn |
-| 9 | Oscillator / Phase | nDrums Oscillator re-purposed: the sampled curve IS the pitch contour | Waveform curve + step dots + contour + playhead column |
-| 10 | L-System Grammar | Both (nDrums wording, `_nMelody_old` A/B contour mapping) | A/B word strip with A=bar/B=dot, contour over it |
-| 11 | Xenakis Sieve | nDrums Sieve with degree-per-residue-class melody | Three residue-class rows with member dots, mask shows which survive |
-| 12 | Fibonacci / Sturmian | nDrums Fibonacci turned melodic | Staircase of floor((i+1)α), onsets marked |
-| 13 | Bernoulli | nDrums Bernoulli | Coin dots: hits on the contour, misses on the baseline |
-| 14 | Acid Random | `_nMelody_old` AcidRandom | Acid piano roll |
-| 15 | Acid Euclid | `_nMelody_old` AcidEuclid (nesting Euclid for flags) | Acid piano roll |
-| 16 | Acid Markov | nDrums Markov position filled by the melody project's transition chains | Acid piano roll |
-| 17 | Acid Motif | `_nMelody_old` AcidMotif (mutating repeats) | Acid piano roll |
-| 18 | Acid Shift Register |Both lineage: nDrums L-System slot, `_nMelody_old` register distillation | Acid piano roll (register fields as rows) |
+| Index | Nelody mode | Group | Origin | View in Nelody |
+|---:|---|---|---|---|
+| 0 | Euclidean | Rhythm | nDrums Euclidean (per-lane rings) collapsed to one ring + contour walk by 1/φ | Necklace ring, filled hit polygon, playhead hand |
+| 1 | Golomb Ruler | Number Theory | `_nMelody_old` Golomb | Ruler marks with every inter-mark gap as an arc |
+| 2 | Logistic Map | Chaos | `_nMelody_old` Logistic | Parabola + the orbit points the generator visited |
+| 3 | Eulerian Walk | Geometric | `_nMelody_old` Euler | Directed graph, Hierholzer circuit, rest vertex R |
+| 4 | Arnold Circle Map | Chaos | `_nMelody_old` CircleMap | Phasor: outer circle, inner θ circle, unwrapped phase spiral |
+| 5 | Mozart Dice | Stochastic | `_nMelody_old` Dice (11-cell bank) | One cell per bar, rolled pitch as bar height |
+| 6 | Tonnetz Walk | Music Theory | nDrums Markov position filled by the melody project's Tonnetz | P/L/R lattice with visited triangles filled, walk line, note-name nodes |
+| 7 | Cellular Automaton | Cellular | nDrums Cellular on one ring | CA space-time rings, selected generation solid, playhead column |
+| 8 | Markov Walk | Stochastic | nDrums Markov over the 7-degree melody graph | Graph over rest + 7 degrees, taken edges drawn |
+| 9 | Oscillator / Phase | Rhythm | nDrums Oscillator re-purposed: the sampled curve IS the pitch contour | Waveform curve + step dots + contour + playhead column |
+| 10 | L-System Grammar | Rhythm | Both (nDrums wording, `_nMelody_old` A/B contour mapping) | A/B word strip with A=bar/B=dot, contour over it |
+| 11 | Xenakis Sieve | Number Theory | nDrums Sieve with degree-per-residue-class melody | Three residue-class rows with member dots, mask shows which survive |
+| 12 | Fibonacci / Sturmian | Number Theory | nDrums Fibonacci turned melodic | Staircase of floor((i+1)α), onsets marked |
+| 13 | Bernoulli | Stochastic | nDrums Bernoulli | Coin dots: hits on the contour, misses on the baseline |
+| 14 | Acid Random | Acid | `_nMelody_old` AcidRandom | Acid piano roll |
+| 15 | Acid Euclid | Acid | `_nMelody_old` AcidEuclid (nesting Euclid for flags) | Acid piano roll |
+| 16 | Acid Markov | Acid | nDrums Markov position filled by the melody project's transition chains | Acid piano roll |
+| 17 | Acid Motif | Acid | `_nMelody_old` AcidMotif (mutating repeats) | Acid piano roll |
+| 18 | Acid Shift Register | Acid |Both lineage: nDrums L-System slot, `_nMelody_old` register distillation | Acid piano roll (register fields as rows) |
 
 Everything else in Nelody's UI is either the nDrums design untouched (header, generate/
 randomize buttons, clock row, settings slide-in, credits, scope chips, 860×760 fixed window)
@@ -46,7 +46,7 @@ or the melody-specific replacements of the two drum-only slots:
 |---|---|
 | 8 drum-lane enable chips | Tuning row: Root NumBox, Scale chip, Octaves NumBox, NTS bend chip |
 | Velocity/Lane rows and the step matrix | Acid slider row (modes 14+: Slide, Accent, Octave jump) |
-| Pattern matrix card (bottom) | MIDI history card: `history-bg` / `history-grid` / `history-notes` in an 800×200 viewbox, right-to-left over `history_beats` |
+| Pattern matrix card (bottom) | MIDI history card: `history-bg` / `history-grid` / `history-notes` in an 800×200 viewbox, right-to-left over `history_bars` |
 | GM channel 10 / note map header line | MIDI channel 1 mono voice line |
 
 ## Mode-specific control meanings
