@@ -371,7 +371,7 @@ fn dice_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
 /// Logistic panel: the map's parabola and the orbit points the generator actually visited.
 fn logistic_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
     let r = logistic_r(0.65) as f32;
-    let map = |x: f32| 1.0 - (r * x * (1.0 - x)).clamp(0.0, 1.0);
+    let map = |x: f32| (r * x * (1.0 - x)).clamp(0.0, 1.0);
     let mut started = false;
     for k in 0..=80 {
         let x = k as f32 / 80.0;
@@ -381,9 +381,7 @@ fn logistic_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i3
     }
     for i in 0..n.saturating_sub(1) {
         if !pat.hit[i] { continue; }
-        let a = (12.0 + pat.orbit[i] * (P - 24.0), 12.0 + (1.0 - pat.orbit[i]) * (P - 24.0));
-        let b = (12.0 + pat.orbit[i + 1] * (P - 24.0), 12.0 + (1.0 - pat.orbit[i + 1]) * (P - 24.0));
-        line(&mut v.lines, a, b);
+        let a = (12.0 + pat.orbit[i] * (P - 24.0), 12.0 + pat.orbit[i + 1] * (P - 24.0));
         v.nodes.push(Node { x: a.0, y: a.1, r: 3.0, on: true, cur: cur == i as i32, label: String::new() });
     }
 }
