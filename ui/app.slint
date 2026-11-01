@@ -850,7 +850,6 @@ export component AppWindow inherits Window {
                     if root.shows-param(root.mode, 7): OptSlider { opt: root.opts[7]; index: 7; changed(v) => { root.set-opt(7, v); } }
                 }
                 HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[8]; index: 8; changed(v) => { root.set-opt(8, v); } } OptSlider { opt: root.opts[9]; index: 9; changed(v) => { root.set-opt(9, v); } } }
-                HorizontalLayout { spacing: 5px; OptSlider { opt: root.opts[10]; index: 10; changed(v) => { root.set-opt(10, v); } } if root.shows-param(root.mode, 11): OptSlider { opt: root.opts[11]; index: 11; changed(v) => { root.set-opt(11, v); } } }
                 if root.mode == 9: HorizontalLayout {
                     Text { text: root.osc-wave < root.wave-names.length ? "WAVE  ·  " + root.wave-names[root.osc-wave] : "WAVE"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
                     WaveGrid { horizontal-stretch: 1; paths: root.wave-paths; current: root.osc-wave; selected(i) => { root.set-osc-wave(i); } }
@@ -911,12 +910,13 @@ export component AppWindow inherits Window {
             height: 27px; spacing: 5px;
             Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.invert-on ? Theme.c2.with-alpha(0.35) : Theme.control; Text { text: "INVERT"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } invert-touch := TouchArea { clicked => { root.toggle-invert(); } } }
             Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.mirror-on ? Theme.c3.with-alpha(0.35) : Theme.control; Text { text: "MIRROR"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } mirror-touch := TouchArea { clicked => { root.toggle-mirror(); } } }
-            OptSlider { width: 230px; opt: root.opts[12]; index: 12; changed(v) => { root.set-opt(12, v); } }
+            OptSlider { width: 190px; opt: root.opts[12]; index: 12; changed(v) => { root.set-opt(12, v); } }
+            OptSlider { width: 240px; opt: root.opts[10]; index: 10; changed(v) => { root.set-opt(10, v); } }
             // Export lives with the history it exports, in the bottom-right corner of the
             // main view. Settings keeps only the destination folder.
             Text { horizontal-stretch: 1; height: 24px; text: root.export-status; color: Theme.text-muted; font-size: 9px; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
             Rectangle {
-                width: 150px; height: 24px; border-radius: 4px;
+                width: 140px; height: 24px; border-radius: 4px;
                 background: export-touch.has-hover ? Theme.c2 : Theme.control;
                 Text { text: "EXPORT MIDI"; color: export-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
                 export-touch := TouchArea { clicked => { root.export-midi(); } }
