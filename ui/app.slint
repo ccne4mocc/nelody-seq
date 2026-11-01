@@ -304,6 +304,8 @@ export component AppWindow inherits Window {
     in property <int> rate: 3;
     in property <int> osc-wave: 0;
     in property <[string]> wave-names;
+    in property <[string]> scale-names;
+    in property <int> scale-index: 0;
     in property <bool> scope-mode: true;
     in property <bool> scope-length: true;
     in property <bool> scope-rhythm: true;
@@ -371,6 +373,7 @@ export component AppWindow inherits Window {
     callback set-opt(int, float);
     callback toggle-round-steps();
     callback cycle-scale();
+    callback set-scale(int);
     callback toggle-nts();
     callback toggle-history();
     callback toggle-free-run();
@@ -579,7 +582,7 @@ export component AppWindow inherits Window {
             height: 28px; spacing: 5px;
             Text { text: "TUNING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
             tuning-root := NumBox { width: 120px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; changed(v) => { root.set-opt(18, v); } }
-            TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name; active: true; cycled => { root.cycle-scale(); } }
+            Selector { horizontal-stretch: 1; options: root.scale-names; current: root.scale-index; text-size: 9px; selected(i) => { root.set-scale(i); } }
             tuning-oct := NumBox { width: 104px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
             TuningChip { width: 96px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
         }

@@ -396,10 +396,8 @@ impl Editor for SlintEditor {
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_cycle_scale(move || {
-                    let n = <Tuning as Enum>::variants().len();
-                    let next = (p.scale.value().to_index() + 1) % n;
-                    set(&c, &p.scale, Tuning::from_index(next));
+                ui.on_set_scale(move |v| {
+                    set(&c, &p.scale, Tuning::from_index(v.max(0) as usize));
                 });
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_toggle_nts(move || set(&c, &p.nts, !p.nts.value()));
@@ -463,6 +461,9 @@ impl Editor for SlintEditor {
             }
             ui.set_wave_names(ModelRc::new(VecModel::from(
                 OscWave::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
+            )));
+            ui.set_scale_names(ModelRc::new(VecModel::from(
+                <Tuning as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));
             ui.set_settings_path(SharedString::from(crate::globals::config_path_display()));
             ui.set_credit_author(SharedString::from(crate::contact::AUTHOR));
@@ -547,6 +548,7 @@ impl Editor for SlintEditor {
             // Melody / tuning row.
             let scale_index = p.scale.value().to_index();
             ui.set_tuning_name(SharedString::from(<Tuning as Enum>::variants()[scale_index]));
+            ui.set_scale_index(scale_index as i32);
             ui.set_root_pc(p.root.value());
             ui.set_octaves(p.octaves.value());
             ui.set_midi_root(p.midi_root.value());
