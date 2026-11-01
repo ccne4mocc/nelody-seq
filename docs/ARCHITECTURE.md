@@ -189,6 +189,8 @@ variation comes from Generate, Randomize and the knobs.
   the EDO field is only visible while the Equal (EDO) table is selected. The acid slider row
   (Slide/Accent/Octave) appears only for `mode >= 14`.
 - MIDI history always records; there is no record toggle to fall out of sync with the panel.
+- Generate and regenerate-after-N bump `Shared::regen_pulse`; the editor turns each bump into a
+  single background gradient pulse. Randomize deliberately does not pulse.
 - Generator option strips click/drag for a value and wheel for one step; double-click opens an
   inline numeric field in the strip's own display units. `OptEdit` in `app.slint` holds the one
   active edit session so only one strip is editable at a time.

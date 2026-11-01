@@ -403,6 +403,9 @@ pub(crate) fn history_bars_ceiling(max_steps: usize, rate: Rate) -> f32 {
 pub struct Shared {
     pub current_step: AtomicI32,
     pub randomize_request: AtomicU32,
+    /// Bumped whenever Generate or regenerate-after-N actually swaps the pattern. The editor
+    /// turns each bump into one background pulse.
+    pub regen_pulse: AtomicU32,
     /// Last host tempo as `f32` bits, for the editor-side MIDI export and history window.
     pub tempo_bits: AtomicU32,
     /// Name of the DAW track hosting this instance, empty when the host does not say.
@@ -423,6 +426,7 @@ impl Default for Shared {
         Self {
             current_step: AtomicI32::new(-1),
             randomize_request: AtomicU32::new(0),
+            regen_pulse: AtomicU32::new(0),
             tempo_bits: AtomicU32::new(0),
             track_name: Mutex::new(String::new()),
             track_rev: AtomicU32::new(0),
@@ -649,7 +653,10 @@ impl Plugin for Nelody {
         while context.next_event().is_some() {} // This is a MIDI generator, not an input passthrough.
 
         let generated = p.generate.value();
-        if matches!(self.last_generate, Some(prev) if prev != generated) { p.variation.fetch_add(1, Relaxed); }
+        if matches!(self.last_generate, Some(prev) if prev != generated) {
+            p.variation.fetch_add(1, Relaxed);
+            self.shared.regen_pulse.fetch_add(1, Relaxed);
+        }
         self.last_generate = Some(generated);
         let initial_key = p.gen_params();
         if self.last_key != Some(initial_key) {
@@ -727,6 +734,7 @@ impl Plugin for Nelody {
                 }
                 if let Some(cycle) = regeneration_cycle_at(k, self.loop_length, every, self.last_regen_cycle) {
                     p.variation.fetch_add(1, Relaxed);
+                    self.shared.regen_pulse.fetch_add(1, Relaxed);
                     let next_key = p.gen_params();
                     self.pattern = generate(&next_key);
                     self.loop_length = next_key.length as f64;

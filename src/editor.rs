@@ -521,6 +521,7 @@ impl Editor for SlintEditor {
             (self.params.clone(), self.shared.clone(), cache, context.clone());
         let update_scale_cell = self.scale.clone();
         let last_randomize_request = AtomicU32::new(update_shared.randomize_request.load(Relaxed));
+        let last_regen_pulse = AtomicU32::new(update_shared.regen_pulse.load(Relaxed));
         // `u32::MAX` forces the first tick to publish whatever track name is already known.
         let last_track_rev = AtomicU32::new(u32::MAX);
         let update = move |h: &slint_baseview::SlintWindowHandler<AppWindow>, _window: &mut slint_baseview::Window| {
@@ -532,6 +533,10 @@ impl Editor for SlintEditor {
             }
             let p = &update_params;
             let ui = h.component();
+            let regen_pulse = update_shared.regen_pulse.load(Relaxed);
+            if last_regen_pulse.swap(regen_pulse, Relaxed) != regen_pulse {
+                ui.set_regen_pulse(true);
+            }
             // Replay editing keys the host would otherwise have kept for itself.
             let forwarded = update_shared.key_queue.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
             for (key, down) in forwarded {

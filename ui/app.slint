@@ -550,6 +550,11 @@ export component AppWindow inherits Window {
     // matrix when the host leaves a fractional value stored while snapping is on.
     property <int> cells: root.round-steps ? Math.round(root.steps) : Math.ceil(root.steps);
     in-out property <int> current-step: 0;
+    // One-shot background pulse when Generate or regenerate-after-N swaps the pattern.
+    in-out property <bool> regen-pulse: false;
+    changed regen-pulse => {
+        if (root.regen-pulse) { regen-off-timer.start(); }
+    }
     in property <float> pulses: 5;
     in property <float> rotate: 0;
     in property <float> density: 0.65;
@@ -790,6 +795,24 @@ export component AppWindow inherits Window {
             visible: root.theme-index == 0;
             for i in 38: Rectangle { y: (i + 1) * 20px; height: 1px; background: Theme.border.with-alpha(0.16); }
             for i in 43: Rectangle { x: (i + 1) * 20px; width: 1px; height: parent.height; background: Theme.border.with-alpha(0.16); }
+        }
+        // Sits behind the controls, so the pulse washes the interface background only.
+        Rectangle {
+            x: 0px; y: 0px; width: parent.width; height: parent.height;
+            opacity: 0;
+            background: @linear-gradient(135deg, Theme.c1 0%, Theme.c2 50%, Theme.c3 100%);
+            states [
+                pulse when root.regen-pulse: {
+                    opacity: 0.16;
+                    in { animate opacity { duration: 70ms; easing: ease-out; } }
+                    out { animate opacity { duration: 450ms; easing: ease-in-out; } }
+                }
+            ]
+        }
+        regen-off-timer := Timer {
+            interval: 120ms;
+            running: false;
+            triggered => { root.regen-pulse = false; }
         }
 
     VerticalLayout {
