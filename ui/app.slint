@@ -248,8 +248,9 @@ component OptSlider inherits Rectangle {
         triggered => { root.click-armed = false; }
     }
 }
-// Slint's SpinBox is <int>-only, so this carries fractional values such as 16.5 steps.
-// Text entry plus arrow keys plus wheel, with no pixel-density limit on the value.
+// Click-to-edit numeric field. The TextInput only exists while editing, so the wheel and the
+// +/- buttons keep working after a typed value is committed, and the display always follows
+// the host parameter instead of a stale TextInput binding.
 component NumBox inherits Rectangle {
     in property <string> label;
     in property <float> value: 0;
@@ -263,25 +264,53 @@ component NumBox inherits Rectangle {
     border-radius: 4px;
     background: Theme.control; border-width: 1px; border-color: Theme.border;
     horizontal-stretch: 1;
-    // True while the number field has keyboard focus; the root reads it so Rust can decide
-    // whether a key the host tried to keep is meant for typing.
-    out property <bool> editing: input.has-focus;
+    // True while the numeric editor is open; the root reads it so Rust can decide whether a
+    // key the host tried to keep is meant for typing.
+    out property <bool> editing: root.edit-open;
+    property <bool> edit-open: false;
+    property <bool> focus-pending: false;
+    in-out property <string> draft: "";
 
     function clamp-value(v: float) -> float {
         return Math.clamp(v, root.minimum, root.maximum);
     }
     function nudge(dir: float) {
-        root.changed(root.clamp-value(root.value + dir * root.step));
+        // A button can be pressed while the editor still holds the typed draft; use it as the
+        // base so the nudge applies on top of what was typed, not the previous host value.
+        let base = root.draft.is-float() ? root.draft.to-float() : root.value;
+        root.edit-open = false;
+        root.changed(root.clamp-value(base + dir * root.step));
     }
     function format-value(v: float) -> string {
         if (root.decimals <= 0) { return Math.round(v); }
         return Math.round(v * 100) / 100;
+    }
+    function begin-edit() {
+        root.draft = root.format-value(root.value);
+        root.edit-open = true;
+        root.focus-pending = true;
+    }
+    function commit-edit() {
+        if (root.edit-open) {
+            if (root.draft.is-float()) { root.changed(root.clamp-value(root.draft.to-float())); }
+            root.edit-open = false;
+        }
+    }
+    changed value => {
+        if (!root.edit-open) { root.draft = root.format-value(root.value); }
     }
 
     Text {
         x: 6px; width: parent.width - 12px;
         text: root.label;
         color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide;
+    }
+    Text {
+        visible: !root.edit-open;
+        x: 6px; width: parent.width - 42px; height: parent.height;
+        text: root.format-value(root.value);
+        color: Theme.text; font-size: 11px;
+        horizontal-alignment: right; vertical-alignment: center;
     }
     down := Rectangle {
         x: parent.width - 34px; y: 1px; width: 16px; height: parent.height - 2px;
@@ -295,46 +324,54 @@ component NumBox inherits Rectangle {
         Text { text: "+"; color: Theme.text; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
         up-touch := TouchArea { clicked => { root.nudge(1); } }
     }
-    // Wheel nudges anywhere on the control. Declared before `input` so it sits underneath the
-    // text field: clicks and typing still reach the TextInput, and since TextInput has no
-    // scroll handler the wheel falls through to this area.
-    wheel := TouchArea {
-        // Keep the wheel area off the two buttons: this TouchArea is declared after them, so a
-        // full-width one would sit on top and swallow every button click.
+    // Click the value to type; wheel anywhere outside the two buttons to nudge. The editor is
+    // declared on top while it is open and only covers the text part, so +/- stay clickable.
+    tap := TouchArea {
         x: 0px; y: 0px; width: parent.width - 34px; height: parent.height;
+        clicked => { if (!root.edit-open) { root.begin-edit(); } }
         scroll-event(e) => {
-            if (e.delta-y != 0px) {
+            if (!root.edit-open && e.delta-y != 0px) {
                 root.nudge(e.delta-y > 0px ? 1 : -1);
                 return accept;
             }
             return reject;
         }
     }
-    input := TextInput {
-        x: 6px; width: parent.width - 42px; height: parent.height;
-        color: Theme.text; font-size: 11px;
-        horizontal-alignment: right; vertical-alignment: center;
-        text: root.format-value(root.value);
-        // Typing is live but incomplete text must survive: a lone "-" or "1." is not an error,
-        // it is the beginning of a negative or fractional number. Resetting the field there made
-        // negative root cents impossible to type, so only complete numbers are committed.
-        edited => {
-            if (self.text.is-float()) { root.changed(root.clamp-value(self.text.to-float())); }
+    editor := Rectangle {
+        visible: root.edit-open;
+        x: 1px; y: 1px; width: parent.width - 35px; height: parent.height - 2px;
+        border-radius: 3px; background: Theme.surface; border-width: 1px; border-color: Theme.c2;
+        entry := TextInput {
+            x: 5px; y: 0px; width: parent.width - 10px; height: parent.height;
+            text: root.draft;
+            color: Theme.text; font-size: 11px;
+            horizontal-alignment: right; vertical-alignment: center;
+            edited => { root.draft = self.text; }
+            accepted => { root.commit-edit(); }
+            changed has-focus => {
+                if (!self.has-focus && root.edit-open) { root.commit-edit(); }
+            }
+            key-pressed(event) => {
+                if (event.text == Key.UpArrow) {
+                    if (root.draft.is-float()) { root.draft = root.format-value(root.clamp-value(root.draft.to-float() + root.step)); }
+                    return accept;
+                }
+                if (event.text == Key.DownArrow) {
+                    if (root.draft.is-float()) { root.draft = root.format-value(root.clamp-value(root.draft.to-float() - root.step)); }
+                    return accept;
+                }
+                if (event.text == Key.Escape) { root.edit-open = false; return accept; }
+                return reject;
+            }
         }
-        accepted => {
-            if (self.text.is-float()) { root.changed(root.clamp-value(self.text.to-float())); }
-            self.text = root.format-value(root.value);
-        }
-        changed has-focus => {
-            // Clicking a spin-box value selects the old number, so typing replaces it instead
-            // of appending digits to whatever was stored before.
-            if (self.has-focus) { self.select-all(); }
-        }
-        key-pressed(event) => {
-            if (event.text == Key.UpArrow) { root.nudge(1); return accept; }
-            if (event.text == Key.DownArrow) { root.nudge(-1); return accept; }
-            if (event.text == Key.Escape) { self.text = root.format-value(root.value); return accept; }
-            return reject;
+    }
+    Timer {
+        interval: 1ms;
+        running: root.focus-pending && root.edit-open;
+        triggered => {
+            root.focus-pending = false;
+            entry.focus();
+            entry.select-all();
         }
     }
 }
