@@ -691,7 +691,7 @@ export component AppWindow inherits Window {
             Rectangle {
                 width: 150px; height: 24px; border-radius: 4px;
                 background: export-touch.has-hover ? Theme.c2 : Theme.control;
-                Text { text: "EXPORT MIDI (ONE LOOP)"; color: export-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                Text { text: "EXPORT MIDI"; color: export-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
                 export-touch := TouchArea { clicked => { root.export-midi(); } }
             }
         }
