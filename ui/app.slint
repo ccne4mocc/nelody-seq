@@ -685,6 +685,15 @@ export component AppWindow inherits Window {
             Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.invert-on ? Theme.c2.with-alpha(0.35) : Theme.control; Text { text: "INVERT"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } invert-touch := TouchArea { clicked => { root.toggle-invert(); } } }
             Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.mirror-on ? Theme.c3.with-alpha(0.35) : Theme.control; Text { text: "MIRROR"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } mirror-touch := TouchArea { clicked => { root.toggle-mirror(); } } }
             OptSlider { width: 230px; opt: root.opts[12]; index: 12; changed(v) => { root.set-opt(12, v); } }
+            // Export lives with the history it exports, in the bottom-right corner of the
+            // main view. Settings keeps only the destination folder.
+            Text { horizontal-stretch: 1; height: 24px; text: root.export-status; color: Theme.text-muted; font-size: 9px; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+            Rectangle {
+                width: 150px; height: 24px; border-radius: 4px;
+                background: export-touch.has-hover ? Theme.c2 : Theme.control;
+                Text { text: "EXPORT MIDI (ONE LOOP)"; color: export-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                export-touch := TouchArea { clicked => { root.export-midi(); } }
+            }
         }
     }
 
@@ -828,7 +837,7 @@ export component AppWindow inherits Window {
                 ScopeChip { label: "TONE"; active: root.scope-tone; toggled => { root.toggle-scope(3); } }
                 ScopeChip { label: "FEEL"; active: root.scope-feel; toggled => { root.toggle-scope(4); } }
             }
-            Text { text: "MIDI EXPORT"; color: Theme.text-muted; font-size: 9px; }
+            Text { text: "MIDI EXPORT FOLDER"; color: Theme.text-muted; font-size: 9px; }
             Rectangle {
                 height: 26px; border-radius: 4px;
                 background: Theme.control; border-width: 1px; border-color: Theme.border;
@@ -840,13 +849,6 @@ export component AppWindow inherits Window {
                     accepted => { root.set-midi-folder(self.text); }
                 }
             }
-            Rectangle {
-                height: 26px; border-radius: 4px;
-                background: export-touch.has-hover ? Theme.c2 : Theme.control;
-                Text { text: "EXPORT MIDI (ONE LOOP)"; color: export-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
-                export-touch := TouchArea { clicked => { root.export-midi(); } }
-            }
-            Text { text: root.export-status; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
             // Push the contact block to the bottom of the panel; the controls stay top-aligned.
             Rectangle { vertical-stretch: 1; }
             Text { text: "CREDITS / CONTACT"; color: Theme.text-muted; font-size: 9px; }

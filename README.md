@@ -23,7 +23,8 @@ pitch slides, legato and accents travel over MIDI channel 1.
   modes 14+. Settings slide-in keeps the max-steps, root MIDI note, EDO, root cents, history
   window, recording and logging toggles.
 - **MIDI file export** of the current loop (mono, slide holds, swing) with the same
-  editor→`generate()` path the audio scheduler uses.
+  editor→`generate()` path the audio scheduler uses. The button sits under the MIDI history;
+  Settings only stores the folder.
 
 ## Build
 

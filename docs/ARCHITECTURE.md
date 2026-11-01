@@ -122,10 +122,11 @@ row, so NTS pitches are visible as microtonal offsets.
 `generate()` path as the preview, then flattens one complete loop: mono notes only, accent
 scaled by the global velocity, gate or slide hold, swing. Tempo comes from the last host
 tempo in `Shared::tempo_bits`, falling back to 120 BPM. Note-offs sort before note-ons at the
-same tick, so a retrigger cannot cut the incoming note. The export folder is typed in
-Settings, stored in user-global settings, created if missing, and opened after a successful
-write. Because CLAP/VST3 expose no project-path API, the first-run default is the host
-process working directory.
+same tick, so a retrigger cannot cut the incoming note. The EXPORT MIDI button sits in the
+bottom-right corner of the main window, under the MIDI history; its status line sits beside
+it. Settings keeps only the export folder, stored in user-global settings, created if missing,
+and opened after a successful write. Because CLAP/VST3 expose no project-path API, the
+first-run default is the host process working directory.
 
 ## Parameters
 
