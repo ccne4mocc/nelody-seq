@@ -179,7 +179,8 @@ variation comes from Generate, Randomize and the knobs.
   value); a double-click opens an inline text field that accepts the enum labels or aliases
   (`1/16t`, `1/16.`, `1/16d`). The enum keeps host-state order; new divisions are appended.
 - The MIDI history panel is three paths (`history-bg`, `history-grid`, `history-notes`) in a
-  800×200 viewbox inside a 190px card, driven entirely from `history::build` output.
+  800×200 viewbox inside a card that stretches from the description to the bottom controls
+  (minimum 190px), driven entirely from `history::build` output.
 - The tuning row chips (Root/Scale/EDO/Oct/NTS) replace the drum-lane chips. The Scale chip
   opens a dropdown list under the row; the mode header opens the same kind of list under
   itself. EDO divisions sit in this row so custom equal divisions stay beside the scale, and
@@ -198,7 +199,8 @@ variation comes from Generate, Randomize and the knobs.
   scrolling.
 - Host-stolen keys (VST3 only): editing keys are claimed only while a Slint text field has
   focus; `text-focused` in `app.slint` must list every text field, including the tuning
-  NumBoxes and the inline generator-option editor (`OptEdit.index >= 0`).
+  NumBoxes, the clock `RateField`, and the inline generator-option editor
+  (`OptEdit.index >= 0`).
 - Technical logging writes `~/nelody.log` from the editor thread only, when `logging` is on.
 
 ## Extension points

@@ -776,11 +776,11 @@ export component AppWindow inherits Window {
             OptSlider { horizontal-stretch: 1; opt: root.opts[16]; index: 16; changed(v) => { root.set-opt(16, v); } }
             OptSlider { horizontal-stretch: 1; opt: root.opts[17]; index: 17; changed(v) => { root.set-opt(17, v); } }
         }
-        HorizontalLayout { spacing: 8px;
+        HorizontalLayout { height: 18px; spacing: 8px;
             Text { horizontal-stretch: 1; text: "MIDI HISTORY  ·  flows right to left  ·  \{root.history-range}  ·  note height = pitch, bright = accent"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
             }
         Rectangle {
-            height: 190px; border-radius: 4px;
+            height: 190px; vertical-stretch: 1; border-radius: 4px;
             background: Theme.surface; border-width: 1px; border-color: Theme.border;
             clip: true;
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-bg; fill: Theme.cell-off.with-alpha(0.55); }
