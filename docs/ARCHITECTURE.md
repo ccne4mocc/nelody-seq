@@ -98,14 +98,21 @@ or mutex is allocated in the callback; the editor applies randomization through 
 `ParamSetter` on its own thread.
 
 Regenerate-after-N-lengths swaps the pattern inside the callback by regenerating from a fresh
-`gen_params()` snapshot — generation is allocation-free (guarded by test) and bounded by the
+`gen_params_at()` snapshot — generation is allocation-free (guarded by test) and bounded by the
 `max_steps` ceiling, so this is safe on the audio thread. The regeneration key is exactly the
 snapshot the next block will compare against (it bumps `variation` first); a jittered seed there
 made `last_key` disagree with the parameters and regenerated a second time on the next block,
-discarding the new line mid-loop. Randomize-after-N-lengths only queues an atomic request. Two
-runtime LFOs are sampled per event: swing at the nominal step beat (its onset depends on swing),
-gate and velocity at the resolved onset beat, so fast rates are not block-stepped. They modulate
-Swing, Gate or Velocity only, so no pattern regeneration is needed.
+discarding the new line mid-loop. Randomize-after-N-lengths only queues an atomic request.
+
+Four runtime LFOs are evaluated from a host-beat clock. Hz/kHz LFOs use `beat × 60 / BPM`;
+beat-synced LFOs use `beat / rate`. Swing is sampled at the nominal step beat (its onset depends
+on swing); gate, velocity and tuning are sampled at the resolved onset, so fast rates are not
+block-stepped. Pattern-shaping targets (Steps, Pulses, Rotate, Density, Seed, Osc phase/rate,
+CA rule, Probability, Slide, Accent, Octave jump, Max steps) are sampled once per loop and go
+through the same `gen_params_at()` snapshot, so the pattern changes at a loop boundary instead
+of every step. The unmodulated `gen_params()` snapshot drives change detection, which keeps
+manual edits immediate and LFO-only movement confined to boundaries. Modulation never writes a
+host parameter, so it cannot feed back into automation or dirty the project.
 
 ## Modes and the `max_steps` ceiling
 
@@ -165,7 +172,7 @@ first-run default is the host process working directory.
 | Algorithm shape | `phase`, `osc_rate`, `osc_wave` (8 waveforms), `ca_rule`, `symmetry` | Mode-specific; hidden in the UI when the selected mode never reads them. Waveform ids/names come from the `OscWave` enum |
 | Mode data bridge | `GenParams::mode_data: [f32; 4]` | Fixed slots for values a future typed `ModeParams` enum would own; currently zero-filled and documented per mode in `REFERENCE_MAPPING.md` |
 | Clock | `rate`, `gate`, `swing`, `freerun` | Beat grid, NoteOff duration, stopped-transport behaviour |
-| LFO | `lfo1_wave`, `lfo1_rate`, `lfo1_depth`, `lfo1_phase`, `lfo1_target` (and the same for LFO 2) | Two runtime LFOs. Rate is beats/cycle; targets are Swing/Gate/Velocity, sampled per note from host beat position (swing at the nominal step, gate/velocity at the onset). Pattern-shaping targets and drag/drop links are deferred. Runtime modulation is not written back to host parameters and is not part of MIDI export |
+| LFO | `lfoN_wave`, `lfoN_rate_mode`, `lfoN_freq`, `lfoN_rate`, `lfoN_depth`, `lfoN_phase`, `lfoN_polarity` for N = 1–4; persisted `lfoN_links` masks; legacy `lfo1_target`/`lfo2_target` | Four runtime LFOs. Hz/kHz is the default speed, with beat sync as the alternative. Bipolar spans ±depth; unipolar spans 0..depth. Links are drag/drop targets stored as one 24-bit mask per LFO. Feel/tuning targets are sampled per note; generator targets at loop boundaries. Legacy single-target values are treated as one link while the new mask is empty. Runtime modulation is not written back to host parameters and is not part of MIDI export |
 | Melody / tuning | `root` (pitch class), `scale` (12 tables or EDO), `octaves`, `edo`, `root_cents`, `midi_root`, `nts` | Pitch mapping. The tonic is `midi_root + root` semitones; non-12-TET detune is emitted as pitch bend while `nts` is on |
 | Acid flags | `slide`, `accent`, `oct_jump` | Per-note probabilities for the five acid modes. They only add or remove flags — never reshuffle the line (tested) |
 | Post-transforms | `invert`, `mirror`, `rotate` | Applied to the finished line: hit inversion, retrograde, circular rotation |
@@ -210,8 +217,9 @@ variation comes from Generate, Randomize and the knobs.
 
 ## Where state lives
 
-- **Project state** is owned by the host: every parameter plus `#[persist] variation`
-  travels with the DAW project.
+- **Project state** is owned by the host: every parameter plus the `#[persist] variation` and
+  `lfo1_links`…`lfo4_links` masks travel with the DAW project. Link masks are not host
+  parameters, so they are persisted but not automatable.
 - **User-global settings** live in `src/globals.rs` at `$XDG_CONFIG_HOME/Nelody/settings.json`
   (or `$HOME/.config/Nelody/settings.json`, `%APPDATA%` on Windows): theme, editor scale and
   MIDI export folder only. Loaded at editor open, written on a 750 ms debounce and forced on
@@ -237,7 +245,18 @@ variation comes from Generate, Randomize and the knobs.
   rotation).
 - The waveform picker draws `view::wave_icon_paths()` in a 100×40 icon viewbox. Each icon is
   sampled from `oscillator::value`, so the picker cannot advertise a shape the generator does
-  not play; Slint only receives the finished paths.
+  not play; Slint only receives the finished paths. LFO cells add a phase dot sampled from the
+  same curve and frozen when `Shared::lfo_running` is false.
+- The LFO rack is a fixed 2×2 grid of `LfoCell`s. Each cell has a colored modulation point,
+  waveform picker, Hz/beat mode chip, speed/depth/phase strips, and a bipolar/unipolar chip.
+- Slint 1.16 keeps `DragArea`/`DropArea` out of the public element set. The modulation drag is
+  therefore implemented with a `TouchArea` on the LFO point, the `ModDrag` global, and the
+  `ModRegistry` callback: visible `OptSlider`/`NumBox` controls report their window rectangle,
+  and the editor hit-tests the newest visible rectangle on release. Dropping onto a linked
+  target toggles the link off.
+- The modulation matrix is a read-only bottom sheet opened from the LFO rack header. Rust
+  rebuilds its `ModRow` model only while it is open, using the live LFO clock for the current
+  value and a zero-signal target read for the base value.
 - Clock rate is one `RateField`. The wheel walks `Rate::RATE_ORDER` (base, dotted, triplet per
   value); a double-click opens an inline text field that accepts the enum labels or aliases
   (`1/16t`, `1/16.`, `1/16d`). The enum keeps host-state order; new divisions are appended.

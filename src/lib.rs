@@ -1241,6 +1241,9 @@ impl Plugin for Nelody {
                     self.pattern = generate(&next_key);
                     self.loop_length = next_key.length as f64;
                     self.last_key = Some(next_key);
+                    // Regenerate-after-N bumps `variation`, so refresh the base snapshot too or
+                    // the next block would see a false manual change and generate a second time.
+                    self.last_base_key = Some(p.gen_params());
                     self.last_mod_cycle = Some((k as f64 / self.loop_length).floor() as i64);
                     self.shared.pattern_beat.store(nominal_beat.to_bits(), Relaxed);
                 }
@@ -1510,6 +1513,17 @@ mod tests {
         assert_eq!(history_bars_ceiling(64, Rate::Sixteenth), 4.0);
         assert_eq!(history_bars_ceiling(1024, Rate::Quarter), 256.0);
         assert_eq!(history_bars_ceiling(1024, Rate::QuarterDotted), 384.0);
+    }
+
+    #[test]
+    fn hz_formatter_and_parser_cover_hz_and_khz() {
+        assert_eq!(format_hz(0.5), "0.50 Hz");
+        assert_eq!(format_hz(125.0), "125 Hz");
+        assert_eq!(format_hz(1_500.0), "1.50 kHz");
+        assert_eq!(parse_hz("0.5"), Some(0.5));
+        assert_eq!(parse_hz(" 1.5 kHz "), Some(1_500.0));
+        assert_eq!(parse_hz("20000 hz"), Some(20_000.0));
+        assert_eq!(parse_hz("nope"), None);
     }
 
     #[test]

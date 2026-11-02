@@ -9,7 +9,11 @@ use crate::keys;
 use crate::midi_export;
 use crate::sequence::{generate, GenParams, Pattern, Rng, MAX_STEPS, MIN_MAX_STEPS};
 use crate::view::{self, View};
-use crate::{cell_count_for, scope, LfoTarget, MelodyParams, Mode, OscWave, Rate, Shared, Theme as PluginTheme, Tuning};
+use crate::modulation::{format_target_value, target_in_mask, LFO_COUNT};
+use crate::{
+    cell_count_for, scope, LfoPolarity, LfoRateMode, LfoTarget, MelodyParams, Mode, ModTarget,
+    OscWave, Rate, Shared, Theme as PluginTheme, Tuning,
+};
 use nice_plug::prelude::*;
 use slint::platform::WindowEvent;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
@@ -188,6 +192,69 @@ fn apply_rate(c: &Arc<dyn GuiContext>, p: &MelodyParams, rate: Rate) {
     if p.history_bars.value() > max { set(c, &p.history_bars, max); }
 }
 
+fn lfo_wave_param(p: &MelodyParams, slot: i32) -> &EnumParam<OscWave> {
+    match slot {
+        1 => &p.lfo1_wave,
+        2 => &p.lfo2_wave,
+        3 => &p.lfo3_wave,
+        _ => &p.lfo4_wave,
+    }
+}
+
+fn lfo_rate_mode_param(p: &MelodyParams, slot: i32) -> &EnumParam<LfoRateMode> {
+    match slot {
+        1 => &p.lfo1_rate_mode,
+        2 => &p.lfo2_rate_mode,
+        3 => &p.lfo3_rate_mode,
+        _ => &p.lfo4_rate_mode,
+    }
+}
+
+fn lfo_freq_param(p: &MelodyParams, slot: i32) -> &FloatParam {
+    match slot {
+        1 => &p.lfo1_freq,
+        2 => &p.lfo2_freq,
+        3 => &p.lfo3_freq,
+        _ => &p.lfo4_freq,
+    }
+}
+
+fn lfo_beat_param(p: &MelodyParams, slot: i32) -> &FloatParam {
+    match slot {
+        1 => &p.lfo1_rate,
+        2 => &p.lfo2_rate,
+        3 => &p.lfo3_rate,
+        _ => &p.lfo4_rate,
+    }
+}
+
+fn lfo_depth_param(p: &MelodyParams, slot: i32) -> &FloatParam {
+    match slot {
+        1 => &p.lfo1_depth,
+        2 => &p.lfo2_depth,
+        3 => &p.lfo3_depth,
+        _ => &p.lfo4_depth,
+    }
+}
+
+fn lfo_phase_param(p: &MelodyParams, slot: i32) -> &FloatParam {
+    match slot {
+        1 => &p.lfo1_phase,
+        2 => &p.lfo2_phase,
+        3 => &p.lfo3_phase,
+        _ => &p.lfo4_phase,
+    }
+}
+
+fn lfo_polarity_param(p: &MelodyParams, slot: i32) -> &EnumParam<LfoPolarity> {
+    match slot {
+        1 => &p.lfo1_polarity,
+        2 => &p.lfo2_polarity,
+        3 => &p.lfo3_polarity,
+        _ => &p.lfo4_polarity,
+    }
+}
+
 /// Slider and spin-box paths share this so clamping stays identical.
 fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
     let snap = p.round_steps.value();
@@ -237,12 +304,6 @@ fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
         21 => set(c, &p.edo, (value.round() as i32).clamp(1, crate::tuning::MAX_EDO as i32)),
         22 => set(c, &p.root_cents, value.clamp(-50.0, 50.0)),
         23 => set(c, &p.history_bars, value.clamp(1.0, p.history_bars_ceiling())),
-        24 => set(c, &p.lfo1_rate, value.clamp(0.25, 16.0)),
-        25 => set(c, &p.lfo1_depth, value.clamp(0.0, 1.0)),
-        26 => set(c, &p.lfo1_phase, value.clamp(0.0, 1.0)),
-        27 => set(c, &p.lfo2_rate, value.clamp(0.25, 16.0)),
-        28 => set(c, &p.lfo2_depth, value.clamp(0.0, 1.0)),
-        29 => set(c, &p.lfo2_phase, value.clamp(0.0, 1.0)),
         _ => {},
     }
 }
@@ -257,6 +318,18 @@ struct Cache {
 fn rgb(c: [u8; 3]) -> slint::Color { slint::Color::from_rgb_u8(c[0], c[1], c[2]) }
 
 static RANDOMIZE_NONCE: AtomicU32 = AtomicU32::new(1);
+static MOD_REG_SEQ: AtomicU32 = AtomicU32::new(1);
+
+/// One modulation drop target's window-space rectangle, reported by the Slint controls.
+#[derive(Clone, Copy)]
+struct ModRect {
+    target: i32,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    seq: u32,
+}
 
 fn scope_enabled(p: &MelodyParams, bit: i32) -> bool { p.randomize_scope.value() & bit != 0 }
 
@@ -434,6 +507,68 @@ fn push_history(
     )));
 }
 
+/// Compact source label for one matrix row.
+fn lfo_source_label(p: &MelodyParams, slot: usize) -> String {
+    let spec = p.lfo_spec(slot);
+    let wave = <OscWave as Enum>::variants()[spec.wave.to_index()];
+    let speed = match spec.rate_mode {
+        LfoRateMode::Hz => crate::format_hz(spec.freq_hz),
+        LfoRateMode::Beats => format!("{:.2} beats", spec.rate_beats),
+    };
+    let polarity = match spec.polarity {
+        LfoPolarity::Bipolar => "±",
+        LfoPolarity::Unipolar => "+",
+    };
+    format!("LFO {} · {wave} · {speed} · {polarity}", slot + 1)
+}
+
+/// One row per LFO/target link. Read-only in this phase; the matrix is built on the editor
+/// thread only while it is open.
+fn matrix_rows(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<ModRow> {
+    let signals = p.lfo_signals(clock);
+    let mut rows = Vec::new();
+    for slot in 0..LFO_COUNT {
+        let mask = p.lfo_link_mask(slot);
+        if mask == 0 {
+            continue;
+        }
+        let source = lfo_source_label(p, slot);
+        for target in ModTarget::ALL {
+            if !target_in_mask(mask, target) {
+                continue;
+            }
+            let base = p.target_value(target, &[0.0; LFO_COUNT]);
+            let value = p.target_value(target, &signals);
+            rows.push(ModRow {
+                lfo: slot as i32 + 1,
+                source: SharedString::from(source.as_str()),
+                target: SharedString::from(target.label()),
+                base: SharedString::from(format_target_value(target, base)),
+                value: SharedString::from(format_target_value(target, value)),
+                delta: SharedString::from(format!("{:+.2}", value - base)),
+            });
+        }
+    }
+    rows
+}
+
+fn lfo_dot_y(p: &MelodyParams, slot: usize, phase: f32) -> f32 {
+    let wave = p.lfo_spec(slot).wave;
+    4.0 + (1.0 - crate::sequence::oscillator_value(wave.to_index(), phase)) * 32.0
+}
+
+/// Newest visible control under the pointer. Registration order resolves overlapping controls
+/// after a mode change reflows the parameter column.
+fn mod_target_at(rects: &[ModRect], x: f32, y: f32) -> Option<i32> {
+    rects
+        .iter()
+        .filter(|rect| {
+            x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h
+        })
+        .max_by_key(|rect| rect.seq)
+        .map(|rect| rect.target)
+}
+
 impl Editor for SlintEditor {
     fn spawn(&self, parent: ParentWindowHandle, context: Arc<dyn GuiContext>) -> Box<dyn std::any::Any + Send> {
         // User-global preferences load before the host's project state is shown.
@@ -452,6 +587,7 @@ impl Editor for SlintEditor {
         ));
         let setup_midi_dir = midi_dir.clone();
         let update_midi_dir = midi_dir.clone();
+        let mod_rects = Arc::new(Mutex::new(Vec::<ModRect>::new()));
         if scale > 0.0 && self.scale.load(Relaxed) == 0 { self.scale.store(scale.to_bits(), Relaxed); }
         if let Some(theme) = stored.theme {
             let theme = PluginTheme::from_index(theme);
@@ -468,6 +604,7 @@ impl Editor for SlintEditor {
         let (setup_params, setup_ctx) = (self.params.clone(), context.clone());
         let setup_shared = self.shared.clone();
         let setup_scale = self.scale.clone();
+        let setup_mod_rects = mod_rects.clone();
         let setup = move |h: &slint_baseview::SlintWindowHandler<AppWindow>, _w: &mut slint_baseview::Window| {
             let ui = h.component();
             let folder = setup_midi_dir.lock().map(|d| d.clone()).unwrap_or_default();
@@ -503,13 +640,94 @@ impl Editor for SlintEditor {
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_set_lfo_wave(move |slot, v| {
-                    let wave = OscWave::from_index(v.clamp(0, OscWave::variants().len() as i32 - 1) as usize);
-                    set(&c, if slot == 1 { &p.lfo1_wave } else { &p.lfo2_wave }, wave);
+                    let wave = OscWave::from_index(
+                        v.clamp(0, OscWave::variants().len() as i32 - 1) as usize,
+                    );
+                    set(&c, lfo_wave_param(&p, slot), wave);
                 });
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_set_lfo_target(move |slot, v| {
-                    let target = LfoTarget::from_index(v.clamp(0, LfoTarget::variants().len() as i32 - 1) as usize);
-                    set(&c, if slot == 1 { &p.lfo1_target } else { &p.lfo2_target }, target);
+                ui.on_set_lfo_rate_mode(move |slot, v| {
+                    let mode = LfoRateMode::from_index(
+                        v.clamp(0, LfoRateMode::variants().len() as i32 - 1) as usize,
+                    );
+                    set(&c, lfo_rate_mode_param(&p, slot), mode);
+                });
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_set_lfo_speed(move |slot, value| {
+                    match lfo_rate_mode_param(&p, slot).value() {
+                        LfoRateMode::Hz => set(&c, lfo_freq_param(&p, slot), value.clamp(0.01, 20_000.0)),
+                        LfoRateMode::Beats => set(&c, lfo_beat_param(&p, slot), value.clamp(0.25, 16.0)),
+                    }
+                });
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_set_lfo_depth(move |slot, value| {
+                    set(&c, lfo_depth_param(&p, slot), value.clamp(0.0, 1.0));
+                });
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_set_lfo_phase(move |slot, value| {
+                    set(&c, lfo_phase_param(&p, slot), value.clamp(0.0, 1.0));
+                });
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_set_lfo_polarity(move |slot, v| {
+                    let polarity = LfoPolarity::from_index(
+                        v.clamp(0, LfoPolarity::variants().len() as i32 - 1) as usize,
+                    );
+                    set(&c, lfo_polarity_param(&p, slot), polarity);
+                });
+            }
+            {
+                let rects = setup_mod_rects.clone();
+                ui.global::<ModRegistry>().on_register(move |target, visible, x, y, w, h| {
+                    if target < 0 {
+                        return;
+                    }
+                    let mut rects = rects.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    rects.retain(|rect| rect.target != target);
+                    if visible {
+                        rects.push(ModRect {
+                            target,
+                            x,
+                            y,
+                            w,
+                            h,
+                            seq: MOD_REG_SEQ.fetch_add(1, Relaxed),
+                        });
+                    }
+                });
+            }
+            {
+                let (rects, p, c, weak) = (
+                    setup_mod_rects.clone(),
+                    setup_params.clone(),
+                    setup_ctx.clone(),
+                    ui.as_weak(),
+                );
+                ui.global::<ModDrag>().on_dropped(move |lfo, x, y| {
+                    let target = {
+                        let rects = rects.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                        mod_target_at(&rects, x, y)
+                    };
+                    let Some(target) = target.and_then(|i| ModTarget::from_index(i.max(0) as usize))
+                    else {
+                        return;
+                    };
+                    let slot = lfo.round().clamp(1.0, 4.0) as usize;
+                    let linked = target_in_mask(p.lfo_link_mask(slot - 1), target);
+                    p.set_lfo_link(slot - 1, target, !linked);
+                    // A new link supersedes the pre-matrix single target, including when the
+                    // user removes the last new link.
+                    if slot == 1 {
+                        set(&c, &p.lfo1_target, LfoTarget::None);
+                    } else if slot == 2 {
+                        set(&c, &p.lfo2_target, LfoTarget::None);
+                    }
+                    if let Some(ui) = weak.upgrade() {
+                        let action = if linked { "unlinked" } else { "linked" };
+                        ui.set_mod_status(SharedString::from(format!(
+                            "LFO {slot} → {} {action}",
+                            target.label()
+                        )));
+                    }
                 });
             }
             {
@@ -603,9 +821,8 @@ impl Editor for SlintEditor {
             ui.set_rate_names(ModelRc::new(VecModel::from(
                 <Rate as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));
-            ui.set_lfo_target_names(ModelRc::new(VecModel::from(
-                <LfoTarget as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
-            )));
+            ui.set_mod_rows(ModelRc::new(VecModel::from(Vec::<ModRow>::new())));
+            ui.set_mod_status(SharedString::new());
             ui.set_mode_rows(ModelRc::new(VecModel::from(mode_rows())));
             ui.set_app_version(SharedString::from(crate::contact::VERSION));
             ui.set_settings_path(SharedString::from(crate::globals::config_path_display()));
@@ -691,16 +908,63 @@ impl Editor for SlintEditor {
             ui.set_ca_rule(p.ca_rule.value() as f32);
             ui.set_symmetry(p.symmetry.value() as f32);
             ui.set_rate(p.rate.value().to_index() as i32);
-            ui.set_lfo1_wave(p.lfo1_wave.value().to_index() as i32);
-            ui.set_lfo1_rate(p.lfo1_rate.value());
-            ui.set_lfo1_depth(p.lfo1_depth.value());
-            ui.set_lfo1_phase(p.lfo1_phase.value());
-            ui.set_lfo1_target(p.lfo1_target.value().to_index() as i32);
-            ui.set_lfo2_wave(p.lfo2_wave.value().to_index() as i32);
-            ui.set_lfo2_rate(p.lfo2_rate.value());
-            ui.set_lfo2_depth(p.lfo2_depth.value());
-            ui.set_lfo2_phase(p.lfo2_phase.value());
-            ui.set_lfo2_target(p.lfo2_target.value().to_index() as i32);
+            let live_clock = update_shared.lfo_clock();
+            let live_signals = p.lfo_signals(live_clock);
+            let lfo_running = update_shared.lfo_running.load(Relaxed);
+            ui.set_lfo_running(lfo_running);
+            for slot in 0..LFO_COUNT {
+                let phase = f32::from_bits(update_shared.lfo_phase[slot].load(Relaxed));
+                let dot_y = lfo_dot_y(p, slot, phase);
+                match slot {
+                    0 => {
+                        ui.set_lfo1_wave(p.lfo1_wave.value().to_index() as i32);
+                        ui.set_lfo1_rate_mode(p.lfo1_rate_mode.value().to_index() as i32);
+                        ui.set_lfo1_freq(p.lfo1_freq.value());
+                        ui.set_lfo1_rate(p.lfo1_rate.value());
+                        ui.set_lfo1_depth(p.lfo1_depth.value());
+                        ui.set_lfo1_phase(p.lfo1_phase.value());
+                        ui.set_lfo1_polarity(p.lfo1_polarity.value().to_index() as i32);
+                        ui.set_lfo1_anim_phase(phase);
+                        ui.set_lfo1_dot_y(dot_y);
+                    }
+                    1 => {
+                        ui.set_lfo2_wave(p.lfo2_wave.value().to_index() as i32);
+                        ui.set_lfo2_rate_mode(p.lfo2_rate_mode.value().to_index() as i32);
+                        ui.set_lfo2_freq(p.lfo2_freq.value());
+                        ui.set_lfo2_rate(p.lfo2_rate.value());
+                        ui.set_lfo2_depth(p.lfo2_depth.value());
+                        ui.set_lfo2_phase(p.lfo2_phase.value());
+                        ui.set_lfo2_polarity(p.lfo2_polarity.value().to_index() as i32);
+                        ui.set_lfo2_anim_phase(phase);
+                        ui.set_lfo2_dot_y(dot_y);
+                    }
+                    2 => {
+                        ui.set_lfo3_wave(p.lfo3_wave.value().to_index() as i32);
+                        ui.set_lfo3_rate_mode(p.lfo3_rate_mode.value().to_index() as i32);
+                        ui.set_lfo3_freq(p.lfo3_freq.value());
+                        ui.set_lfo3_rate(p.lfo3_rate.value());
+                        ui.set_lfo3_depth(p.lfo3_depth.value());
+                        ui.set_lfo3_phase(p.lfo3_phase.value());
+                        ui.set_lfo3_polarity(p.lfo3_polarity.value().to_index() as i32);
+                        ui.set_lfo3_anim_phase(phase);
+                        ui.set_lfo3_dot_y(dot_y);
+                    }
+                    _ => {
+                        ui.set_lfo4_wave(p.lfo4_wave.value().to_index() as i32);
+                        ui.set_lfo4_rate_mode(p.lfo4_rate_mode.value().to_index() as i32);
+                        ui.set_lfo4_freq(p.lfo4_freq.value());
+                        ui.set_lfo4_rate(p.lfo4_rate.value());
+                        ui.set_lfo4_depth(p.lfo4_depth.value());
+                        ui.set_lfo4_phase(p.lfo4_phase.value());
+                        ui.set_lfo4_polarity(p.lfo4_polarity.value().to_index() as i32);
+                        ui.set_lfo4_anim_phase(phase);
+                        ui.set_lfo4_dot_y(dot_y);
+                    }
+                }
+            }
+            if ui.get_matrix_open() {
+                ui.set_mod_rows(ModelRc::new(VecModel::from(matrix_rows(p, live_clock))));
+            }
             ui.set_free_run(p.free_run.value());
             ui.set_invert_on(p.invert.value());
             ui.set_mirror_on(p.mirror.value());
@@ -721,12 +985,17 @@ impl Editor for SlintEditor {
             if p.history_bars.value() > history_max { set(&update_context, &p.history_bars, history_max); }
             ui.set_history_bars(history_bars);
             ui.set_history_max_bars(history_max);
+            let history_bars_effective = p
+                .target_value(ModTarget::HistoryBars, &live_signals)
+                .clamp(1.0, history_max);
             ui.set_nts_on(p.nts.value());
             ui.set_slide(p.slide.value());
             ui.set_accent(p.accent.value());
             ui.set_octave(p.octave.value());
 
-            let gen_key = p.gen_params();
+            let preview_clock = update_shared.pattern_clock();
+            let gen_key = p.gen_params_at(preview_clock);
+            let preview_pitch = p.pitch_values_at(preview_clock);
             let cur = update_shared.current_step.load(Relaxed);
             ui.set_current_step(cur);
             let mut c = update_cache.lock().unwrap_or_else(|poisoned| {
@@ -751,13 +1020,13 @@ impl Editor for SlintEditor {
             update_shared.text_focus.store(text_focused, Relaxed);
             // Keep the host from acting on the same character keys Slint is inserting.
             h.set_prevent_key_event_propagation(text_focused);
-            let view_key = (gen_key, cur, p.root.value(), gen_key.osc_wave);
+            let view_key = (gen_key, cur, preview_pitch.root, gen_key.osc_wave);
             if c.view_key != Some(view_key) {
-                let v = view::build(gen_key.kind, &c.pattern, c.pattern.steps, cur, p.root.value(), gen_key.osc_wave);
+                let v = view::build(gen_key.kind, &c.pattern, c.pattern.steps, cur, preview_pitch.root, gen_key.osc_wave);
                 push_view(&ui, &v);
                 c.view_key = Some(view_key);
             }
-            push_history(&ui, &update_shared, update_shared.sample_tempo(), p.history_bars.value());
+            push_history(&ui, &update_shared, update_shared.sample_tempo(), history_bars_effective);
         };
         let factory = move || {
             let ui = AppWindow::new()?;
@@ -858,5 +1127,41 @@ mod tests {
         assert_eq!(note_label(60), "C4");
         assert_eq!(note_label(61), "C#4");
         assert_eq!(note_label(0), "C-1");
+    }
+
+    #[test]
+    fn modulation_hit_test_prefers_the_newest_overlapping_control() {
+        let rects = [
+            ModRect { target: 0, x: 0.0, y: 0.0, w: 100.0, h: 20.0, seq: 1 },
+            ModRect { target: 3, x: 0.0, y: 0.0, w: 100.0, h: 20.0, seq: 2 },
+        ];
+        assert_eq!(mod_target_at(&rects, 50.0, 10.0), Some(3));
+        assert_eq!(mod_target_at(&rects, 150.0, 10.0), None);
+    }
+
+    #[test]
+    fn matrix_rows_follow_links_and_show_modulated_values() {
+        let p = MelodyParams {
+            lfo1_links: std::sync::atomic::AtomicU64::new(crate::modulation::target_bit(
+                ModTarget::Steps,
+            )),
+            lfo1_wave: EnumParam::new("LFO 1 Wave", OscWave::Sine),
+            lfo1_rate_mode: EnumParam::new("LFO 1 Rate Mode", LfoRateMode::Hz),
+            lfo1_freq: FloatParam::new(
+                "LFO 1 Frequency",
+                0.5,
+                FloatRange::Skewed { min: 0.01, max: 20_000.0, factor: 0.25 },
+            ),
+            lfo1_depth: FloatParam::new(
+                "LFO 1 Depth",
+                1.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            ..MelodyParams::default()
+        };
+        let rows = matrix_rows(&p, crate::modulation::LfoClock { beat: 0.5, seconds: 0.5 });
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].target.as_str(), "Steps");
+        assert_ne!(rows[0].value.as_str(), rows[0].base.as_str());
     }
 }

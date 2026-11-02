@@ -46,16 +46,20 @@ Files: `src/view.rs`, `ui/app.slint`, `src/editor.rs`.
 - Mode list grouping headers (Phase 1 metadata).
 - Acid slider row threshold unchanged (`is_acid()`).
 
-## Phase 4 — LFO subsystem
+## Phase 4 — LFO subsystem (expanded)
 
-Files: `src/lib.rs` (Shared + params), `src/editor.rs`, `ui/app.slint`, maybe `src/lfo.rs`.
-1. Define `LfoSlot` struct (wave, rate, depth, phase, target_param_id) in plugin state.
-2. Persist links via `#[persist]` sidecar fields.
-3. Evaluate LFOs in `process()` using beat position; fold into target params.
-4. UI card at bottom after MIDI history; drag/drop link wiring.
-5. Start with 2 slots, 4 waveforms, beats-based rate.
+Files: `src/modulation.rs`, `src/lib.rs`, `src/editor.rs`, `ui/app.slint`,
+`docs/LFO_SYSTEM.md`.
+1. Define `ModTarget`, `LfoSpec`, `LfoClock`, `LfoRateMode` and `LfoPolarity`.
+2. Add four LFO slots with Hz/kHz and beat clocks, depth, phase, polarity and persisted link
+   masks (`#[persist]`).
+3. Evaluate scheduling/tuning targets per note and pattern-shaping targets at loop boundaries;
+   the preview uses the published `pattern_beat` for parity.
+4. 2×2 LFO rack under the MIDI history; drag an LFO point onto any registered numeric control;
+   the matrix is read-only for now.
 
-Acceptance: LFO modulates a linked param in real time without allocations; links persist in project.
+Acceptance: four LFOs modulate linked params in real time without allocations; links persist in
+the project; legacy single-target values still work.
 
 ## Phase 5 — Mode-specific parameters (bridge)
 
@@ -95,8 +99,9 @@ Phase 2: ten generators appended at host indices 19–28; all mode sweeps and th
 Phase 3: dedicated 2-D views for binary words, walks, tent/Hénon, absolute pitch, Hilbert and
 Ulam; mode dropdown sorts by group and renders headers. Existing Euclidean stays a ring because
 the 2-D necklace remains the clearest rhythm view.
-Phase 4: two runtime LFO slots with wave/rate/depth/phase and a Swing/Gate/Velocity target,
-evaluated from host beat position in `process()`. The first phase intentionally uses target
-selectors rather than drag/drop; pattern-shaping targets need a loop-boundary regen design.
+Phase 4: four runtime LFO slots with wave, Hz/kHz or beat clock, depth, phase, polarity and
+drag/drop links. Scheduling and tuning targets are sampled per note; pattern-shaping targets
+are sampled at loop boundaries through `gen_params_at()`. Legacy Swing/Gate/Velocity targets
+remain as migration links.
 Phase 5: `GenParams::mode_data: [f32; 4]` bridge added, zero-filled and documented.
 Phase 6: reference mapping, mode counts, UI labels and invariant tests updated.

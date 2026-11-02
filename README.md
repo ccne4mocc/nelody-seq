@@ -30,9 +30,12 @@ pitch slides, legato and accents travel over MIDI channel 1.
 - **MIDI file export** of the current loop (mono, slide holds, swing) with the same
   editor→`generate()` path the audio scheduler uses. The button sits under the MIDI history;
   Settings only stores the folder.
-- **Two runtime LFOs** under the history card: waveform, rate in beats, depth, phase and a
-  target. The first phase targets Swing, Gate or Velocity, evaluated from host beat position
-  in the audio callback without regenerating the pattern or allocating.
+- **Four runtime LFOs** in a 2×2 rack under the history card: waveform, Hz/kHz or beat-synced
+  speed, depth, phase and bipolar/unipolar polarity. Drag an LFO's colored point onto any
+  numeric parameter to link it; drag again to unlink. A read-only modulation matrix slides up
+  from the LFO rack and shows every link with its base and current value. Feel and tuning
+  targets are sampled per note; pattern-shaping targets are sampled at loop boundaries and
+  regenerate the line without allocating in the audio callback.
 
 ## Build
 
@@ -43,8 +46,9 @@ cargo xtask bundle nelody --release   # -> target/bundled/nelody.clap + nelody.v
 
 ## Documentation
 
-`docs/ARCHITECTURE.md` explains the layers and invariants. `docs/REFERENCE_MAPPING.md` tracks
-which nDrum/nMelody mode became which Nelody mode. `AGENTS.md` is the change-ownership
+`docs/ARCHITECTURE.md` explains the layers and invariants. `docs/LFO_SYSTEM.md` documents the
+LFO clocks, target cadence, link storage and drag interaction. `docs/REFERENCE_MAPPING.md`
+tracks which nDrum/nMelody mode became which Nelody mode. `AGENTS.md` is the change-ownership
 contract for multi-agent work.
 
 ## Contact

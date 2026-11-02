@@ -74,7 +74,7 @@ Goal: LFOs modulate any host parameter by drag/drop link, no user matrix yet.
   sets `target_param_id`. Visual: highlight target, show link badge.
 - **Real-time safety**: LFO evaluation uses host sample timing (beat position),
   no wall-clock. Values computed in `process()` and folded into modulation.
-- **Scope**: start with 2 LFOs, 4 waveforms, rate in beats. Expand later.
+- **Scope**: four LFOs, eight waveforms, Hz/kHz or beat clock, bipolar/unipolar links.
 
 ## 4. Mode-specific parameters (EXTRA research)
 
