@@ -254,9 +254,15 @@ variation comes from Generate, Randomize and the knobs.
   `ModRegistry` callback: visible `OptSlider`/`NumBox` controls report their window rectangle,
   and the editor hit-tests the newest visible rectangle on release. Dropping onto a linked
   target toggles the link off.
-- The modulation matrix is a read-only bottom sheet opened from the LFO rack header. Rust
-  rebuilds its `ModRow` model only while it is open, using the live LFO clock for the current
-  value and a zero-signal target read for the base value.
+- The modulation matrix is a bottom sheet opened from the LFO rack header. Rust rebuilds its
+  `ModRow` model only while it is open, using the live LFO clock for the current value and a
+  zero-signal target read for the base value. Each row has a × that clears that LFO/target link.
+- `ModView` carries one `ModTargetView` per target every frame. `OptSlider` and `NumBox` use it
+  for a second base→modulated bar (normalized to the control's own display range) and for the
+  hover summary listing linked LFOs and their signed contribution to the range.
+- The hover summary is drawn in place inside the control, not as a floating popup: Slint 1.16
+  clips the option strips and has no public overlay/drop element, so an in-place menu avoids
+  both clipping and z-order problems while keeping the link information visible.
 - Clock rate is one `RateField`. The wheel walks `Rate::RATE_ORDER` (base, dotted, triplet per
   value); a double-click opens an inline text field that accepts the enum labels or aliases
   (`1/16t`, `1/16.`, `1/16d`). The enum keeps host-state order; new divisions are appended.

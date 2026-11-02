@@ -21,7 +21,19 @@ export global Theme {
 export struct ViewNode { x: length, y: length, r: length, on: bool, cur: bool, label: string }
 export struct ModeRow { header: bool, group: string, left: int, right: int, has-right: bool }
 export struct Opt { label: string, min: float, max: float, value: float, text: string, step: float, number: string, scale: float }
-export struct ModRow { lfo: int, source: string, target: string, base: string, value: string, delta: string }
+export struct ModRow { lfo: int, target-id: int, source: string, target: string, base: string, value: string, delta: string }
+export struct ModTargetView {
+    target: int,
+    linked: bool,
+    base: float,
+    value: float,
+    min: float,
+    max: float,
+    base01: float,
+    value01: float,
+    lfo-text: string,
+    count: int,
+}
 
 // One numeric-entry session shared by every generator option strip. A global avoids wiring a
 // read-back callback for each OptSlider while still allowing only one inline editor at a time.
@@ -41,6 +53,20 @@ export global ModDrag {
 
 export global ModRegistry {
     callback register(int, bool, length, length, length, length);
+}
+
+// Effective value + linked-LFO summary for every numeric target, indexed by ModTarget::index.
+export global ModView {
+    in property <[ModTargetView]> targets;
+    public pure function view(index: int) -> ModTargetView {
+        if (index >= 0 && index < targets.length) {
+            return targets[index];
+        }
+        return {
+            target: -1, linked: false, base: 0, value: 0, min: 0, max: 1,
+            base01: 0, value01: 0, lfo-text: "", count: 0
+        };
+    }
 }
 
 component Selector inherits Rectangle {
@@ -173,9 +199,14 @@ component OptSlider inherits Rectangle {
     in property <int> mod-target: -1;
     callback changed(float);
     property <bool> mod-registered: false;
+    property <ModTargetView> modview: ModView.view(root.mod-target);
     property <bool> mod-hover: root.mod-target >= 0 && ModDrag.lfo > 0
         && ModDrag.x >= root.absolute-position.x && ModDrag.x <= root.absolute-position.x + root.width
         && ModDrag.y >= root.absolute-position.y && ModDrag.y <= root.absolute-position.y + root.height;
+    // Normalize on the control's own display range so the second bar lines up with the fill,
+    // even when the host range is wider (Steps is 1–1024, the strip may show 1–128).
+    property <float> mod-base01: Math.clamp((root.modview.base - root.opt.min) / Math.max(root.opt.max - root.opt.min, 0.0001), 0, 1);
+    property <float> mod-value01: Math.clamp((root.modview.value - root.opt.min) / Math.max(root.opt.max - root.opt.min, 0.0001), 0, 1);
     function report-mod() {
         if (root.mod-target >= 0) {
             ModRegistry.register(root.mod-target, root.visible, root.absolute-position.x, root.absolute-position.y, root.width, root.height);
@@ -216,8 +247,34 @@ component OptSlider inherits Rectangle {
         background: @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%);
         opacity: 0.3;
     }
+    // Second, thinner bar: base → current modulated value. It moves with the LFO clock and
+    // makes both direction and amount visible without changing the host value.
+    if root.modview.linked: Rectangle {
+        x: parent.width * Math.min(root.mod-base01, root.mod-value01);
+        y: parent.height - 4px;
+        width: parent.width * Math.abs(root.mod-value01 - root.mod-base01);
+        height: 3px;
+        background: Theme.c3;
+        opacity: 0.95;
+    }
+    if root.modview.linked: Rectangle {
+        x: Math.max(0px, Math.min(parent.width - 2px, parent.width * root.mod-value01 - 1px));
+        y: parent.height - 5px; width: 2px; height: 5px;
+        background: Theme.hi;
+    }
     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.opt.label; color: Theme.text; font-size: 11px; vertical-alignment: center; }
     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.opt.text; color: Theme.text; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+    // Hover menu: linked LFOs and their contributions, shown in place so it cannot be clipped.
+    if root.modview.linked && ta.has-hover && !root.editing: Rectangle {
+        x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+        border-radius: 3px; background: Theme.surface;
+        border-width: 1px; border-color: Theme.c3;
+        Text {
+            x: 6px; width: parent.width - 12px; height: parent.height;
+            text: root.modview.lfo-text; color: Theme.text; font-size: 9px;
+            vertical-alignment: center; overflow: elide;
+        }
+    }
     ta := TouchArea {
         pointer-event(e) => {
             if (!root.editing && e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
@@ -320,9 +377,12 @@ component NumBox inherits Rectangle {
     in property <int> mod-target: -1;
     callback changed(float);
     property <bool> mod-registered: false;
+    property <ModTargetView> modview: ModView.view(root.mod-target);
     property <bool> mod-hover: root.mod-target >= 0 && ModDrag.lfo > 0
         && ModDrag.x >= root.absolute-position.x && ModDrag.x <= root.absolute-position.x + root.width
         && ModDrag.y >= root.absolute-position.y && ModDrag.y <= root.absolute-position.y + root.height;
+    property <float> mod-base01: Math.clamp((root.modview.base - root.minimum) / Math.max(root.maximum - root.minimum, 0.0001), 0, 1);
+    property <float> mod-value01: Math.clamp((root.modview.value - root.minimum) / Math.max(root.maximum - root.minimum, 0.0001), 0, 1);
     function report-mod() {
         if (root.mod-target >= 0) {
             ModRegistry.register(root.mod-target, root.visible, root.absolute-position.x, root.absolute-position.y, root.width, root.height);
@@ -381,6 +441,13 @@ component NumBox inherits Rectangle {
         color: Theme.text; font-size: 11px;
         horizontal-alignment: right; vertical-alignment: center;
     }
+    if root.modview.linked: Rectangle {
+        x: 1px + (parent.width - 35px) * Math.min(root.mod-base01, root.mod-value01);
+        y: parent.height - 3px;
+        width: (parent.width - 35px) * Math.abs(root.mod-value01 - root.mod-base01);
+        height: 2px;
+        background: Theme.c3;
+    }
     down := Rectangle {
         x: parent.width - 34px; y: 1px; width: 16px; height: parent.height - 2px;
         border-radius: 3px; background: down-touch.has-hover ? Theme.control-hover : Theme.control;
@@ -404,6 +471,16 @@ component NumBox inherits Rectangle {
                 return accept;
             }
             return reject;
+        }
+    }
+    if root.modview.linked && tap.has-hover && !root.edit-open: Rectangle {
+        x: 1px; y: 1px; width: parent.width - 36px; height: parent.height - 2px;
+        border-radius: 3px; background: Theme.surface;
+        border-width: 1px; border-color: Theme.c3;
+        Text {
+            x: 5px; width: parent.width - 10px; height: parent.height;
+            text: root.modview.lfo-text; color: Theme.text; font-size: 9px;
+            vertical-alignment: center; overflow: elide;
         }
     }
     editor := Rectangle {
@@ -950,6 +1027,7 @@ export component AppWindow inherits Window {
     callback set-lfo-depth(int, float);
     callback set-lfo-phase(int, float);
     callback set-lfo-polarity(int, int);
+    callback delete-mod(int, int);
     callback set-theme(int);
     callback set-opt(int, float);
     callback toggle-round-steps();
@@ -1562,27 +1640,28 @@ export component AppWindow inherits Window {
             padding: 10px; spacing: 6px;
             HorizontalLayout {
                 height: 24px;
-                Text { text: "MODULATION MATRIX"; color: Theme.c1; font-size: 12px; font-weight: 700; vertical-alignment: center; }
-                Text { horizontal-stretch: 1; text: "read-only · drag an LFO point onto a parameter to link or unlink"; color: Theme.text-muted; font-size: 9px; horizontal-alignment: right; vertical-alignment: center; }
+                Text { text: "MODULATION MATRIX"; color: Theme.c1; font-size: 14px; font-weight: 700; vertical-alignment: center; }
+                Text { horizontal-stretch: 1; text: "drag an LFO point onto a parameter to link · × removes a link"; color: Theme.text-muted; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
                 Rectangle {
-                    width: 58px; height: 20px; border-radius: 4px;
+                    width: 62px; height: 22px; border-radius: 4px;
                     background: matrix-close.has-hover ? Theme.hi : Theme.control;
-                    Text { text: "CLOSE"; color: matrix-close.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                    Text { text: "CLOSE"; color: matrix-close.has-hover ? Theme.on-accent : Theme.text; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
                     matrix-close := TouchArea { clicked => { root.matrix-open = false; } }
                 }
             }
             HorizontalLayout {
-                height: 16px; spacing: 6px;
-                Text { width: 38px; text: "LFO"; color: Theme.text-muted; font-size: 8px; }
-                Text { width: 220px; text: "SOURCE"; color: Theme.text-muted; font-size: 8px; }
-                Text { width: 150px; text: "TARGET"; color: Theme.text-muted; font-size: 8px; }
-                Text { width: 70px; text: "BASE"; color: Theme.text-muted; font-size: 8px; horizontal-alignment: right; }
-                Text { width: 70px; text: "VALUE"; color: Theme.text-muted; font-size: 8px; horizontal-alignment: right; }
-                Text { width: 70px; text: "DELTA"; color: Theme.text-muted; font-size: 8px; horizontal-alignment: right; }
+                height: 18px; spacing: 6px;
+                Text { width: 38px; text: "LFO"; color: Theme.text-muted; font-size: 10px; }
+                Text { width: 220px; text: "SOURCE"; color: Theme.text-muted; font-size: 10px; }
+                Text { width: 150px; text: "TARGET"; color: Theme.text-muted; font-size: 10px; }
+                Text { width: 70px; text: "BASE"; color: Theme.text-muted; font-size: 10px; horizontal-alignment: right; }
+                Text { width: 70px; text: "VALUE"; color: Theme.text-muted; font-size: 10px; horizontal-alignment: right; }
+                Text { width: 70px; text: "DELTA"; color: Theme.text-muted; font-size: 10px; horizontal-alignment: right; }
+                Text { width: 24px; text: ""; }
             }
             if root.mod-rows.length == 0: Text {
                 text: "No links yet. Drag a colored LFO point onto any numeric parameter.";
-                color: Theme.text-muted; font-size: 11px; wrap: word-wrap;
+                color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
             }
             ScrollView {
                 vertical-stretch: 1;
@@ -1590,16 +1669,22 @@ export component AppWindow inherits Window {
                 VerticalLayout {
                     spacing: 2px;
                     for row in root.mod-rows: Rectangle {
-                        height: 24px; border-radius: 3px;
+                        height: 28px; border-radius: 3px;
                         background: row.lfo == 1 ? Theme.c1.with-alpha(0.08) : (row.lfo == 2 ? Theme.c2.with-alpha(0.08) : (row.lfo == 3 ? Theme.c3.with-alpha(0.08) : Theme.hi.with-alpha(0.05)));
                         HorizontalLayout {
                             padding-left: 6px; padding-right: 6px; spacing: 6px;
-                            Text { width: 38px; text: "\{row.lfo}"; color: row.lfo == 1 ? Theme.c1 : (row.lfo == 2 ? Theme.c2 : (row.lfo == 3 ? Theme.c3 : Theme.hi)); font-size: 9px; font-weight: 700; vertical-alignment: center; }
-                            Text { width: 220px; text: row.source; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide; }
-                            Text { width: 150px; text: row.target; color: Theme.text; font-size: 9px; vertical-alignment: center; overflow: elide; }
-                            Text { width: 70px; text: row.base; color: Theme.text-muted; font-size: 9px; horizontal-alignment: right; vertical-alignment: center; }
-                            Text { width: 70px; text: row.value; color: Theme.c2; font-size: 9px; horizontal-alignment: right; vertical-alignment: center; }
-                            Text { width: 70px; text: row.delta; color: Theme.text-muted; font-size: 9px; horizontal-alignment: right; vertical-alignment: center; }
+                            Text { width: 38px; text: "\{row.lfo}"; color: row.lfo == 1 ? Theme.c1 : (row.lfo == 2 ? Theme.c2 : (row.lfo == 3 ? Theme.c3 : Theme.hi)); font-size: 11px; font-weight: 700; vertical-alignment: center; }
+                            Text { width: 220px; text: row.source; color: Theme.text-muted; font-size: 11px; vertical-alignment: center; overflow: elide; }
+                            Text { width: 150px; text: row.target; color: Theme.text; font-size: 11px; vertical-alignment: center; overflow: elide; }
+                            Text { width: 70px; text: row.base; color: Theme.text-muted; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+                            Text { width: 70px; text: row.value; color: Theme.c2; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+                            Text { width: 70px; text: row.delta; color: Theme.text-muted; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+                            Rectangle {
+                                width: 24px; height: 20px; border-radius: 3px;
+                                background: delete-touch.has-hover ? Theme.c3.with-alpha(0.65) : transparent;
+                                Text { text: "×"; color: delete-touch.has-hover ? Theme.on-accent : Theme.text-muted; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+                                delete-touch := TouchArea { clicked => { root.delete-mod(row.lfo, row.target-id); } }
+                            }
                         }
                     }
                 }

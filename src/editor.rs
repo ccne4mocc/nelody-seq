@@ -542,6 +542,7 @@ fn matrix_rows(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<ModR
             let value = p.target_value(target, &signals);
             rows.push(ModRow {
                 lfo: slot as i32 + 1,
+                target_id: target.index() as i32,
                 source: SharedString::from(source.as_str()),
                 target: SharedString::from(target.label()),
                 base: SharedString::from(format_target_value(target, base)),
@@ -556,6 +557,61 @@ fn matrix_rows(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<ModR
 fn lfo_dot_y(p: &MelodyParams, slot: usize, phase: f32) -> f32 {
     let wave = p.lfo_spec(slot).wave;
     4.0 + (1.0 - crate::sequence::oscillator_value(wave.to_index(), phase)) * 32.0
+}
+
+/// Per-target overlay data used by the parameter strips: base/effective normalized positions
+/// plus the compact hover text listing the linked LFOs and their contribution to the range.
+fn target_views(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<ModTargetView> {
+    let signals = p.lfo_signals(clock);
+    ModTarget::ALL
+        .iter()
+        .map(|target| {
+            let target = *target;
+            let base = p.target_value(target, &[0.0; LFO_COUNT]);
+            let value = p.target_value(target, &signals);
+            let (min, max) = p.target_range(target);
+            let span = (max - min).max(1e-9);
+            let base01 = ((base - min) / span).clamp(0.0, 1.0);
+            let value01 = ((value - min) / span).clamp(0.0, 1.0);
+            let mut parts = Vec::new();
+            for slot in 0..LFO_COUNT {
+                if !target_in_mask(p.lfo_link_mask(slot), target) {
+                    continue;
+                }
+                let spec = p.lfo_spec(slot);
+                let speed = match spec.rate_mode {
+                    LfoRateMode::Hz if spec.freq_hz >= 1_000.0 => {
+                        format!("{:.1}k", spec.freq_hz / 1_000.0)
+                    }
+                    LfoRateMode::Hz if spec.freq_hz >= 1.0 => format!("{:.1}Hz", spec.freq_hz),
+                    LfoRateMode::Hz => format!("{:.2}Hz", spec.freq_hz),
+                    LfoRateMode::Beats => format!("{:.1}b", spec.rate_beats),
+                };
+                // The half-range span is the full-depth modulation amount, so signal × 0.5 is
+                // the signed share of the target's full range.
+                let percent = signals[slot] * 50.0;
+                parts.push(format!(
+                    "LFO{} {speed} {}{:.0}%",
+                    slot + 1,
+                    if percent >= 0.0 { "+" } else { "" },
+                    percent
+                ));
+            }
+            let lfo_text = parts.join(" · ");
+            ModTargetView {
+                target: target.index() as i32,
+                linked: !parts.is_empty(),
+                base,
+                value,
+                min,
+                max,
+                base01,
+                value01,
+                lfo_text: SharedString::from(lfo_text),
+                count: parts.len() as i32,
+            }
+        })
+        .collect()
 }
 
 /// Newest visible control under the pointer. Registration order resolves overlapping controls
@@ -726,6 +782,27 @@ impl Editor for SlintEditor {
                         let action = if linked { "unlinked" } else { "linked" };
                         ui.set_mod_status(SharedString::from(format!(
                             "LFO {slot} → {} {action}",
+                            target.label()
+                        )));
+                    }
+                });
+            }
+            {
+                let (p, c, weak) = (setup_params.clone(), setup_ctx.clone(), ui.as_weak());
+                ui.on_delete_mod(move |lfo, target_index| {
+                    let slot = lfo.clamp(1, 4) as usize;
+                    let Some(target) = ModTarget::from_index(target_index.max(0) as usize) else {
+                        return;
+                    };
+                    p.set_lfo_link(slot - 1, target, false);
+                    if slot == 1 {
+                        set(&c, &p.lfo1_target, LfoTarget::None);
+                    } else if slot == 2 {
+                        set(&c, &p.lfo2_target, LfoTarget::None);
+                    }
+                    if let Some(ui) = weak.upgrade() {
+                        ui.set_mod_status(SharedString::from(format!(
+                            "LFO {slot} → {} removed",
                             target.label()
                         )));
                     }
@@ -914,6 +991,17 @@ impl Editor for SlintEditor {
             let live_signals = p.lfo_signals(live_clock);
             let lfo_running = update_shared.lfo_running.load(Relaxed);
             ui.set_lfo_running(lfo_running);
+            let views = target_views(p, live_clock);
+            let mod_model = ui.global::<ModView>().get_targets();
+            if mod_model.row_count() == views.len() {
+                for (i, view) in views.iter().enumerate() {
+                    if mod_model.row_data(i).as_ref() != Some(view) {
+                        mod_model.set_row_data(i, view.clone());
+                    }
+                }
+            } else {
+                ui.global::<ModView>().set_targets(ModelRc::new(VecModel::from(views)));
+            }
             for slot in 0..LFO_COUNT {
                 let phase = f32::from_bits(update_shared.lfo_phase[slot].load(Relaxed));
                 let dot_y = lfo_dot_y(p, slot, phase);
@@ -1177,6 +1265,15 @@ mod tests {
             }
         });
         ui.global::<ModDrag>().on_dropped(|_, _, _| {});
+        let mut views = target_views(
+            &MelodyParams::default(),
+            crate::modulation::LfoClock::default(),
+        );
+        views[ModTarget::Steps.index()].linked = true;
+        views[ModTarget::Steps.index()].base = 16.0;
+        views[ModTarget::Steps.index()].value = 20.0;
+        views[ModTarget::Steps.index()].lfo_text = SharedString::from("LFO 1 Sine 0.50 Hz +20%");
+        ui.global::<ModView>().set_targets(ModelRc::new(VecModel::from(views)));
         ui.show().unwrap();
         let mut buffer = vec![slint::Rgb8Pixel::new(0, 0, 0); (WIDTH * HEIGHT) as usize];
         for _ in 0..40 {
@@ -1190,6 +1287,37 @@ mod tests {
             registered.load(std::sync::atomic::Ordering::Relaxed) > 0,
             "modulation drop targets were never registered"
         );
+    }
+
+    #[test]
+    fn target_views_expose_base_and_modulated_positions() {
+        let p = MelodyParams {
+            lfo1_links: std::sync::atomic::AtomicU64::new(crate::modulation::target_bit(
+                ModTarget::Steps,
+            )),
+            lfo1_wave: EnumParam::new("LFO 1 Wave", OscWave::Sine),
+            lfo1_rate_mode: EnumParam::new("LFO 1 Rate Mode", LfoRateMode::Hz),
+            lfo1_freq: FloatParam::new(
+                "LFO 1 Frequency",
+                0.5,
+                FloatRange::Skewed { min: 0.01, max: 20_000.0, factor: 0.25 },
+            ),
+            lfo1_depth: FloatParam::new(
+                "LFO 1 Depth",
+                1.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            ..MelodyParams::default()
+        };
+        let views = target_views(
+            &p,
+            crate::modulation::LfoClock { beat: 0.5, seconds: 0.5 },
+        );
+        let steps = &views[ModTarget::Steps.index()];
+        assert!(steps.linked);
+        assert!(steps.value01 > steps.base01);
+        assert!(steps.lfo_text.as_str().contains("LFO1"));
+        assert!(!views[ModTarget::Density.index()].linked);
     }
 
     #[test]
@@ -1215,6 +1343,7 @@ mod tests {
         let rows = matrix_rows(&p, crate::modulation::LfoClock { beat: 0.5, seconds: 0.5 });
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].target.as_str(), "Steps");
+        assert_eq!(rows[0].target_id, ModTarget::Steps.index() as i32);
         assert_ne!(rows[0].value.as_str(), rows[0].base.as_str());
     }
 }

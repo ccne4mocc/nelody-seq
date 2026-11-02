@@ -32,10 +32,11 @@ pitch slides, legato and accents travel over MIDI channel 1.
   Settings only stores the folder.
 - **Four runtime LFOs** in a 2×2 rack under the history card: waveform, Hz/kHz or beat-synced
   speed, depth, phase and bipolar/unipolar polarity. Drag an LFO's colored point onto any
-  numeric parameter to link it; drag again to unlink. A read-only modulation matrix slides up
-  from the LFO rack and shows every link with its base and current value. Feel and tuning
-  targets are sampled per note; pattern-shaping targets are sampled at loop boundaries and
-  regenerate the line without allocating in the audio callback.
+  numeric parameter to link it; drag again to unlink. Linked controls show a second animated
+  base→value bar and a hover summary of their LFOs. The modulation matrix slides up from the
+  LFO rack, shows every link with its base/current value, and removes links with ×. Feel and
+  tuning targets are sampled per note; pattern-shaping targets are sampled at loop boundaries
+  and regenerate the line without allocating in the audio callback.
 
 ## Build
 

@@ -55,8 +55,9 @@ Files: `src/modulation.rs`, `src/lib.rs`, `src/editor.rs`, `ui/app.slint`,
    masks (`#[persist]`).
 3. Evaluate scheduling/tuning targets per note and pattern-shaping targets at loop boundaries;
    the preview uses the published `pattern_beat` for parity.
-4. 2×2 LFO rack under the MIDI history; drag an LFO point onto any registered numeric control;
-   the matrix is read-only for now.
+4. 2×2 LFO rack under the MIDI history; drag an LFO point onto any registered numeric control.
+   Linked controls show a second modulated bar and hover summary; the matrix lists links and
+   removes them with a per-row ×.
 
 Acceptance: four LFOs modulate linked params in real time without allocations; links persist in
 the project; legacy single-target values still work.

@@ -86,8 +86,12 @@ Slint 1.16 does not expose `DragArea`/`DropArea` publicly, so the editor uses a 
   `changed` handler triggers a Slint 1.16 property-recursion panic.
 - On drop, the editor picks the newest visible rectangle containing the pointer, toggles the
   link, and updates the status line.
-- Dragging onto an already-linked target removes the link. The matrix is read-only in this
-  phase.
+- Dragging onto an already-linked target removes the link. The matrix also has a per-row ×
+  delete button.
+- `ModView` publishes each target's base/effective value and a linked-LFO summary. Linked
+  strips draw a second animated base→value bar on their own display scale; hovering a linked
+  strip replaces its value line with the LFO summary (name, waveform, speed and signed
+  contribution to the range).
 
 ## Persistence and preview
 
