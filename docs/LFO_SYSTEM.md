@@ -81,7 +81,9 @@ Slint 1.16 does not expose `DragArea`/`DropArea` publicly, so the editor uses a 
 - Each LFO cell's colored point is a `TouchArea`. Pointer down/move updates `ModDrag` with the
   window-space position; pointer up calls `ModDrag.dropped(lfo, x, y)`.
 - Every visible `OptSlider`/`NumBox` with a `mod-target` reports its window rectangle through the
-  `ModRegistry` global. The editor stores the newest rectangle per target.
+  `ModRegistry` global. The editor stores the newest rectangle per target. Registration is
+  timer-driven (30 ms initial, 250 ms refresh); reading `absolute-position` from its own
+  `changed` handler triggers a Slint 1.16 property-recursion panic.
 - On drop, the editor picks the newest visible rectangle containing the pointer, toggles the
   link, and updates the status line.
 - Dragging onto an already-linked target removes the link. The matrix is read-only in this

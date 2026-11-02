@@ -292,11 +292,8 @@ component OptSlider inherits Rectangle {
         border-radius: 4px; border-width: 2px; border-color: Theme.c2;
         background: transparent;
     }
-    changed mod-target => { root.report-mod(); }
-    changed visible => { root.report-mod(); }
-    changed absolute-position => { root.report-mod(); }
-    changed width => { root.report-mod(); }
-    changed height => { root.report-mod(); }
+    // Registration is timer-driven rather than `changed absolute-position`-driven: reading a
+    // layout property from its own change handler made Slint 1.16 report a property recursion.
     Timer {
         interval: 30ms;
         running: root.mod-target >= 0 && !root.mod-registered;
@@ -305,7 +302,7 @@ component OptSlider inherits Rectangle {
     // Periodic refresh keeps the newest visible rectangle ahead of stale hidden controls after
     // mode changes reflow the parameter column.
     Timer {
-        interval: 500ms;
+        interval: 250ms;
         running: root.mod-target >= 0;
         triggered => { root.report-mod(); }
     }
@@ -451,18 +448,15 @@ component NumBox inherits Rectangle {
         border-radius: 4px; border-width: 2px; border-color: Theme.c2;
         background: transparent;
     }
-    changed mod-target => { root.report-mod(); }
-    changed visible => { root.report-mod(); }
-    changed absolute-position => { root.report-mod(); }
-    changed width => { root.report-mod(); }
-    changed height => { root.report-mod(); }
+    // Timer-driven registration avoids a Slint 1.16 property-recursion panic caused by reading
+    // a layout property from its own change handler.
     Timer {
         interval: 30ms;
         running: root.mod-target >= 0 && !root.mod-registered;
         triggered => { root.mod-registered = true; root.report-mod(); }
     }
     Timer {
-        interval: 500ms;
+        interval: 250ms;
         running: root.mod-target >= 0;
         triggered => { root.report-mod(); }
     }

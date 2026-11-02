@@ -1142,6 +1142,47 @@ mod tests {
     }
 
     #[test]
+    fn appwindow_startup_runs_timers_without_property_recursion() {
+        use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
+        use slint::platform::{Platform, WindowAdapter};
+        use std::rc::Rc;
+        use std::time::{Duration, Instant};
+
+        struct TestPlatform {
+            window: Rc<MinimalSoftwareWindow>,
+            start: Instant,
+        }
+        impl Platform for TestPlatform {
+            fn create_window_adapter(
+                &self,
+            ) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
+                Ok(self.window.clone())
+            }
+            fn duration_since_start(&self) -> Duration {
+                self.start.elapsed()
+            }
+        }
+
+        let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+        let start = Instant::now();
+        slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), start }))
+            .unwrap();
+        window.set_size(slint::PhysicalSize::new(WIDTH, HEIGHT));
+        let ui = AppWindow::new().unwrap();
+        ui.global::<ModRegistry>().on_register(|_, _, _, _, _, _| {});
+        ui.global::<ModDrag>().on_dropped(|_, _, _| {});
+        ui.show().unwrap();
+        let mut buffer = vec![slint::Rgb8Pixel::new(0, 0, 0); (WIDTH * HEIGHT) as usize];
+        for _ in 0..40 {
+            slint::platform::update_timers_and_animations();
+            window.draw_if_needed(|renderer| {
+                renderer.render(&mut buffer, WIDTH as usize);
+            });
+            std::thread::sleep(Duration::from_millis(15));
+        }
+    }
+
+    #[test]
     fn matrix_rows_follow_links_and_show_modulated_values() {
         let p = MelodyParams {
             lfo1_links: std::sync::atomic::AtomicU64::new(crate::modulation::target_bit(
