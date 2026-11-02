@@ -31,7 +31,7 @@ fn config_path() -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")));
-    Some(base?.join("Nelody").join("settings.json"))
+    Some(base?.join("nelody-sequencer").join("settings.json"))
 }
 
 pub(crate) fn config_path_display() -> String {
@@ -112,6 +112,6 @@ mod tests {
             .filter(|p| !p.as_os_str().is_empty())
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")));
         let Some(home) = expected_home else { return };
-        assert_eq!(path, home.join("Nelody").join("settings.json"));
+        assert_eq!(path, home.join("nelody-sequencer").join("settings.json"));
     }
 }

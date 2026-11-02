@@ -44,7 +44,7 @@ pub enum Mode {
 /// Presentation-only grouping. Never stored in the host state: `Mode` indices stay the stable
 /// project/API contract while the UI can show sections and sort by group.
 ///
-/// Labels and order are shared with nDrum's `modes::GROUPS`. Keep them identical in both
+/// Labels and order are shared with nrum sequencer's `modes::GROUPS`. Keep them identical in both
 /// projects: Rhythm, Stochastic, Chaos / Physics, Fractal, Cellular, Geometric, Number Theory,
 /// Music Theory, Acid. `Fractal` is reserved for the fractal mode wave; an unused group renders
 /// no header.
@@ -62,7 +62,7 @@ pub enum ModeGroup {
 }
 
 impl ModeGroup {
-    /// Canonical display order, shared with nDrum. Do not sort these labels alphabetically.
+    /// Canonical display order, shared with nrum sequencer. Do not sort these labels alphabetically.
     pub const ALL: [ModeGroup; 9] = [
         Self::Rhythm,
         Self::Stochastic,
@@ -184,7 +184,7 @@ mod tests {
                 "Music Theory",
                 "Acid",
             ],
-            "keep this order and these labels identical to nDrum's modes::GROUPS"
+            "keep this order and these labels identical to nrum sequencer's modes::GROUPS"
         );
     }
 

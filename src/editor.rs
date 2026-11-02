@@ -33,12 +33,12 @@ const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#",
 /// History length is expressed in 4/4 bars; the host tempo supplies the beat duration.
 const BEATS_PER_BAR: f32 = 4.0;
 
-/// Append one technical line to `nelody.log` in the user's home directory. GUI thread only.
+/// Append one technical line to `nelody-sequencer.log` in the user's home directory. GUI thread only.
 fn log_line(text: &str) {
     use std::io::Write;
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
     let Some(home) = home else { return };
-    let path = PathBuf::from(home).join("nelody.log");
+    let path = PathBuf::from(home).join("nelody-sequencer.log");
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "{}", text);
     }
@@ -68,8 +68,8 @@ fn mode_entries() -> Vec<ModeEntry> {
 }
 
 /// Pair the grouped entries into two-column rows: a header row stays full-width and each group's
-/// modes fill left/right slots. This mirrors the nDrums mode picker while keeping Nelody's 300px
-/// dropdown width.
+/// modes fill left/right slots. This mirrors the nrum sequencer mode picker while keeping the
+/// nelody sequencer's 300px dropdown width.
 fn mode_rows() -> Vec<ModeRow> {
     let entries = mode_entries();
     let mut rows = Vec::new();
@@ -445,7 +445,7 @@ fn write_midi_file(p: &MelodyParams, bpm: f64, folder: &str) -> Result<PathBuf, 
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    let path = folder.join(format!("nelody-{stamp}.mid"));
+    let path = folder.join(format!("nelody-sequencer-{stamp}.mid"));
     std::fs::write(&path, midi_export::smf(&pattern, p, &settings))
         .map_err(|e| format!("write {}: {e}", path.display()))?;
     Ok(path)
@@ -676,7 +676,7 @@ impl Editor for SlintEditor {
             setter.end_set_parameter(&self.params.theme);
         }
         let options = WindowOpenOptions {
-            title: "Nelody".to_string(), size: Size::new(WIDTH as f64, HEIGHT as f64),
+            title: "nelody sequencer".to_string(), size: Size::new(WIDTH as f64, HEIGHT as f64),
             scale: if scale > 0.0 { WindowScalePolicy::ScaleFactor(scale as f64) } else { WindowScalePolicy::SystemScaleFactor },
             gl_config: Some(default_gl_config()),
         };

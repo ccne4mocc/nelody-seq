@@ -1,5 +1,5 @@
 import { ScrollView } from "std-widgets.slint";
-// Nelody: algorithm-first MIDI melody sequencer. Rust pushes deterministic pattern and view data.
+// nelody sequencer: algorithm-first MIDI melody sequencer. Rust pushes deterministic pattern and view data.
 export global Theme {
     in-out property <color> c1: #22d3ee;
     in-out property <color> c2: #a3e635;
@@ -723,9 +723,9 @@ component LfoCell inherits Rectangle {
         spacing: 2px;
         alignment: center;
         Rectangle {
-            width: 30px; height: 28px; background: transparent;
+            width: 28px; height: 28px; background: transparent;
             Rectangle {
-                y: 0px; width: 30px; height: 28px; border-radius: 4px;
+                y: 1px; width: 28px; height: 26px; border-radius: 4px;
                 background: root.accent;
                 Text { text: "\{root.index}"; color: Theme.on-accent; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
                 handle-touch := TouchArea {
@@ -909,7 +909,7 @@ component ModePanel inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
-    title: "Nelody";
+    title: "nelody sequencer";
     // Fixed layout size: the window never resizes (a live resize glitched the GL surface),
     // so the host cannot be fought over it.
     in property <length> base-width: 860px;
@@ -1308,7 +1308,7 @@ export component AppWindow inherits Window {
         padding: 14px; spacing: 2px;
         HorizontalLayout {
             height: 34px; spacing: 6px;
-            Text { text: "Nelody"; color: Theme.text; font-family: "FantasqueSansM Nerd Font Mono"; font-size: 24px; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
+            Text { text: "nelody sequencer"; color: Theme.text; font-family: "FantasqueSansM Nerd Font Mono"; font-size: 24px; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
             Text { visible: root.track-name != ""; text: "· \{root.track-name}"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; overflow: elide; }
             Rectangle { horizontal-stretch: 1; }
             Text { text: "CLOCK RATE"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; }
@@ -1847,10 +1847,10 @@ export component AppWindow inherits Window {
             Rectangle {
                 height: 26px; border-radius: 4px;
                 background: root.logging-on ? Theme.c1.with-alpha(0.8) : (logging-touch.has-hover ? Theme.control-hover : Theme.control);
-                Text { x: 8px; width: parent.width - 16px; text: root.logging-on ? "LOGGING: ON (nelody.log)" : "LOGGING: OFF"; color: root.logging-on ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; }
+                Text { x: 8px; width: parent.width - 16px; text: root.logging-on ? "LOGGING: ON (nelody-sequencer.log)" : "LOGGING: OFF"; color: root.logging-on ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; }
                 logging-touch := TouchArea { clicked => { root.toggle-logging(); } }
             }
-            Text { text: "Writes mode and parameter snapshots to nelody.log in your home folder."; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
+            Text { text: "Writes mode and parameter snapshots to nelody-sequencer.log in your home folder."; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
             Text { text: "MIDI EXPORT FOLDER"; color: Theme.text-muted; font-size: 9px; }
             Rectangle {
                 height: 26px; border-radius: 4px;
@@ -1870,7 +1870,7 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 spacing: 0px;
                 Text { text: "CREDITS / CONTACT"; color: Theme.text-muted; font-size: 9px; }
-                Text { text: "\{root.credit-author}  ·  Nelody"; color: Theme.text; font-size: 10px; }
+                Text { text: "\{root.credit-author}  ·  nelody sequencer"; color: Theme.text; font-size: 10px; }
                 TextInput { read-only: true; text: root.credit-website; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }
                 TextInput { read-only: true; text: root.credit-github; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }
                 TextInput { read-only: true; text: root.credit-support; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }

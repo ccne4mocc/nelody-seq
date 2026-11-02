@@ -60,7 +60,7 @@ pub use slint::PlatformError;
 /// interfere with the audio host or plugin UI lifecycle.
 fn log_backend(message: &str) {
     use std::io::Write;
-    let path = std::env::temp_dir().join("nDrum-baseview.log");
+    let path = std::env::temp_dir().join("nelody-sequencer-baseview.log");
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "{}", message);
     }

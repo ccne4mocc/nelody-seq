@@ -1,5 +1,5 @@
 [package]
-name = "nelody"
+name = "nelody-sequencer"
 version = "1.2.0"
 edition = "2021"
 description = "Algorithmic melodic MIDI sequencer plug-in (CLAP/VST3), Rust-based"
