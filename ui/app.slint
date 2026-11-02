@@ -1413,13 +1413,15 @@ export component AppWindow inherits Window {
                     scale-chip := TuningChip { width: 140px; label: "SCALE"; value: root.tuning-name + "  ▾"; centered: true; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
                     Rectangle { horizontal-stretch: 1; }
                 }
+                // Push the octave/NTS strip to the bottom edge of the parameter column.
+                Rectangle { vertical-stretch: 1; }
                 HorizontalLayout {
                     height: 28px; spacing: 5px;
-                    // Octave and NTS Bend sit against the right edge of the parameter column;
-                    // EDO (when shown) stays immediately to their left.
+                    // Octave and NTS Bend sit against the bottom-right edge of the parameter
+                    // column; EDO (when shown) stays immediately to their left.
                     Rectangle { horizontal-stretch: 1; }
-                    edo-row := NumBox { visible: root.edo-active; width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; mod-target: 20; changed(v) => { root.set-opt(21, v); } }
-                    tuning-oct := NumBox { width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; mod-target: 18; changed(v) => { root.set-opt(19, v); } }
+                    edo-row := NumBox { visible: root.edo-active; height: 28px; width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; mod-target: 20; changed(v) => { root.set-opt(21, v); } }
+                    tuning-oct := NumBox { height: 28px; width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; mod-target: 18; changed(v) => { root.set-opt(19, v); } }
                     TuningChip { width: 68px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
                 }
             }
