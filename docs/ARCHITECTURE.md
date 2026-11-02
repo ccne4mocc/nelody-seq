@@ -203,6 +203,10 @@ variation comes from Generate, Randomize and the knobs.
 - Views must read `map_param`, `osc` and `orbit_next` from the pattern, or draw through
   `view::src_index`. Re-deriving `r`, `μ`, `a` or the phase from `density` is what made panels
   disagree with the audible line after rotate/mirror/variation.
+- Map modes must rank onsets with a different observable than they use for pitch. Logistic and
+  Tent rank peaks but read a delayed orbit sample; Hénon ranks move size and reads `y`; Oscillator
+  uses Euclidean onsets over the sampled waveform. Ranking and pitching from the same value makes
+  every top-k hit land on the same high notes (the square-wave oscillator collapsed to one pitch).
 
 ## Where state lives
 

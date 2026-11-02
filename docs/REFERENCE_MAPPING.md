@@ -20,14 +20,14 @@ index 14 because the melody modes build the non-acid half of that split.
 |---:|---|---|---|---|
 | 0 | Euclidean | Rhythm | nDrums Euclidean (per-lane rings) collapsed to one ring + contour walk by 1/φ | Necklace ring, filled hit polygon, playhead hand |
 | 1 | Golomb Ruler | Number Theory | `_nMelody_old` Golomb | Ruler marks with every inter-mark gap as an arc |
-| 2 | Logistic Map | Chaos | `_nMelody_old` Logistic | Parabola + the orbit points the generator visited |
+| 2 | Logistic Map | Chaos | `_nMelody_old` Logistic | Parabola + the orbit points; onsets are top-k peaks, pitch reads a delayed orbit sample |
 | 3 | Eulerian Walk | Geometric | `_nMelody_old` Euler | Directed graph, Hierholzer circuit, rest vertex R |
 | 4 | Arnold Circle Map | Chaos | `_nMelody_old` CircleMap | Phasor: outer circle, inner θ circle, unwrapped phase spiral |
 | 5 | Mozart Dice | Stochastic | `_nMelody_old` Dice (11-cell bank) | One cell per bar, rolled pitch as bar height; one die spans cells 0,2,…,10 and `density` is transposition jitter |
 | 6 | Tonnetz Walk | Music Theory | nDrums Markov position filled by the melody project's Tonnetz | P/L/R lattice with visited triangles filled, walk line, note-name nodes |
 | 7 | Cellular Automaton | Cellular | nDrums Cellular on one ring | CA space-time rings, selected generation solid, playhead column |
 | 8 | Markov Walk | Stochastic | nDrums Markov over the 7-degree melody graph | Graph over rest + 7 degrees, taken edges drawn; single-octave degree path, slot 0 = tonic |
-| 9 | Oscillator / Phase | Rhythm | nDrums Oscillator re-purposed: the sampled curve IS the pitch contour | Waveform curve + step dots + contour + playhead column |
+| 9 | Oscillator / Phase | Rhythm | nDrums Oscillator re-purposed: the sampled curve IS the pitch contour | Waveform curve + step dots + contour + playhead column; Euclid places the onsets |
 | 10 | L-System Grammar | Rhythm | Both (nDrums wording, `_nMelody_old` A/B contour mapping) | A/B word strip with A=bar/B=dot, contour over it |
 | 11 | Xenakis Sieve | Number Theory | nDrums Sieve with degree-per-residue-class melody | Three residue-class rows with member dots, mask shows which survive |
 | 12 | Fibonacci / Sturmian | Number Theory | nDrums Fibonacci turned melodic | Staircase of floor((i+1)α), onsets marked |
@@ -41,8 +41,8 @@ index 14 because the melody modes build the non-acid half of that split.
 | 20 | Rudin-Shapiro | Number Theory | New wave: automatic sequence | Binary word strip + index contour; onsets spread evenly over the 1s, `phase`/seed/variation slide the window |
 | 21 | Brownian Walk | Stochastic | New wave: reflected random walk | Walk path + onset dots; Gaussian step σ = 0.01 + 0.2·density, `phase` = start position (no drift) |
 | 22 | Lévy Flight | Stochastic | New wave: heavy-tailed walk | Walk path + onset dots; Pareto α = 2 − 1.5·density, min step 0.02 + 0.06·density, folded |
-| 23 | Tent Map | Chaos | New wave: piecewise-linear map | Tent map + orbit/onset dots; μ = 1 + 0.99·density, pitch scaled to the attractor |
-| 24 | Hénon Map | Chaos | New wave: 2-D attractor | 2-D attractor scatter; a = 1 + 0.4·density, b = 0.3, start near origin with a 64-step transient |
+| 23 | Tent Map | Chaos | New wave: piecewise-linear map | Tent map + orbit/onset dots; μ = 1 + 0.99·density, pitch reads a delayed orbit sample |
+| 24 | Hénon Map | Chaos | New wave: 2-D attractor | 2-D attractor scatter; a = 1 + 0.4·density, b = 0.3, move-size onsets, y pitch |
 | 25 | Arpeggiator | Music Theory | New wave: chord-tone arp | Diatonic piano roll (single-octave degree path): degrees 1-3-5-7 of the selected scale/tuning |
 | 26 | Walking Bass | Music Theory | New wave: chord + chromatic approach | Absolute piano roll; ping-pong chord tones on even steps, chromatic approach on the weak step, `phase` = approach side |
 | 27 | Hilbert Curve | Geometric | New wave: space-filling curve | 2-D Hilbert order grid/path |
@@ -72,6 +72,7 @@ mapping highlights, for modes where the knob name is wrong in the generic sense:
 | 5 Dice | Dice per bar (1–3) | Root bias of the roll | — |
 | 7 Cellular | Which generation row plays | Cell density | Generation offset |
 | 8 Markov | Walk activity | Rest probability | Leapiness (via osc_rate) |
+| 9 Oscillator | Requested hits | Euclidean onset density | Sample phase (with `osc_rate` cycles) |
 | 11 Sieve | Union terms (0–2) | Fraction of members kept | Residue shift |
 | 14–18 acid | Note count / motif length / register width | Root bias / leapiness | Mutation / register flip |
 | 19–20 Thue-Morse / Rudin-Shapiro | Target hits (spread over the 1s) | Keep fraction | Word offset |

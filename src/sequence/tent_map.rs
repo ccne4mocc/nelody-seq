@@ -1,4 +1,4 @@
-use super::{frac, top_k, GenParams, Pattern, MAX_STEPS, PHI_INV};
+use super::{frac, normalize01, pitch_delay, top_k, GenParams, Pattern, MAX_STEPS, PHI_INV};
 
 /// Slope for a density: 1.0 (ordered) .. 1.99 (fully chaotic; exactly 2 collapses in floating point).
 pub(crate) fn mu_of(density: f32) -> f64 {
@@ -6,6 +6,7 @@ pub(crate) fn mu_of(density: f32) -> f64 {
 }
 
 /// Tent map x' = mu * min(x, 1 - x); the orbit is the contour and the highest samples are hits.
+/// Pitch reads a delayed orbit sample, so the top peaks do not all land on the highest notes.
 ///
 /// Three fixes against the first version: it started at `phase + 0.01·seed` (0.013 by default) with
 /// no transient, so every loop opened on an exponential ramp 0.01, 0.02, 0.05 ... (at density 0.3 the
@@ -19,7 +20,6 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let mu = mu_of(p.density);
     out.map_param = mu as f32;
     out.nv = (mu * 1000.0) as usize; // kept for panels written before `map_param`
-    let (lo, hi) = (mu * (1.0 - mu / 2.0), mu / 2.0); // the attractor interval
     let f = |x: f64| mu * x.min(1.0 - x);
     let mut x = 0.05 + 0.9 * frac(p.seed as f64 + p.phase as f64 + p.variation as f64 * PHI_INV);
     for _ in 0..32 { x = f(x); }
@@ -28,10 +28,14 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         if i > 0 { x = f(x); }
         scores[i] = if i == 0 { 2.0 } else { x as f32 };
         out.orbit[i] = x as f32;
-        out.u[i] = if hi - lo > 1e-3 { ((x - lo) / (hi - lo)).clamp(0.0, 1.0) as f32 } else { 0.5 };
-        out.acc[i] = 0.62 + 0.38 * out.u[i];
     }
     top_k(&scores, n, wanted, &mut out.hit);
+    let (lo, hi) = out.orbit[..n].iter().fold((f32::MAX, f32::MIN), |(l, h), &x| (l.min(x), h.max(x)));
+    let delay = pitch_delay(n);
+    for i in 0..n {
+        out.u[i] = normalize01(out.orbit[(i + delay) % n], lo, hi);
+        out.acc[i] = 0.62 + 0.38 * out.u[i];
+    }
     out
 }
 

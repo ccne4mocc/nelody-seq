@@ -1,4 +1,4 @@
-use super::{top_k, GenParams, Pattern, MAX_STEPS};
+use super::{euclid_on, GenParams, Pattern, MAX_STEPS};
 
 pub(crate) const WAVE_COUNT: usize = 8;
 
@@ -23,7 +23,9 @@ fn hash01(phase: f32) -> f32 {
     (x - x.floor()) as f32
 }
 
-/// Quantized oscillator: waveform samples define the pitch contour and rank the top-k steps.
+/// Quantized oscillator: the waveform supplies the pitch contour; requested hits are placed as a
+/// Euclidean rhythm so the onset selection does not simply pick the waveform's highest samples
+/// (which collapsed square waves to one pitch).
 pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut out = Pattern { steps: p.steps, ..Pattern::default() };
     let n = p.steps.max(1);
@@ -31,9 +33,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         return out;
     }
     let rate = p.osc_rate.clamp(0.125, 8.0) as f64;
-    let wanted = ((p.pulses.min(n) as f32 * p.density.clamp(0.0, 1.0)).round() as usize)
-        .max(1)
-        .min(n);
+    let wanted = super::euclidean::requested_hits(p.pulses, p.density, n);
     let mut wave = [0.0f32; MAX_STEPS];
     let v_shift = p.variation as f64 * 0.071;
     let phase0 = (p.phase as f64 + p.seed as f64 * 0.5 + v_shift).rem_euclid(1.0);
@@ -45,12 +45,33 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         wave[i] = value(p.osc_wave, ph);
         out.orbit[i] = wave[i];
         out.u[i] = wave[i];
+        out.hit[i] = euclid_on(i, wanted, n);
     }
-    top_k(&wave, n, wanted, &mut out.hit);
     for i in 0..n {
         if out.hit[i] {
             out.acc[i] = (0.55 + 0.45 * wave[i]).clamp(0.05, 1.0);
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn euclidean_onsets_keep_the_requested_count_for_every_waveform() {
+        for wave in 0..WAVE_COUNT {
+            for (steps, pulses, density) in [(1usize, 1usize, 1.0f32), (16, 5, 0.8), (64, 24, 0.35)] {
+                let g = GenParams {
+                    kind: crate::modes::Mode::Oscillator, steps, length: steps as f32,
+                    pulses, density, osc_wave: wave, osc_rate: 2.0,
+                    ..GenParams::default()
+                };
+                let out = generate(&g);
+                let want = crate::sequence::euclidean::requested_hits(pulses, density, steps);
+                assert_eq!(out.hit[..steps].iter().filter(|&&h| h).count(), want, "wave {wave} steps {steps}");
+            }
+        }
+    }
 }

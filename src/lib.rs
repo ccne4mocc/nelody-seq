@@ -1140,6 +1140,10 @@ mod tests {
         // Step 1 is scale degree slot 2: a minor third in Minor, a major third in Major.
         assert_eq!(params(Tuning::Minor).pitch_for(&pat, 1).0, 51);
         assert_eq!(params(Tuning::Major).pitch_for(&pat, 1).0, 52);
+        // Just intonation keeps the same semitone but carries its own detune.
+        let just = params(Tuning::JustFiveLimit).pitch_for(&pat, 1);
+        assert_eq!(just.0, 52);
+        assert!((just.1 + 13.69).abs() < 0.02, "just third detune {}", just.1);
     }
 
     #[test]

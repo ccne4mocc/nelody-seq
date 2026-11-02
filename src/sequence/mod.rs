@@ -382,6 +382,17 @@ pub(super) fn fold01(x: f64) -> f64 {
     if m <= 1.0 { m } else { 2.0 - m }
 }
 
+/// Delay used when a mode reads its pitch from the orbit instead of from the same sample that
+/// ranks its onsets. Keeps peaks as rhythm while decorrelating the melody.
+pub(super) fn pitch_delay(n: usize) -> usize {
+    if n > 1 { 3.min(n - 1) } else { 0 }
+}
+
+/// Normalize to 0..1 over an observed range; a collapsed orbit reads as the midpoint.
+pub(super) fn normalize01(v: f32, lo: f32, hi: f32) -> f32 {
+    if hi - lo > 1e-6 { ((v - lo) / (hi - lo)).clamp(0.0, 1.0) } else { 0.5 }
+}
+
 /// Mark `k` steps, spread evenly over the structural ones first. `primary[i]` flags the steps the
 /// algorithm itself calls onsets (Thue-Morse 1s, primes). Fewer than `k`: take every primary step.
 /// More: pick `k` evenly spaced among them. The old ranking (`top_k` on run length, `cell % 7`, or
@@ -974,6 +985,51 @@ mod tests {
                 (o.hit, o.u, o.slots)
             };
             assert_ne!(line(0.05), line(0.65), "{kind:?}: Seed does not change pitch or rhythm");
+        }
+    }
+
+    #[test]
+    fn hit_pitches_are_not_clustered_in_map_and_oscillator_modes() {
+        // Onset selection and pitch must be independent observables in these modes; otherwise the
+        // top-k peaks all land on the same high notes (square-wave oscillator used to have span 0).
+        for kind in [Mode::Logistic, Mode::TentMap, Mode::HenonMap, Mode::Oscillator] {
+            for density in [0.35f32, 0.65, 1.0] {
+                let mut lo = 1.0f32;
+                let mut hi = 0.0f32;
+                let mut hits = 0usize;
+                for variation in 0..8 {
+                    let g = GenParams {
+                        kind, steps: 64, length: 64.0, pulses: 24, density, variation,
+                        rotate: 0, probability: 1.0, ..GenParams::default()
+                    };
+                    let out = generate(&g);
+                    for i in 0..64 {
+                        if out.hit[i] {
+                            lo = lo.min(out.u[i]);
+                            hi = hi.max(out.u[i]);
+                            hits += 1;
+                        }
+                    }
+                }
+                assert!(hits > 0, "{kind:?} density {density} produced no hits");
+                assert!(hi - lo > 0.5, "{kind:?} density {density}: hit pitch span {}", hi - lo);
+            }
+        }
+        // The square/step waves are the worst case for a peak-based selector: with Euclidean
+        // onsets both levels must be reachable.
+        for wave in 0..crate::sequence::oscillator_wave_count {
+            let out = generate(&GenParams {
+                kind: Mode::Oscillator, steps: 64, length: 64.0, pulses: 16, density: 1.0,
+                osc_wave: wave, osc_rate: 2.0, ..GenParams::default()
+            });
+            let (mut lo, mut hi) = (1.0f32, 0.0f32);
+            for i in 0..64 {
+                if out.hit[i] {
+                    lo = lo.min(out.u[i]);
+                    hi = hi.max(out.u[i]);
+                }
+            }
+            assert!(hi - lo > 0.5, "oscillator wave {wave}: hit pitch span {}", hi - lo);
         }
     }
 

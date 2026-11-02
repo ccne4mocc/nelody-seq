@@ -34,10 +34,10 @@ Melodic (full range, `acid=false`):
   `phase`=start position.
 - **Lévy flight** (`levy_flight`) — heavy-tailed jumps; Pareto α=2−1.5·density, min step
   0.02+0.06·density, folded into 0..1.
-- **Tent map** (`tent_map`) — piecewise-linear chaos map; μ=1+0.99·density, pitch scaled to the
-  attractor interval, `phase`=initial x after a transient.
+- **Tent map** (`tent_map`) — piecewise-linear chaos map; μ=1+0.99·density, `phase`=initial x
+  after a transient; top-k peaks are onsets, pitch reads a delayed orbit sample.
 - **Hénon map** (`henon_map`) — 2D attractor; a=1+0.4·density, b=0.3, start near the origin with a
-  64-step transient and an escape guard.
+  64-step transient and an escape guard; move size picks onsets, y is the pitch.
 - **Arpeggiator** (`arpeggiator`) — scale-degree arp over degrees 1-3-5-7 with direction selector
   (`phase`); uses the single-octave degree path so it follows the selected scale/tuning.
 - **Walking bass** (`walking_bass`) — ping-pong chord tones on even steps plus chromatic approaches

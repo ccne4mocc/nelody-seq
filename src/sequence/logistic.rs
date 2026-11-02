@@ -1,4 +1,4 @@
-use super::{frac, top_k, GenParams, Pattern, MAX_STEPS, PHI_INV};
+use super::{frac, normalize01, pitch_delay, top_k, GenParams, Pattern, MAX_STEPS, PHI_INV};
 
 pub(crate) fn r_of(density: f32) -> f64 {
     3.5 + 0.5 * density.clamp(0.0, 1.0) as f64
@@ -14,7 +14,8 @@ pub(crate) fn x0(p: &GenParams) -> f64 {
 /// a true collapse onto the fixed points counts as an escape; the old 0.001 window re-seeded it.
 const EDGE: f64 = 1e-9;
 
-/// Logistic map: top-k values of the orbit are hits; pitch follows the normalized orbit.
+/// Logistic map: top-k values of the orbit are hits; pitch follows a delayed orbit sample so the
+/// highest peaks do not all become the highest notes.
 pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut out = Pattern { steps: p.steps, ..Pattern::default() };
     let n = p.steps.max(1);
@@ -44,19 +45,12 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut scores = [0.0f32; MAX_STEPS];
     scores[..n].copy_from_slice(&out.orbit[..n]);
     top_k(&scores, n, wanted, &mut out.hit);
-    let mut lo = f32::MAX;
-    let mut hi = f32::MIN;
+    let (lo, hi) = out.orbit[..n].iter().fold((f32::MAX, f32::MIN), |(l, h), &x| (l.min(x), h.max(x)));
+    let delay = pitch_delay(n);
     for i in 0..n {
+        out.u[i] = normalize01(out.orbit[(i + delay) % n], lo, hi);
         if out.hit[i] {
-            lo = lo.min(out.orbit[i]);
-            hi = hi.max(out.orbit[i]);
-        }
-    }
-    let span = (hi - lo).max(1e-6);
-    for i in 0..n {
-        out.u[i] = if hi > lo { ((out.orbit[i] - lo) / span).clamp(0.0, 1.0) } else { out.orbit[i] };
-        if out.hit[i] {
-            out.acc[i] = (0.6 + 0.4 * out.orbit[i]).clamp(0.05, 1.0);
+            out.acc[i] = (0.6 + 0.4 * out.u[i]).clamp(0.05, 1.0);
         }
     }
     out

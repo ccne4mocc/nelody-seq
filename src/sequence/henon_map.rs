@@ -1,11 +1,12 @@
-use super::{frac, top_k, GenParams, Pattern, MAX_STEPS, PHI, PHI_INV};
+use super::{frac, normalize01, top_k, GenParams, Pattern, MAX_STEPS, PHI, PHI_INV};
 
 /// Hénon `a` for a density: 1.0 (periodic orbits) .. 1.4 (the classic chaotic attractor); b = 0.3.
 pub(crate) fn a_of(density: f32) -> f64 {
     1.0 + density.clamp(0.0, 1.0) as f64 * 0.4
 }
 
-/// Hénon attractor; x is the contour (and y feeds the 2-D panel), the move size ranks onsets.
+/// Hénon attractor; x is the 2-D panel's horizontal axis, y is the pitch (and the panel's vertical
+/// axis), and the move size ranks onsets. Onset and pitch therefore use independent observables.
 ///
 /// The first version started at x = 1.8·phase - 0.9, y = 1.8·seed - 0.9. The map's basin is small
 /// (|y| above about 0.4 escapes), so 13% of (phase, seed) starts diverged, hit the ±2 clamp and then
@@ -35,12 +36,23 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         let uy = ((y + 0.4) / 0.8).clamp(0.0, 1.0) as f32;
         scores[i] = if i == 0 { 1.0 } else { (x - prev).abs() as f32 + 1e-4 };
         prev = x;
-        out.u[i] = ux;
         out.orbit[i] = ux;
         out.theta[i] = uy;
         out.acc[i] = 0.58 + 0.42 * ux;
     }
     top_k(&scores, n, wanted, &mut out.hit);
+    // Onsets already use the move size; pitch reads y (theta). Normalizing over the hit set keeps
+    // the played notes spanning the melodic range instead of bunching on the attractor's y band.
+    let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+    for i in 0..n {
+        if out.hit[i] {
+            lo = lo.min(out.theta[i]);
+            hi = hi.max(out.theta[i]);
+        }
+    }
+    for i in 0..n {
+        out.u[i] = normalize01(out.theta[i], lo, hi);
+    }
     out
 }
 
