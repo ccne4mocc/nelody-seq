@@ -62,8 +62,8 @@ Excluded: LFO parameters themselves, mode/scale/rate/wave/theme pickers, boolean
 (Invert, Mirror, NTS, Free-run, Generate, Logging, Round steps), Randomize scope, Variation and
 the hidden Symmetry control.
 
-`Gate` is kept as a target for projects saved before the matrix existed. It has no dedicated
-new control in the current UI; adding one to the Feel row would make new Gate links possible.
+`Gate` now has a compact slider in the feel row beside Velocity and Swing, so it is both
+editable and drag-targetable; the legacy `lfoN_target = Gate` value remains a migration link.
 
 ## Link storage and migration
 

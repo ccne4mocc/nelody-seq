@@ -801,6 +801,7 @@ export component AppWindow inherits Window {
     in property <float> density: 0.65;
     in property <float> probability: 1.0;
     in property <float> velocity: 1.0;
+    in property <float> gate: 0.12;
     in property <float> regenerate-every: 0;
     in property <float> randomize-after-lengths: 0;
     in property <float> swing: 0;
@@ -1234,9 +1235,14 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout { spacing: 5px;
                     OptSlider { opt: root.opts[8]; index: 8; mod-target: 8; changed(v) => { root.set-opt(8, v); } }
-                    // Velocity keeps half its old width; Swing sits beside it at the same width.
-                    OptSlider { width: 110px; opt: root.opts[9]; index: 9; mod-target: 11; changed(v) => { root.set-opt(9, v); } }
-                    OptSlider { width: 110px; opt: root.opts[13]; index: 13; mod-target: 9; changed(v) => { root.set-opt(13, v); } }
+                    // Feel row: velocity, gate and swing share the space beside probability.
+                    OptSlider { width: 100px; opt: root.opts[9]; index: 9; mod-target: 11; changed(v) => { root.set-opt(9, v); } }
+                    OptSlider {
+                        width: 82px; index: 40; mod-target: 10;
+                        opt: { label: "Gate", min: 0.02, max: 1, value: root.gate, text: "\{Math.round(root.gate * 100)}%", step: 0.01, number: "\{Math.round(root.gate * 100)}", scale: 0.01 };
+                        changed(v) => { root.set-opt(24, v); }
+                    }
+                    OptSlider { width: 100px; opt: root.opts[13]; index: 13; mod-target: 9; changed(v) => { root.set-opt(13, v); } }
                 }
                 if root.mode == 9: HorizontalLayout {
                     WavePicker {

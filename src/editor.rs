@@ -304,6 +304,7 @@ fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
         21 => set(c, &p.edo, (value.round() as i32).clamp(1, crate::tuning::MAX_EDO as i32)),
         22 => set(c, &p.root_cents, value.clamp(-50.0, 50.0)),
         23 => set(c, &p.history_bars, value.clamp(1.0, p.history_bars_ceiling())),
+        24 => set(c, &p.gate, value.clamp(0.02, 1.0)),
         _ => {},
     }
 }
@@ -890,6 +891,7 @@ impl Editor for SlintEditor {
             ui.set_density(p.density.value());
             ui.set_probability(p.probability.value());
             ui.set_velocity(p.velocity.value());
+            ui.set_gate(p.gate.value());
             ui.set_regenerate_every(p.regenerate_every.value() as f32);
             ui.set_randomize_after_lengths(p.randomize_after_lengths.value() as f32);
             ui.set_swing(p.swing.value());
