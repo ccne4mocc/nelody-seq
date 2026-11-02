@@ -54,19 +54,15 @@ struct ModeEntry {
 /// Sorted, grouped mode list for the dropdown. Header rows carry index -1; option rows carry the
 /// stable host index so sorting never changes what the host sees.
 fn mode_entries() -> Vec<ModeEntry> {
-    let mut modes: Vec<(usize, Mode)> = (0..<Mode as Enum>::variants().len())
-        .map(|i| (i, Mode::from_index(i)))
-        .collect();
-    modes.sort_by_key(|(i, mode)| (mode.group().label(), *i));
     let mut entries = Vec::new();
     let mut last_group = "";
-    for (i, mode) in modes {
+    for mode in Mode::display_order() {
         let group = mode.group().label();
         if group != last_group {
             entries.push(ModeEntry { group: SharedString::from(group), index: -1, header: true });
             last_group = group;
         }
-        entries.push(ModeEntry { group: SharedString::new(), index: i as i32, header: false });
+        entries.push(ModeEntry { group: SharedString::new(), index: mode.to_index() as i32, header: false });
     }
     entries
 }
@@ -1218,7 +1214,7 @@ mod tests {
     fn grouped_mode_entries_start_with_headers_and_keep_host_indices() {
         let entries = mode_entries();
         assert!(entries[0].header, "the first row must be a group header");
-        assert_eq!(entries[0].group.as_str(), "Acid");
+        assert_eq!(entries[0].group.as_str(), "Rhythm");
         assert!(entries.iter().any(|e| e.index == Mode::HilbertCurve.to_index() as i32));
         // Every host index appears exactly once and all headers are in sorted group order.
         let mut indices: Vec<i32> = entries.iter().filter(|e| !e.header).map(|e| e.index).collect();
@@ -1230,7 +1226,7 @@ mod tests {
     fn mode_rows_pair_two_modes_per_row_and_keep_every_host_index() {
         let rows = mode_rows();
         assert!(rows[0].header, "the first row must be a group header");
-        assert_eq!(rows[0].group.as_str(), "Acid");
+        assert_eq!(rows[0].group.as_str(), "Rhythm");
         let mut indices = Vec::new();
         for row in &rows {
             if row.header {

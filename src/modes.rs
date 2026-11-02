@@ -43,29 +43,64 @@ pub enum Mode {
 
 /// Presentation-only grouping. Never stored in the host state: `Mode` indices stay the stable
 /// project/API contract while the UI can show sections and sort by group.
+///
+/// Labels and order are shared with nDrum's `modes::GROUPS`. Keep them identical in both
+/// projects: Rhythm, Stochastic, Chaos / Physics, Fractal, Cellular, Geometric, Number Theory,
+/// Music Theory, Acid. `Fractal` is reserved for the fractal mode wave; an unused group renders
+/// no header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeGroup {
     Rhythm,
-    Chaos,
-    NumberTheory,
-    MusicTheory,
     Stochastic,
+    Chaos,
+    Fractal,
     Cellular,
     Geometric,
+    NumberTheory,
+    MusicTheory,
     Acid,
 }
 
 impl ModeGroup {
+    /// Canonical display order, shared with nDrum. Do not sort these labels alphabetically.
+    pub const ALL: [ModeGroup; 9] = [
+        Self::Rhythm,
+        Self::Stochastic,
+        Self::Chaos,
+        Self::Fractal,
+        Self::Cellular,
+        Self::Geometric,
+        Self::NumberTheory,
+        Self::MusicTheory,
+        Self::Acid,
+    ];
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Rhythm => "Rhythm",
-            Self::Chaos => "Chaos",
-            Self::NumberTheory => "Number Theory",
-            Self::MusicTheory => "Music Theory",
             Self::Stochastic => "Stochastic",
+            Self::Chaos => "Chaos / Physics",
+            Self::Fractal => "Fractal",
             Self::Cellular => "Cellular",
             Self::Geometric => "Geometric",
+            Self::NumberTheory => "Number Theory",
+            Self::MusicTheory => "Music Theory",
             Self::Acid => "Acid",
+        }
+    }
+
+    /// Position in [`ModeGroup::ALL`], used by `display_order` instead of alphabetical sorting.
+    pub fn rank(self) -> usize {
+        match self {
+            Self::Rhythm => 0,
+            Self::Stochastic => 1,
+            Self::Chaos => 2,
+            Self::Fractal => 3,
+            Self::Cellular => 4,
+            Self::Geometric => 5,
+            Self::NumberTheory => 6,
+            Self::MusicTheory => 7,
+            Self::Acid => 8,
         }
     }
 }
@@ -105,12 +140,12 @@ impl Mode {
         }
     }
 
-    /// The order the mode list is drawn in: grouped by `group().label()`, then host index. The mode
-    /// header wheel must step through this order, not the raw host index, or one notch from
-    /// Euclidean lands on Golomb (a different group, far away in the list).
+    /// The order the mode list is drawn in: grouped by `group().rank()`, then host index. The mode
+    /// header wheel must step through this order, not the raw host index, or one notch from a
+    /// mode lands on a different group far away in the list.
     pub fn display_order() -> Vec<Mode> {
         let mut modes: Vec<Mode> = (0..<Mode as Enum>::variants().len()).map(Mode::from_index).collect();
-        modes.sort_by_key(|m| (m.group().label(), m.to_index()));
+        modes.sort_by_key(|m| (m.group().rank(), m.to_index()));
         modes
     }
 
@@ -134,6 +169,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn group_labels_follow_the_shared_taxonomy() {
+        let labels: Vec<&str> = ModeGroup::ALL.iter().map(|group| group.label()).collect();
+        assert_eq!(
+            labels,
+            [
+                "Rhythm",
+                "Stochastic",
+                "Chaos / Physics",
+                "Fractal",
+                "Cellular",
+                "Geometric",
+                "Number Theory",
+                "Music Theory",
+                "Acid",
+            ],
+            "keep this order and these labels identical to nDrum's modes::GROUPS"
+        );
+    }
+
+    #[test]
     fn every_mode_has_a_presentation_group() {
         let mut seen = std::collections::HashSet::new();
         for mode in Mode::all() {
@@ -143,7 +198,8 @@ mod tests {
                 assert_eq!(group, ModeGroup::Acid, "{mode:?}");
             }
         }
-        assert_eq!(seen.len(), 8, "expected all eight groups to be used");
+        assert_eq!(seen.len(), 8, "expected all eight currently used groups");
+        assert_eq!(ModeGroup::ALL.len(), 9, "the shared taxonomy reserves Fractal for the next wave");
     }
 
     #[test]

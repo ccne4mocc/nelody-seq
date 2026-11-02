@@ -1375,7 +1375,7 @@ mod tests {
     #[test]
     fn neon_is_the_default_theme() {
         assert_eq!(MelodyParams::default().theme.value(), Theme::Neon);
-        assert_eq!(contact::VERSION, "1.1.0");
+        assert_eq!(contact::VERSION, "1.2.0");
     }
 
     #[test]

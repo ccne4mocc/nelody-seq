@@ -3,6 +3,10 @@
 Companion to `REFERENCE_MAPPING.md` and `ARCHITECTURE.md`. Captures the research
 brief agreed for the next implementation wave.
 
+Fractal, geometric / sacred-geometry and cellular candidates are reviewed in
+[`RESEARCH_FRACTAL_GEOMETRIC_CELLULAR.md`](RESEARCH_FRACTAL_GEOMETRIC_CELLULAR.md). That document
+is research and proofreading material; none of those modes are implemented yet.
+
 ## 1. Mode grouping / "blocks" concept
 
 `Mode` in `src/modes.rs` is a single flat enum because host, generators and UI
@@ -10,18 +14,22 @@ all share one list and one order (stable `#[id]` values). Grouping must **not**
 change ids or indices. Therefore grouping is *presentation metadata*, not a new
 enum layer:
 
-- Add `impl Mode { pub fn group(self) -> ModeGroup { ... } }` returning a small
-  `ModeGroup` enum (Rhythm, Chaos, NumberTheory, MusicTheory, Stochastic,
-  Cellular, Geometric, Acid). `ModeGroup` is `#[derive]` debug/clone/copy, not
+- `impl Mode { pub fn group(self) -> ModeGroup { ... } }` returns a small
+  `ModeGroup` enum. `ModeGroup` is `#[derive]` debug/clone/copy, not
   host-visible.
-- UI groups modes by scanning `Mode::all()` in order and emitting a header when
-  `group()` changes. Because new modes are appended at the end, existing groups
-  stay contiguous enough; if a group reappears later, the UI either merges or
-  shows two headers — acceptable, or we re-sort display order independently of
-  storage order (display-only sort by group then index).
+- The shared taxonomy with nDrum is explicit and ordered: Rhythm, Stochastic,
+  Chaos / Physics, Fractal, Cellular, Geometric, Number Theory, Music Theory,
+  Acid. `ModeGroup::ALL` is the single source of that order and `rank()` feeds
+  `display_order`; do not sort the labels alphabetically.
+- `Fractal` is reserved for the fractal wave (see
+  `RESEARCH_FRACTAL_GEOMETRIC_CELLULAR.md`). A group with no modes renders no
+  header, so adding the variant is safe before the first fractal mode lands.
+- UI groups modes by scanning `Mode::display_order()` and emitting a header when
+  `group()` changes. Existing groups stay contiguous because the sort is explicit.
 - Acid slider visibility keeps keying on `is_acid()` (explicit match), not on
   group, so the threshold never drifts with grouping changes.
-- `REFERENCE_MAPPING.md` gets a "Group" column.
+- `REFERENCE_MAPPING.md` gets a "Group" column; keep its labels in sync with
+  `ModeGroup::label()`.
 
 ## 2. New modes to implement (append after `AcidShift`, indices 19+)
 

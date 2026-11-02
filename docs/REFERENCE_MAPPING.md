@@ -20,9 +20,9 @@ index 14 because the melody modes build the non-acid half of that split.
 |---:|---|---|---|---|
 | 0 | Euclidean | Rhythm | nDrums Euclidean (per-lane rings) collapsed to one ring + contour walk by 1/φ | Necklace ring, filled hit polygon, playhead hand |
 | 1 | Golomb Ruler | Number Theory | `_nMelody_old` Golomb | Ruler marks with every inter-mark gap as an arc |
-| 2 | Logistic Map | Chaos | `_nMelody_old` Logistic | Parabola + the orbit points; onsets are top-k peaks, pitch reads a delayed orbit sample |
+| 2 | Logistic Map | Chaos / Physics | `_nMelody_old` Logistic | Parabola + the orbit points; onsets are top-k peaks, pitch reads a delayed orbit sample |
 | 3 | Eulerian Walk | Geometric | `_nMelody_old` Euler | Directed graph, Hierholzer circuit, rest vertex R |
-| 4 | Arnold Circle Map | Chaos | `_nMelody_old` CircleMap | Phasor: outer circle, inner θ circle, unwrapped phase spiral |
+| 4 | Arnold Circle Map | Chaos / Physics | `_nMelody_old` CircleMap | Phasor: outer circle, inner θ circle, unwrapped phase spiral |
 | 5 | Mozart Dice | Stochastic | `_nMelody_old` Dice (11-cell bank) | One cell per bar, rolled pitch as bar height; one die spans cells 0,2,…,10 and `density` is transposition jitter |
 | 6 | Tonnetz Walk | Music Theory | nDrums Markov position filled by the melody project's Tonnetz | P/L/R lattice with visited triangles filled, walk line, note-name nodes |
 | 7 | Cellular Automaton | Cellular | nDrums Cellular on one ring | CA space-time rings, selected generation solid, playhead column |
@@ -41,8 +41,8 @@ index 14 because the melody modes build the non-acid half of that split.
 | 20 | Rudin-Shapiro | Number Theory | New wave: automatic sequence | Binary word strip + index contour; onsets spread evenly over the 1s, `phase`/seed/variation slide the window |
 | 21 | Brownian Walk | Stochastic | New wave: reflected random walk | Walk path + onset dots; Gaussian step σ = 0.01 + 0.2·density, `phase` = start position (no drift) |
 | 22 | Lévy Flight | Stochastic | New wave: heavy-tailed walk | Walk path + onset dots; Pareto α = 2 − 1.5·density, min step 0.02 + 0.06·density, folded |
-| 23 | Tent Map | Chaos | New wave: piecewise-linear map | Tent map + orbit/onset dots; μ = 1 + 0.99·density, pitch reads a delayed orbit sample |
-| 24 | Hénon Map | Chaos | New wave: 2-D attractor | 2-D attractor scatter; a = 1 + 0.4·density, b = 0.3, move-size onsets, y pitch |
+| 23 | Tent Map | Chaos / Physics | New wave: piecewise-linear map | Tent map + orbit/onset dots; μ = 1 + 0.99·density, pitch reads a delayed orbit sample |
+| 24 | Hénon Map | Chaos / Physics | New wave: 2-D attractor | 2-D attractor scatter; a = 1 + 0.4·density, b = 0.3, move-size onsets, y pitch |
 | 25 | Arpeggiator | Music Theory | New wave: chord-tone arp | Diatonic piano roll (single-octave degree path): degrees 1-3-5-7 of the selected scale/tuning |
 | 26 | Walking Bass | Music Theory | New wave: chord + chromatic approach | Absolute piano roll; ping-pong chord tones on even steps, chromatic approach on the weak step, `phase` = approach side |
 | 27 | Hilbert Curve | Geometric | New wave: space-filling curve | 2-D Hilbert order grid/path |

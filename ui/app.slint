@@ -719,14 +719,15 @@ component LfoCell inherits Rectangle {
 
     height: 28px;
     HorizontalLayout {
-        spacing: 4px;
+        // 2px keeps the 30x28 drag points inside the 822px rack width.
+        spacing: 2px;
         alignment: center;
         Rectangle {
-            width: 16px; height: 28px; background: transparent;
+            width: 30px; height: 28px; background: transparent;
             Rectangle {
-                y: 6px; width: 16px; height: 16px; border-radius: 3px;
+                y: 0px; width: 30px; height: 28px; border-radius: 4px;
                 background: root.accent;
-                Text { text: "\{root.index}"; color: Theme.on-accent; font-size: 9px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                Text { text: "\{root.index}"; color: Theme.on-accent; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
                 handle-touch := TouchArea {
                     pointer-event(e) => {
                         // Slint reports move events with button = Other, so the move branch must not
@@ -833,13 +834,13 @@ component ModeDropdown inherits Rectangle {
                     Rectangle {
                         horizontal-stretch: 1; height: parent.height; border-radius: 3px;
                         background: r.left == root.current ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (left-touch.has-hover ? Theme.control-hover : Theme.control);
-                        Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.names[r.left]; color: r.left == root.current ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; overflow: elide; }
+                        Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.names[r.left]; color: r.left == root.current ? Theme.on-accent : Theme.text; font-size: 11px; vertical-alignment: center; overflow: elide; }
                         left-touch := TouchArea { clicked => { root.selected(r.left); } }
                     }
                     if r.has-right: Rectangle {
                         horizontal-stretch: 1; height: parent.height; border-radius: 3px;
                         background: r.right == root.current ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (right-touch.has-hover ? Theme.control-hover : Theme.control);
-                        Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.names[r.right]; color: r.right == root.current ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; overflow: elide; }
+                        Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.names[r.right]; color: r.right == root.current ? Theme.on-accent : Theme.text; font-size: 11px; vertical-alignment: center; overflow: elide; }
                         right-touch := TouchArea { clicked => { root.selected(r.right); } }
                     }
                     if !r.has-right: Rectangle { horizontal-stretch: 1; }
@@ -1864,13 +1865,18 @@ export component AppWindow inherits Window {
             }
             // Push the contact block to the bottom of the panel; the controls stay top-aligned.
             Rectangle { vertical-stretch: 1; }
-            Text { text: "CREDITS / CONTACT"; color: Theme.text-muted; font-size: 9px; }
-            Text { text: "\{root.credit-author}  ·  Nelody"; color: Theme.text; font-size: 10px; }
-            TextInput { read-only: true; text: root.credit-website; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
-            TextInput { read-only: true; text: root.credit-github; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
-            TextInput { read-only: true; text: root.credit-support; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
-            TextInput { read-only: true; text: root.credit-email; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
-            Text { height: 14px; text: "v\{root.app-version}"; color: Theme.text-muted; font-size: 8px; horizontal-alignment: right; vertical-alignment: center; }
+            // Credit rows are flush: the outer layout keeps the gap above the block, while
+            // this nested layout removes the inter-row spacing inside it.
+            VerticalLayout {
+                spacing: 0px;
+                Text { text: "CREDITS / CONTACT"; color: Theme.text-muted; font-size: 9px; }
+                Text { text: "\{root.credit-author}  ·  Nelody"; color: Theme.text; font-size: 10px; }
+                TextInput { read-only: true; text: root.credit-website; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }
+                TextInput { read-only: true; text: root.credit-github; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }
+                TextInput { read-only: true; text: root.credit-support; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }
+                TextInput { read-only: true; text: root.credit-email; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }
+                Text { height: 14px; text: "v\{root.app-version}"; color: Theme.text-muted; font-size: 8px; horizontal-alignment: right; vertical-alignment: center; }
+            }
             }
         }
     }

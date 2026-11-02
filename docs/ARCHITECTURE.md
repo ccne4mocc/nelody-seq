@@ -292,8 +292,9 @@ variation comes from Generate, Randomize and the knobs.
   generator dispatch key and the UI index. A test pins all 29 indices; acid starts at 14.
 - Scrolling over the current-mode header steps to the next/previous mode in the *displayed*
   (grouped) order and clamps at the ends (`Mode::step_in_display_order`): the list is sorted by
-  group label then host index, so walking the raw host index would jump between groups. The open
-  mode list keeps the wheel for its own scrolling.
+  `ModeGroup::rank()` then host index, so walking the raw host index would jump between groups.
+  The open mode list keeps the wheel for its own scrolling. The group labels and order are shared
+  with nDrum; `Fractal` is reserved for the fractal mode wave and renders no header while empty.
 - The mode dropdown is grouped by `Mode::group()` and laid out in two columns; `ModeRow` pairs two host indices per row (`left`/`right`) and group headers stay full-width. Sorting and pairing are display-only, so host indices never move.
 - New geometric modes use their natural 2-D view: Hilbert curve grid, Ulam spiral, Hénon
   attractor. The Euclidean necklace stays a ring because the 2-D necklace is the clearest
