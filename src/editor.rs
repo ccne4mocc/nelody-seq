@@ -192,6 +192,15 @@ fn apply_rate(c: &Arc<dyn GuiContext>, p: &MelodyParams, rate: Rate) {
     if p.history_bars.value() > max { set(c, &p.history_bars, max); }
 }
 
+fn lfo_enabled_param(p: &MelodyParams, slot: i32) -> &BoolParam {
+    match slot {
+        1 => &p.lfo1_enabled,
+        2 => &p.lfo2_enabled,
+        3 => &p.lfo3_enabled,
+        _ => &p.lfo4_enabled,
+    }
+}
+
 fn lfo_wave_param(p: &MelodyParams, slot: i32) -> &EnumParam<OscWave> {
     match slot {
         1 => &p.lfo1_wave,
@@ -520,7 +529,11 @@ fn lfo_source_label(p: &MelodyParams, slot: usize) -> String {
         LfoPolarity::Bipolar => "±",
         LfoPolarity::Unipolar => "+",
     };
-    format!("LFO {} · {wave} · {speed} · {polarity}", slot + 1)
+    if spec.enabled {
+        format!("LFO {} · {wave} · {speed} · {polarity}", slot + 1)
+    } else {
+        format!("LFO {} · off", slot + 1)
+    }
 }
 
 /// One row per LFO/target link. Read-only in this phase; the matrix is built on the editor
@@ -581,6 +594,10 @@ fn target_views(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<Mod
                     continue;
                 }
                 let spec = p.lfo_spec(slot);
+                if !spec.enabled {
+                    parts.push(format!("LFO{} off", slot + 1));
+                    continue;
+                }
                 let depth = spec.depth.clamp(0.0, 1.0) * 0.5;
                 depth_up += depth;
                 if spec.polarity == LfoPolarity::Bipolar {
@@ -704,6 +721,10 @@ impl Editor for SlintEditor {
                 });
             }
             {
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_set_lfo_enabled(move |slot, enabled| {
+                    set(&c, lfo_enabled_param(&p, slot), enabled);
+                });
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_set_lfo_wave(move |slot, v| {
                     let wave = OscWave::from_index(
@@ -1016,6 +1037,7 @@ impl Editor for SlintEditor {
                 let dot_y = lfo_dot_y(p, slot, phase);
                 match slot {
                     0 => {
+                        ui.set_lfo1_enabled(p.lfo1_enabled.value());
                         ui.set_lfo1_wave(p.lfo1_wave.value().to_index() as i32);
                         ui.set_lfo1_rate_mode(p.lfo1_rate_mode.value().to_index() as i32);
                         ui.set_lfo1_freq(p.lfo1_freq.value());
@@ -1027,6 +1049,7 @@ impl Editor for SlintEditor {
                         ui.set_lfo1_dot_y(dot_y);
                     }
                     1 => {
+                        ui.set_lfo2_enabled(p.lfo2_enabled.value());
                         ui.set_lfo2_wave(p.lfo2_wave.value().to_index() as i32);
                         ui.set_lfo2_rate_mode(p.lfo2_rate_mode.value().to_index() as i32);
                         ui.set_lfo2_freq(p.lfo2_freq.value());
@@ -1038,6 +1061,7 @@ impl Editor for SlintEditor {
                         ui.set_lfo2_dot_y(dot_y);
                     }
                     2 => {
+                        ui.set_lfo3_enabled(p.lfo3_enabled.value());
                         ui.set_lfo3_wave(p.lfo3_wave.value().to_index() as i32);
                         ui.set_lfo3_rate_mode(p.lfo3_rate_mode.value().to_index() as i32);
                         ui.set_lfo3_freq(p.lfo3_freq.value());
@@ -1049,6 +1073,7 @@ impl Editor for SlintEditor {
                         ui.set_lfo3_dot_y(dot_y);
                     }
                     _ => {
+                        ui.set_lfo4_enabled(p.lfo4_enabled.value());
                         ui.set_lfo4_wave(p.lfo4_wave.value().to_index() as i32);
                         ui.set_lfo4_rate_mode(p.lfo4_rate_mode.value().to_index() as i32);
                         ui.set_lfo4_freq(p.lfo4_freq.value());

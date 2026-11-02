@@ -188,10 +188,11 @@ component TuningChip inherits Rectangle {
     in property <bool> centered: false;
     // The scale chip opens a panel, so a wheel there must not toggle it once per notch.
     in property <bool> wheel-cycles: true;
+    in property <length> text-size: 9px;
     callback cycled();
     height: 28px; border-radius: 4px;
     background: root.active ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 100%) : (ta.has-hover ? Theme.control-hover : Theme.control);
-    Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.label == "" ? root.value : "\{root.label}  \{root.value}"; color: root.active ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: root.centered ? center : left; vertical-alignment: center; overflow: elide; }
+    Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.label == "" ? root.value : "\{root.label}  \{root.value}"; color: root.active ? Theme.on-accent : Theme.text; font-size: root.text-size; horizontal-alignment: root.centered ? center : left; vertical-alignment: center; overflow: elide; }
     ta := TouchArea {
         clicked => { root.cycled(); }
         scroll-event(e) => {
@@ -687,6 +688,7 @@ component RateField inherits Rectangle {
 // control links that LFO to the target.
 component LfoCell inherits Rectangle {
     in property <int> index: 1;
+    in property <bool> enabled: true;
     in property <int> wave: 0;
     in property <int> rate-mode: 0; // 0 = Hz, 1 = beats
     in property <float> freq: 0.5;
@@ -701,6 +703,7 @@ component LfoCell inherits Rectangle {
     in property <[string]> wave-names;
     callback wave-selected(int);
     callback wave-opened(length, length);
+    callback enabled-toggled();
     callback rate-mode-toggled();
     callback speed-changed(float);
     callback depth-changed(float);
@@ -719,30 +722,44 @@ component LfoCell inherits Rectangle {
         spacing: 4px;
         alignment: center;
         Rectangle {
-            width: 16px; height: 16px; border-radius: 3px;
-            background: root.accent;
-            Text { text: "\{root.index}"; color: Theme.on-accent; font-size: 9px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-            handle-touch := TouchArea {
-                pointer-event(e) => {
-                    // Slint reports move events with button = Other, so the move branch must not
-                    // be gated on the left button. Only down/up carry the real button.
-                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
-                        ModDrag.lfo = root.index;
-                        ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
-                        ModDrag.y = handle-touch.absolute-position.y + handle-touch.mouse-y;
-                    } else if (e.kind == PointerEventKind.move && ModDrag.lfo == root.index) {
-                        ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
-                        ModDrag.y = handle-touch.absolute-position.y + handle-touch.mouse-y;
-                    } else if (e.kind == PointerEventKind.up && ModDrag.lfo == root.index) {
-                        ModDrag.dropped(root.index, ModDrag.x, ModDrag.y);
-                        ModDrag.lfo = 0;
-                    } else if (e.kind == PointerEventKind.cancel) {
-                        ModDrag.lfo = 0;
+            width: 16px; height: 28px; background: transparent;
+            Rectangle {
+                y: 6px; width: 16px; height: 16px; border-radius: 3px;
+                background: root.accent;
+                Text { text: "\{root.index}"; color: Theme.on-accent; font-size: 9px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                handle-touch := TouchArea {
+                    pointer-event(e) => {
+                        // Slint reports move events with button = Other, so the move branch must not
+                        // be gated on the left button. Only down/up carry the real button.
+                        if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                            ModDrag.lfo = root.index;
+                            ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
+                            ModDrag.y = handle-touch.absolute-position.y + handle-touch.mouse-y;
+                        } else if (e.kind == PointerEventKind.move && ModDrag.lfo == root.index) {
+                            ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
+                            ModDrag.y = handle-touch.absolute-position.y + handle-touch.mouse-y;
+                        } else if (e.kind == PointerEventKind.up && ModDrag.lfo == root.index) {
+                            ModDrag.dropped(root.index, ModDrag.x, ModDrag.y);
+                            ModDrag.lfo = 0;
+                        } else if (e.kind == PointerEventKind.cancel) {
+                            ModDrag.lfo = 0;
+                        }
                     }
                 }
             }
         }
-        Text { width: 34px; text: "LFO \{root.index}"; color: root.accent; font-size: 9px; font-weight: 700; vertical-alignment: center; overflow: elide; }
+        Rectangle {
+            width: 34px; height: 28px; background: transparent;
+            Text {
+                width: parent.width; height: parent.height;
+                text: "LFO \{root.index}";
+                color: root.enabled ? root.accent : Theme.text-muted;
+                opacity: root.enabled ? 1.0 : 0.65;
+                font-size: 9px; font-weight: 700;
+                vertical-alignment: center; overflow: elide;
+            }
+            name-touch := TouchArea { clicked => { root.enabled-toggled(); } }
+        }
         WavePicker {
             width: 76px; height: 28px;
             paths: root.wave-paths; names: root.wave-names; current: root.wave;
@@ -779,8 +796,8 @@ component LfoCell inherits Rectangle {
             changed(v) => { root.phase-changed(v); }
         }
         TuningChip {
-            width: 28px; label: ""; value: root.polarity == 0 ? "±" : "+"; centered: true;
-            active: root.polarity == 0; cycled => { root.polarity-toggled(); }
+            width: 30px; label: ""; value: root.polarity == 0 ? "±" : "+"; centered: true;
+            text-size: 11px; active: root.polarity == 0; cycled => { root.polarity-toggled(); }
         }
     }
 }
@@ -921,6 +938,7 @@ export component AppWindow inherits Window {
     in property <float> regenerate-every: 0;
     in property <float> randomize-after-lengths: 0;
     in property <float> swing: 0;
+    in property <bool> lfo1-enabled: true;
     in property <int> lfo1-wave: 0;
     in property <int> lfo1-rate-mode: 0;
     in property <float> lfo1-freq: 0.5;
@@ -930,6 +948,7 @@ export component AppWindow inherits Window {
     in property <int> lfo1-polarity: 0;
     in property <float> lfo1-anim-phase: 0.0;
     in property <float> lfo1-dot-y: 20.0;
+    in property <bool> lfo2-enabled: true;
     in property <int> lfo2-wave: 1;
     in property <int> lfo2-rate-mode: 0;
     in property <float> lfo2-freq: 0.25;
@@ -939,6 +958,7 @@ export component AppWindow inherits Window {
     in property <int> lfo2-polarity: 0;
     in property <float> lfo2-anim-phase: 0.0;
     in property <float> lfo2-dot-y: 20.0;
+    in property <bool> lfo3-enabled: true;
     in property <int> lfo3-wave: 2;
     in property <int> lfo3-rate-mode: 0;
     in property <float> lfo3-freq: 1.0;
@@ -948,6 +968,7 @@ export component AppWindow inherits Window {
     in property <int> lfo3-polarity: 0;
     in property <float> lfo3-anim-phase: 0.0;
     in property <float> lfo3-dot-y: 20.0;
+    in property <bool> lfo4-enabled: true;
     in property <int> lfo4-wave: 3;
     in property <int> lfo4-rate-mode: 0;
     in property <float> lfo4-freq: 2.0;
@@ -1064,6 +1085,7 @@ export component AppWindow inherits Window {
     callback set-rate(int);
     callback rate-submitted(string);
     callback set-osc-wave(int);
+    callback set-lfo-enabled(int, bool);
     callback set-lfo-wave(int, int);
     callback set-lfo-rate-mode(int, int);
     callback set-lfo-speed(int, float);
@@ -1416,20 +1438,34 @@ export component AppWindow inherits Window {
                 border-width: 1px; border-color: Theme.border;
                 Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MIDI HISTORY  ·  flows right to left  ·  \{root.history-range}  ·  note height = pitch, bright = accent"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide; }
             }
-            // Invert and mirror are pattern transforms, so they live on the history they
-            // transform, in the card's top-right corner.
+            // Invert and mirror are pattern transforms. They sit vertically centred against the
+            // history card's right border so they read as a side control strip.
             Rectangle {
-                x: parent.width - 124px; y: 6px; width: 58px; height: 24px; border-radius: 4px;
+                x: parent.width - 30px; y: (parent.height - 116px) / 2;
+                width: 26px; height: 56px; border-radius: 4px;
                 background: root.invert-on ? Theme.c2.with-alpha(0.45) : Theme.control.with-alpha(0.9);
                 border-width: 1px; border-color: Theme.border;
-                Text { text: "INVERT"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                Text {
+                    x: (parent.width - parent.height) / 2; y: (parent.height - parent.width) / 2;
+                    width: parent.height; height: parent.width;
+                    transform-rotation: -90deg;
+                    text: "INVERT"; color: Theme.text; font-size: 9px;
+                    horizontal-alignment: center; vertical-alignment: center;
+                }
                 invert-touch := TouchArea { clicked => { root.toggle-invert(); } }
             }
             Rectangle {
-                x: parent.width - 62px; y: 6px; width: 58px; height: 24px; border-radius: 4px;
+                x: parent.width - 30px; y: (parent.height - 116px) / 2 + 60px;
+                width: 26px; height: 56px; border-radius: 4px;
                 background: root.mirror-on ? Theme.c3.with-alpha(0.45) : Theme.control.with-alpha(0.9);
                 border-width: 1px; border-color: Theme.border;
-                Text { text: "MIRROR"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                Text {
+                    x: (parent.width - parent.height) / 2; y: (parent.height - parent.width) / 2;
+                    width: parent.height; height: parent.width;
+                    transform-rotation: -90deg;
+                    text: "MIRROR"; color: Theme.text; font-size: 9px;
+                    horizontal-alignment: center; vertical-alignment: center;
+                }
                 mirror-touch := TouchArea { clicked => { root.toggle-mirror(); } }
             }
         }
@@ -1470,13 +1506,14 @@ export component AppWindow inherits Window {
                     height: 28px; spacing: 5px;
                     LfoCell {
                         horizontal-stretch: 1;
-                        index: 1; wave: root.lfo1-wave; rate-mode: root.lfo1-rate-mode;
+                        index: 1; enabled: root.lfo1-enabled; wave: root.lfo1-wave; rate-mode: root.lfo1-rate-mode;
                         freq: root.lfo1-freq; beats: root.lfo1-rate; depth: root.lfo1-depth;
                         phase: root.lfo1-phase; polarity: root.lfo1-polarity;
                         anim-phase: root.lfo1-anim-phase; dot-y: root.lfo1-dot-y; running: root.lfo-running;
                         wave-paths: root.wave-paths; wave-names: root.wave-names;
                         wave-selected(i) => { root.set-lfo-wave(1, i); }
                         wave-opened(x, y) => { root.wave-menu-target = 1; root.wave-menu-x = x; root.wave-menu-y = y - (root.wave-paths.length * 26px + 36px); }
+                        enabled-toggled => { root.set-lfo-enabled(1, !root.lfo1-enabled); }
                         rate-mode-toggled => { root.set-lfo-rate-mode(1, root.lfo1-rate-mode == 0 ? 1 : 0); }
                         speed-changed(v) => { root.set-lfo-speed(1, v); }
                         depth-changed(v) => { root.set-lfo-depth(1, v); }
@@ -1485,13 +1522,14 @@ export component AppWindow inherits Window {
                     }
                     LfoCell {
                         horizontal-stretch: 1;
-                        index: 2; wave: root.lfo2-wave; rate-mode: root.lfo2-rate-mode;
+                        index: 2; enabled: root.lfo2-enabled; wave: root.lfo2-wave; rate-mode: root.lfo2-rate-mode;
                         freq: root.lfo2-freq; beats: root.lfo2-rate; depth: root.lfo2-depth;
                         phase: root.lfo2-phase; polarity: root.lfo2-polarity;
                         anim-phase: root.lfo2-anim-phase; dot-y: root.lfo2-dot-y; running: root.lfo-running;
                         wave-paths: root.wave-paths; wave-names: root.wave-names;
                         wave-selected(i) => { root.set-lfo-wave(2, i); }
                         wave-opened(x, y) => { root.wave-menu-target = 2; root.wave-menu-x = x; root.wave-menu-y = y - (root.wave-paths.length * 26px + 36px); }
+                        enabled-toggled => { root.set-lfo-enabled(2, !root.lfo2-enabled); }
                         rate-mode-toggled => { root.set-lfo-rate-mode(2, root.lfo2-rate-mode == 0 ? 1 : 0); }
                         speed-changed(v) => { root.set-lfo-speed(2, v); }
                         depth-changed(v) => { root.set-lfo-depth(2, v); }
@@ -1503,13 +1541,14 @@ export component AppWindow inherits Window {
                     height: 28px; spacing: 5px;
                     LfoCell {
                         horizontal-stretch: 1;
-                        index: 3; wave: root.lfo3-wave; rate-mode: root.lfo3-rate-mode;
+                        index: 3; enabled: root.lfo3-enabled; wave: root.lfo3-wave; rate-mode: root.lfo3-rate-mode;
                         freq: root.lfo3-freq; beats: root.lfo3-rate; depth: root.lfo3-depth;
                         phase: root.lfo3-phase; polarity: root.lfo3-polarity;
                         anim-phase: root.lfo3-anim-phase; dot-y: root.lfo3-dot-y; running: root.lfo-running;
                         wave-paths: root.wave-paths; wave-names: root.wave-names;
                         wave-selected(i) => { root.set-lfo-wave(3, i); }
                         wave-opened(x, y) => { root.wave-menu-target = 3; root.wave-menu-x = x; root.wave-menu-y = y - (root.wave-paths.length * 26px + 36px); }
+                        enabled-toggled => { root.set-lfo-enabled(3, !root.lfo3-enabled); }
                         rate-mode-toggled => { root.set-lfo-rate-mode(3, root.lfo3-rate-mode == 0 ? 1 : 0); }
                         speed-changed(v) => { root.set-lfo-speed(3, v); }
                         depth-changed(v) => { root.set-lfo-depth(3, v); }
@@ -1518,13 +1557,14 @@ export component AppWindow inherits Window {
                     }
                     LfoCell {
                         horizontal-stretch: 1;
-                        index: 4; wave: root.lfo4-wave; rate-mode: root.lfo4-rate-mode;
+                        index: 4; enabled: root.lfo4-enabled; wave: root.lfo4-wave; rate-mode: root.lfo4-rate-mode;
                         freq: root.lfo4-freq; beats: root.lfo4-rate; depth: root.lfo4-depth;
                         phase: root.lfo4-phase; polarity: root.lfo4-polarity;
                         anim-phase: root.lfo4-anim-phase; dot-y: root.lfo4-dot-y; running: root.lfo-running;
                         wave-paths: root.wave-paths; wave-names: root.wave-names;
                         wave-selected(i) => { root.set-lfo-wave(4, i); }
                         wave-opened(x, y) => { root.wave-menu-target = 4; root.wave-menu-x = x; root.wave-menu-y = y - (root.wave-paths.length * 26px + 36px); }
+                        enabled-toggled => { root.set-lfo-enabled(4, !root.lfo4-enabled); }
                         rate-mode-toggled => { root.set-lfo-rate-mode(4, root.lfo4-rate-mode == 0 ? 1 : 0); }
                         speed-changed(v) => { root.set-lfo-speed(4, v); }
                         depth-changed(v) => { root.set-lfo-depth(4, v); }
@@ -1723,9 +1763,9 @@ export component AppWindow inherits Window {
                             Text { width: 70px; text: row.value; color: Theme.c2; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
                             Text { width: 70px; text: row.delta; color: Theme.text-muted; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
                             Rectangle {
-                                width: 24px; height: 20px; border-radius: 3px;
+                                width: 24px; height: 28px; border-radius: 3px;
                                 background: delete-touch.has-hover ? Theme.c3.with-alpha(0.65) : transparent;
-                                Text { text: "×"; color: delete-touch.has-hover ? Theme.on-accent : Theme.text-muted; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+                                Text { width: parent.width; height: parent.height; text: "×"; color: delete-touch.has-hover ? Theme.on-accent : Theme.text-muted; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
                                 delete-touch := TouchArea { clicked => { root.delete-mod(row.lfo, row.target-id); } }
                             }
                         }

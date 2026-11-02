@@ -190,6 +190,7 @@ impl LfoClock {
 /// without allocation.
 #[derive(Clone, Copy, Debug)]
 pub struct LfoSpec {
+    pub enabled: bool,
     pub wave: OscWave,
     pub rate_mode: LfoRateMode,
     pub freq_hz: f32,
@@ -202,6 +203,7 @@ pub struct LfoSpec {
 impl Default for LfoSpec {
     fn default() -> Self {
         Self {
+            enabled: true,
             wave: OscWave::Sine,
             rate_mode: LfoRateMode::Hz,
             freq_hz: 0.5,
@@ -234,6 +236,9 @@ pub fn lfo_phase(spec: LfoSpec, clock: LfoClock) -> f32 {
 
 /// One LFO sample. Bipolar spans `-depth..=depth`; unipolar spans `0..=depth`.
 pub fn lfo_signal(spec: LfoSpec, clock: LfoClock) -> f32 {
+    if !spec.enabled {
+        return 0.0;
+    }
     let depth = if spec.depth.is_finite() { spec.depth.clamp(0.0, 1.0) } else { 0.0 };
     if depth <= 0.0 {
         return 0.0;
@@ -338,6 +343,12 @@ mod tests {
         let trough = LfoClock { beat: 0.75, seconds: 0.75 };
         assert!((lfo_signal(bipolar, trough) + 1.0).abs() < 1e-6);
         assert!(lfo_signal(unipolar, trough).abs() < 1e-6);
+    }
+
+    #[test]
+    fn disabled_lfo_is_silent() {
+        let spec = LfoSpec { enabled: false, depth: 1.0, ..LfoSpec::default() };
+        assert_eq!(lfo_signal(spec, LfoClock { beat: 1.0, seconds: 1.0 }), 0.0);
     }
 
     #[test]

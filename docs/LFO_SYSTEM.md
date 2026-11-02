@@ -88,6 +88,9 @@ Slint 1.16 does not expose `DragArea`/`DropArea` publicly, so the editor uses a 
   link, and updates the status line.
 - Dragging onto an already-linked target removes the link. The matrix also has a per-row ×
   delete button.
+- Clicking an LFO name toggles its `lfoN_enabled` host parameter. Disabled LFOs keep their
+  links but contribute a zero signal; the name is greyed out and matrix/parameter summaries
+  read `off`.
 - `ModView` publishes each target's base/effective value, depth range and linked-LFO summary.
   Linked strips draw a low-opacity depth band plus a second animated base→value bar on their
   own display scale. Hovering a linked strip shows a tooltip just below it with the LFO name,

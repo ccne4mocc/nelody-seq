@@ -249,6 +249,10 @@ variation comes from Generate, Randomize and the knobs.
   same curve and frozen when `Shared::lfo_running` is false.
 - The LFO rack is a fixed 2×2 grid of `LfoCell`s. Each cell has a colored modulation point,
   waveform picker, Hz/beat mode chip, speed/depth/phase strips, and a bipolar/unipolar chip.
+  Clicking the LFO name toggles `lfoN_enabled`; a disabled LFO keeps its links but contributes
+  zero signal and its name is greyed out.
+- Invert and Mirror are vertical text strips against the MIDI history's right border, centred
+  vertically in the card.
 - Slint 1.16 keeps `DragArea`/`DropArea` out of the public element set. The modulation drag is
   therefore implemented with a `TouchArea` on the LFO point, the `ModDrag` global, and the
   `ModRegistry` callback: visible `OptSlider`/`NumBox` controls report their window rectangle,
