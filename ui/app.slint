@@ -1157,6 +1157,11 @@ export component AppWindow inherits Window {
             running: false;
             triggered => { root.regen-pulse = false; }
         }
+        Timer {
+            interval: 4s;
+            running: root.mod-status != "";
+            triggered => { root.mod-status = ""; }
+        }
 
     VerticalLayout {
         padding: 14px; spacing: 2px;
@@ -1178,7 +1183,7 @@ export component AppWindow inherits Window {
             Text { text: root.free-run ? "FREE-RUN CLOCK: ON" : "SYNC: HOST TRANSPORT"; color: root.free-run ? Theme.c1 : Theme.text-muted; font-size: 9px; vertical-alignment: center; }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: generate-touch.has-hover ? Theme.hi : Theme.control; Text { text: root.generate-on ? "RE-GENERATE ↻" : "GENERATE ↻"; color: generate-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } generate-touch := TouchArea { clicked => { root.generate-pressed(); } } }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: randomize-touch.has-hover ? Theme.c3 : Theme.control; Text { text: "RANDOMIZE ⚄"; color: randomize-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } randomize-touch := TouchArea { clicked => { root.randomize-pressed(); } } }
-            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TouchArea { clicked => { root.tuning-open = false; root.rate-menu-open = false; root.settings-open = !root.settings-open; } } }
+            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TouchArea { clicked => { root.tuning-open = false; root.rate-menu-open = false; root.settings-open = !root.settings-open; if (root.settings-open) { root.matrix-open = false; } } } }
         }
         HorizontalLayout {
             // 300px leaves room for the two- or three-sentence description plus the live math
@@ -1325,7 +1330,17 @@ export component AppWindow inherits Window {
                         width: 58px; height: 15px; border-radius: 3px;
                         background: root.matrix-open ? Theme.c2.with-alpha(0.55) : (matrix-touch.has-hover ? Theme.control-hover : Theme.control);
                         Text { text: "MATRIX ▤"; color: root.matrix-open ? Theme.on-accent : Theme.text; font-size: 8px; horizontal-alignment: center; vertical-alignment: center; }
-                        matrix-touch := TouchArea { clicked => { root.matrix-open = !root.matrix-open; } }
+                        matrix-touch := TouchArea {
+                            clicked => {
+                                root.matrix-open = !root.matrix-open;
+                                root.mode-menu-open = false;
+                                root.tuning-open = false;
+                                root.rate-menu-open = false;
+                                root.scope-menu-open = false;
+                                root.wave-menu-target = -1;
+                                root.settings-open = false;
+                            }
+                        }
                     }
                 }
                 HorizontalLayout {
@@ -1595,8 +1610,10 @@ export component AppWindow inherits Window {
     // Tied to the animated position, not to the boolean: the scrim stays live while the panel
     // is still travelling out, and is absent once it is parked, so it cannot swallow clicks
     // meant for the editor underneath.
+    // Keep the LFO rack outside the settings scrim so a modulation point can still be dragged
+    // onto the Max Steps / History Bars fields while Settings is open.
     if root.settings-x < root.base-width: Rectangle {
-        x: 0px; y: 0px; width: root.base-width; height: root.base-height;
+        x: 0px; y: 0px; width: root.base-width; height: root.base-height - 105px;
         background: #00000066;
         TouchArea { clicked => { root.settings-open = false; } }
     }

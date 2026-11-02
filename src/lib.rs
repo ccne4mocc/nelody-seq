@@ -1467,6 +1467,30 @@ mod tests {
     }
 
     #[test]
+    fn every_target_modulation_stays_inside_its_range() {
+        for target in ModTarget::ALL {
+            let p = MelodyParams {
+                lfo1_links: AtomicU64::new(target_bit(target)),
+                lfo1_wave: EnumParam::new("LFO 1 Wave", OscWave::Sine),
+                lfo1_rate_mode: EnumParam::new("LFO 1 Rate Mode", LfoRateMode::Hz),
+                lfo1_freq: hz_param("LFO 1 Frequency", 1.0),
+                lfo1_depth: FloatParam::new(
+                    "LFO 1 Depth",
+                    1.0,
+                    FloatRange::Linear { min: 0.0, max: 1.0 },
+                ),
+                ..MelodyParams::default()
+            };
+            let (min, max) = p.target_range(target);
+            for step in 0..16 {
+                let clock = LfoClock { beat: step as f64 * 0.1, seconds: step as f64 * 0.1 };
+                let value = p.target_value(target, &p.lfo_signals(clock));
+                assert!(value >= min && value <= max, "{target:?}: {value} outside {min}..{max}");
+            }
+        }
+    }
+
+    #[test]
     fn modulated_generation_snapshot_only_changes_linked_fields() {
         let p = MelodyParams {
             lfo1_links: AtomicU64::new(target_bit(ModTarget::Steps)),
