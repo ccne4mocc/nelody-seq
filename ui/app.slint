@@ -709,7 +709,6 @@ component LfoCell inherits Rectangle {
 
     property <color> accent: root.index == 1 ? Theme.c1 : (root.index == 2 ? Theme.c2 : (root.index == 3 ? Theme.c3 : Theme.hi));
     function format-hz(v: float) -> string {
-        if (v >= 1000) { return "\{Math.round(v / 10) / 100} kHz"; }
         if (v >= 100) { return "\{Math.round(v)} Hz"; }
         if (v >= 10) { return "\{Math.round(v * 10) / 10} Hz"; }
         return "\{Math.round(v * 100) / 100} Hz";
@@ -760,7 +759,7 @@ component LfoCell inherits Rectangle {
             opt: {
                 label: "Rate",
                 min: root.rate-mode == 0 ? 0.01 : 0.25,
-                max: root.rate-mode == 0 ? 20000 : 16,
+                max: root.rate-mode == 0 ? 1000 : 16,
                 value: root.rate-mode == 0 ? root.freq : root.beats,
                 text: root.rate-mode == 0 ? root.format-hz(root.freq) : "\{Math.round(root.beats * 100) / 100}",
                 step: root.rate-mode == 0 ? 0.01 : 0.25,

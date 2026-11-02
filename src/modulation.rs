@@ -10,6 +10,10 @@ use nice_plug::prelude::Enum;
 /// Number of runtime LFOs. The UI lays them out in a 2x2 rack.
 pub const LFO_COUNT: usize = 4;
 
+/// Highest free-running LFO frequency. The speed field is Hz-only; kHz is deliberately not
+/// offered because the scheduler samples LFOs per event, not at audio rate.
+pub const LFO_MAX_HZ: f32 = 1_000.0;
+
 /// A user-editable numeric parameter that an LFO may modulate.
 ///
 /// The order is a persisted-link contract: append new targets, never renumber existing ones.
@@ -167,7 +171,7 @@ pub fn target_in_mask(mask: u64, target: ModTarget) -> bool {
 }
 
 /// Transport position in both the beat domain (beat-synced LFOs, swing, note timing) and the
-/// seconds domain (Hz/kHz LFOs). Built from the host beat so transport jumps stay coherent.
+/// seconds domain (Hz LFOs). Built from the host beat so transport jumps stay coherent.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LfoClock {
     pub beat: f64,
@@ -214,7 +218,7 @@ pub fn lfo_phase(spec: LfoSpec, clock: LfoClock) -> f32 {
     let offset = if spec.phase.is_finite() { spec.phase.rem_euclid(1.0) as f64 } else { 0.0 };
     let cycles = match spec.rate_mode {
         LfoRateMode::Hz => {
-            let hz = if spec.freq_hz.is_finite() { spec.freq_hz.clamp(0.01, 20_000.0) } else { 0.5 };
+            let hz = if spec.freq_hz.is_finite() { spec.freq_hz.clamp(0.01, LFO_MAX_HZ) } else { 0.5 };
             clock.seconds * hz as f64
         }
         LfoRateMode::Beats => {

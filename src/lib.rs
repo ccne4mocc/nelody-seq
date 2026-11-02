@@ -16,7 +16,7 @@ pub use modes::Mode;
 pub use modulation::ModTarget;
 pub use tuning::Tuning;
 
-use modulation::{fold, target_bit, target_in_mask, LfoClock, LfoSpec, LFO_COUNT};
+use modulation::{fold, target_bit, target_in_mask, LfoClock, LfoSpec, LFO_COUNT, LFO_MAX_HZ};
 use nice_plug::prelude::*;
 use sequence::{
     generate, GenParams, Pattern, DEFAULT_MAX_STEPS, MAX_STEPS, MIN_MAX_STEPS,
@@ -317,16 +317,14 @@ pub struct MelodyParams {
     #[id = "history_bars"] pub history_bars: FloatParam,
 }
 
-/// Format an LFO frequency. Below 1 kHz the field is in Hz; above it switches to kHz so the
-/// full 0.01 Hz–20 kHz range stays readable.
+/// Format an LFO frequency in Hz. kHz is not offered: the LFO speed field is either Hz or a
+/// beat-synced rate.
 fn format_hz(value: f32) -> String {
     if !value.is_finite() {
         return "0.00 Hz".to_string();
     }
-    let value = value.clamp(0.01, 20_000.0);
-    if value >= 1_000.0 {
-        format!("{:.2} kHz", value / 1_000.0)
-    } else if value >= 100.0 {
+    let value = value.clamp(0.01, LFO_MAX_HZ);
+    if value >= 100.0 {
         format!("{value:.0} Hz")
     } else if value >= 10.0 {
         format!("{value:.1} Hz")
@@ -335,25 +333,19 @@ fn format_hz(value: f32) -> String {
     }
 }
 
-/// Accept `Hz`, `kHz`, or a bare number (interpreted as Hz) in typed speed fields.
+/// Accept `Hz` or a bare number (interpreted as Hz) in typed speed fields.
 fn parse_hz(text: &str) -> Option<f32> {
     let text = text.trim().to_ascii_lowercase();
-    let (number, multiplier) = if let Some(n) = text.strip_suffix("khz") {
-        (n, 1_000.0)
-    } else if let Some(n) = text.strip_suffix("hz") {
-        (n, 1.0)
-    } else {
-        (text.as_str(), 1.0)
-    };
+    let number = text.strip_suffix("hz").unwrap_or(text.as_str());
     let value = number.trim().parse::<f32>().ok()?;
-    value.is_finite().then(|| (value * multiplier).clamp(0.01, 20_000.0))
+    value.is_finite().then(|| value.clamp(0.01, LFO_MAX_HZ))
 }
 
 fn hz_param(name: &'static str, value: f32) -> FloatParam {
     FloatParam::new(
         name,
         value,
-        FloatRange::Skewed { min: 0.01, max: 20_000.0, factor: FloatRange::skew_factor(-2.0) },
+        FloatRange::Skewed { min: 0.01, max: LFO_MAX_HZ, factor: FloatRange::skew_factor(-2.0) },
     )
     .with_value_to_string(Arc::new(|v: f32| format_hz(v)))
     .with_string_to_value(Arc::new(|s: &str| parse_hz(s)))
@@ -1540,13 +1532,13 @@ mod tests {
     }
 
     #[test]
-    fn hz_formatter_and_parser_cover_hz_and_khz() {
+    fn hz_formatter_and_parser_are_hz_only() {
         assert_eq!(format_hz(0.5), "0.50 Hz");
         assert_eq!(format_hz(125.0), "125 Hz");
-        assert_eq!(format_hz(1_500.0), "1.50 kHz");
+        assert_eq!(format_hz(1_500.0), "1000 Hz");
         assert_eq!(parse_hz("0.5"), Some(0.5));
-        assert_eq!(parse_hz(" 1.5 kHz "), Some(1_500.0));
-        assert_eq!(parse_hz("20000 hz"), Some(20_000.0));
+        assert_eq!(parse_hz(" 1000 hz "), Some(1_000.0));
+        assert_eq!(parse_hz("20000"), Some(1_000.0));
         assert_eq!(parse_hz("nope"), None);
     }
 

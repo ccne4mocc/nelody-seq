@@ -51,7 +51,7 @@ Files: `src/view.rs`, `ui/app.slint`, `src/editor.rs`.
 Files: `src/modulation.rs`, `src/lib.rs`, `src/editor.rs`, `ui/app.slint`,
 `docs/LFO_SYSTEM.md`.
 1. Define `ModTarget`, `LfoSpec`, `LfoClock`, `LfoRateMode` and `LfoPolarity`.
-2. Add four LFO slots with Hz/kHz and beat clocks, depth, phase, polarity and persisted link
+2. Add four LFO slots with Hz and beat clocks, depth, phase, polarity and persisted link
    masks (`#[persist]`).
 3. Evaluate scheduling/tuning targets per note and pattern-shaping targets at loop boundaries;
    the preview uses the published `pattern_beat` for parity.
@@ -100,7 +100,7 @@ Phase 2: ten generators appended at host indices 19–28; all mode sweeps and th
 Phase 3: dedicated 2-D views for binary words, walks, tent/Hénon, absolute pitch, Hilbert and
 Ulam; mode dropdown sorts by group and renders headers. Existing Euclidean stays a ring because
 the 2-D necklace remains the clearest rhythm view.
-Phase 4: four runtime LFO slots with wave, Hz/kHz or beat clock, depth, phase, polarity and
+Phase 4: four runtime LFO slots with wave, Hz or beat clock, depth, phase, polarity and
 drag/drop links. Scheduling and tuning targets are sampled per note; pattern-shaping targets
 are sampled at loop boundaries through `gen_params_at()`. Legacy Swing/Gate/Velocity targets
 remain as migration links.

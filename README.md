@@ -30,7 +30,7 @@ pitch slides, legato and accents travel over MIDI channel 1.
 - **MIDI file export** of the current loop (mono, slide holds, swing) with the same
   editor→`generate()` path the audio scheduler uses. The button sits under the MIDI history;
   Settings only stores the folder.
-- **Four runtime LFOs** in a 2×2 rack under the history card: waveform, Hz/kHz or beat-synced
+- **Four runtime LFOs** in a 2×2 rack under the history card: waveform, Hz or beat-synced
   speed, depth, phase and bipolar/unipolar polarity. Drag an LFO's colored point onto any
   numeric parameter to link it; drag again to unlink. Linked controls show a depth band plus a
   second animated base→value bar and a hover summary below the control. The modulation matrix

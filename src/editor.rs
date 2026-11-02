@@ -9,7 +9,7 @@ use crate::keys;
 use crate::midi_export;
 use crate::sequence::{generate, GenParams, Pattern, Rng, MAX_STEPS, MIN_MAX_STEPS};
 use crate::view::{self, View};
-use crate::modulation::{format_target_value, target_in_mask, LFO_COUNT};
+use crate::modulation::{format_target_value, target_in_mask, LFO_COUNT, LFO_MAX_HZ};
 use crate::{
     cell_count_for, scope, LfoPolarity, LfoRateMode, LfoTarget, MelodyParams, Mode, ModTarget,
     OscWave, Rate, Shared, Theme as PluginTheme, Tuning,
@@ -587,8 +587,8 @@ fn target_views(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<Mod
                     depth_down += depth;
                 }
                 let speed = match spec.rate_mode {
-                    LfoRateMode::Hz if spec.freq_hz >= 1_000.0 => {
-                        format!("{:.1}k", spec.freq_hz / 1_000.0)
+                    LfoRateMode::Hz if spec.freq_hz >= 10.0 => {
+                        format!("{:.0}Hz", spec.freq_hz)
                     }
                     LfoRateMode::Hz if spec.freq_hz >= 1.0 => format!("{:.1}Hz", spec.freq_hz),
                     LfoRateMode::Hz => format!("{:.2}Hz", spec.freq_hz),
@@ -721,7 +721,7 @@ impl Editor for SlintEditor {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_set_lfo_speed(move |slot, value| {
                     match lfo_rate_mode_param(&p, slot).value() {
-                        LfoRateMode::Hz => set(&c, lfo_freq_param(&p, slot), value.clamp(0.01, 20_000.0)),
+                        LfoRateMode::Hz => set(&c, lfo_freq_param(&p, slot), value.clamp(0.01, LFO_MAX_HZ)),
                         LfoRateMode::Beats => set(&c, lfo_beat_param(&p, slot), value.clamp(0.25, 16.0)),
                     }
                 });
@@ -1331,7 +1331,7 @@ mod tests {
             lfo1_freq: FloatParam::new(
                 "LFO 1 Frequency",
                 0.5,
-                FloatRange::Skewed { min: 0.01, max: 20_000.0, factor: 0.25 },
+                FloatRange::Skewed { min: 0.01, max: LFO_MAX_HZ, factor: 0.25 },
             ),
             lfo1_depth: FloatParam::new(
                 "LFO 1 Depth",
@@ -1362,7 +1362,7 @@ mod tests {
             lfo1_freq: FloatParam::new(
                 "LFO 1 Frequency",
                 0.5,
-                FloatRange::Skewed { min: 0.01, max: 20_000.0, factor: 0.25 },
+                FloatRange::Skewed { min: 0.01, max: LFO_MAX_HZ, factor: 0.25 },
             ),
             lfo1_depth: FloatParam::new(
                 "LFO 1 Depth",
