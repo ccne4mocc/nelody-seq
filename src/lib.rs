@@ -198,7 +198,7 @@ pub mod scope {
     pub const CLOCK: i32 = 1 << 4;
     pub const PHASE: i32 = 1 << 5;
     pub const ACID: i32 = 1 << 6;
-    /// Velocity, bend, swing, probability.
+    /// Velocity, swing, probability.
     pub const FEEL: i32 = 1 << 7;
     pub const ALL: i32 = MODE | LENGTH | HITS | TUNING | CLOCK | PHASE | ACID | FEEL;
 }
@@ -268,9 +268,11 @@ pub struct MelodyParams {
     #[id = "oct_jump"] pub octave: FloatParam,
     /// Send microtonal tuning offsets as pitch bend.
     #[id = "nts"] pub nts: BoolParam,
-    /// Window length for the piano-roll history, in bars (4/4: four beats per bar). The host id
-    /// stays `history_beats` for project compatibility.
-    #[id = "history_beats"] pub history_bars: FloatParam,
+    /// Window length for the piano-roll history, in bars (4/4: four beats per bar). The old
+    /// `history_beats` id meant beats under the same label, so it is retired rather than reused:
+    /// projects saved with the old id reopen at the 4-bar default instead of silently showing a
+    /// window four times too wide.
+    #[id = "history_bars"] pub history_bars: FloatParam,
 }
 
 /// One LFO sample in `-depth..=depth`, evaluated against an absolute beat position.
@@ -366,9 +368,10 @@ impl Default for MelodyParams {
     }
 }
 
-/// Number of note events kept for the piano-roll history. 256 events is 128 notes, enough to
-/// cover the widest default history window without extending the audio-thread ring.
-pub const HISTORY_LEN: usize = 256;
+/// Number of note events kept for the piano-roll history. A full 1024-step line emits at most two
+/// events per step (NoteOn + NoteOff, including retriggers and legato), so 4096 events hold a dense
+/// full-length loop with headroom; 256 only covered the default 4-bar window.
+pub const HISTORY_LEN: usize = 4096;
 
 impl MelodyParams {
     /// Effective ceiling from the host parameter. Host state from an older build can be out of
@@ -424,6 +427,22 @@ impl MelodyParams {
         lfo_signal(self.lfo2_wave.value(), self.lfo2_rate.value(), self.lfo2_depth.value(), self.lfo2_phase.value(), beat)
     }
 
+    /// Fold both LFOs into the three modulatable targets at an absolute host beat. Called per note
+    /// (and at the nominal beat for swing) so fast rates are not block-stepped.
+    pub(crate) fn lfo_targets(&self, beat: f64) -> (f32, f32, f32) {
+        let (s1, s2) = (self.lfo1_signal(beat), self.lfo2_signal(beat));
+        let (mut swing, mut gate, mut velocity) = (self.swing.value(), self.gate.value(), self.velocity.value());
+        for (target, signal) in [(self.lfo1_target.value(), s1), (self.lfo2_target.value(), s2)] {
+            match target {
+                LfoTarget::Swing => swing = lfo_modulate(swing, signal, 0.25, 0.0, 0.5),
+                LfoTarget::Gate => gate = lfo_modulate(gate, signal, 0.5, 0.02, 1.0),
+                LfoTarget::Velocity => velocity = lfo_modulate(velocity, signal, 0.5, 0.01, 1.0),
+                LfoTarget::None => {}
+            }
+        }
+        (swing, gate, velocity)
+    }
+
     /// MIDI note and microtonal detune for one pattern step. The detune is what `nts` sends as
     /// pitch bend and what the history draws inside the row.
     pub(crate) fn pitch_for(&self, pat: &Pattern, idx: usize) -> (u8, f32) {
@@ -434,6 +453,8 @@ impl MelodyParams {
         let (semis, cents) = if pat.absolute {
             let s = pat.semis[idx] as i32 + pat.oct[idx] as i32 * 12;
             (s, root_cents)
+        } else if pat.slotted {
+            self.scale.value().pitch_slot(pat.slots[idx] as usize, pat.oct[idx] as i32, edo, root_cents)
         } else if pat.acid {
             self.scale.value().pitch_in_octave(pat.u[idx], pat.oct[idx] as i32, edo, root_cents)
         } else {
@@ -771,27 +792,21 @@ impl Plugin for Nelody {
         let spb = p.rate.value().steps_per_beat();
         let step_len = 1.0 / spb;
         let s1 = end * spb;
-        // Runtime LFO overlay. Scheduling targets do not regenerate the pattern, so they can be
-        // updated every block; the evaluation is allocation-free.
-        let (lfo1, lfo2) = (p.lfo1_signal(start), p.lfo2_signal(start));
-        let (mut swing_value, mut gate_value, mut velocity_value) =
-            (p.swing.value(), p.gate.value(), p.velocity.value());
-        for (target, signal) in [(p.lfo1_target.value(), lfo1), (p.lfo2_target.value(), lfo2)] {
-            match target {
-                LfoTarget::Swing => swing_value = lfo_modulate(swing_value, signal, 0.25, 0.0, 0.5),
-                LfoTarget::Gate => gate_value = lfo_modulate(gate_value, signal, 0.5, 0.02, 1.0),
-                LfoTarget::Velocity => velocity_value = lfo_modulate(velocity_value, signal, 0.5, 0.01, 1.0),
-                LfoTarget::None => {}
-            }
-        }
-        let swing = swing_value.clamp(0.0, 0.5) as f64 * step_len;
-        let swung = |k: i64| k as f64 * step_len + if k.rem_euclid(2) != 0 { swing } else { 0.0 };
         let mut k = resume_cursor(self.next_step, transport_jump, start, end, spb);
         let every = p.regenerate_every.value().max(0) as i64;
         let randomize_every = p.randomize_after_lengths.value().max(0) as i64;
 
         loop {
-            let next_step = if (k as f64) < s1 + 1.0 { swung(k) } else { f64::INFINITY };
+            // LFOs are sampled per event now: swing at the nominal step beat (the swung onset
+            // depends on it), gate/velocity at the resolved onset below. No block-stepped zipper.
+            let nominal_beat = k as f64 * step_len;
+            let (swing_value, _, _) = p.lfo_targets(nominal_beat);
+            let swing = swing_value.clamp(0.0, 0.5) as f64 * step_len;
+            let next_step = if (k as f64) < s1 + 1.0 {
+                nominal_beat + if k.rem_euclid(2) != 0 { swing } else { 0.0 }
+            } else {
+                f64::INFINITY
+            };
             let next_off = self.active.map(|a| a.off_beat).unwrap_or(f64::INFINITY);
             let at = next_step.min(next_off);
             if !at.is_finite() || at >= end - 1e-9 { break; }
@@ -829,6 +844,7 @@ impl Plugin for Nelody {
                 if self.pattern.hit[idx] {
                     let t = timing(next_step);
                     let (note, cents) = p.pitch_for(&self.pattern, idx);
+                    let (_, gate_value, velocity_value) = p.lfo_targets(next_step);
                     let velocity = (velocity_value * self.pattern.acc[idx]).clamp(0.01, 1.0);
                     // A sliding note is held right up to the next note (across any rests), not gated.
                     let hold = if self.pattern.slide[idx] {
@@ -923,7 +939,7 @@ mod tests {
             "lfo1_phase", "lfo1_target", "lfo2_wave", "lfo2_rate", "lfo2_depth", "lfo2_phase",
             "lfo2_target", "generate", "invert", "mirror", "logging",
             "freerun", "root", "scale", "edo", "root_cents", "midi_root", "octaves", "slide",
-            "accent", "oct_jump", "nts", "history_beats",
+            "accent", "oct_jump", "nts", "history_bars",
         ] {
             assert!(ids.contains(&expected), "missing parameter {expected}");
         }
@@ -977,6 +993,29 @@ mod tests {
         assert!((lfo_modulate(0.25, 0.5, 0.25, 0.0, 0.5) - 0.375).abs() < 1e-6);
         assert_eq!(lfo_modulate(0.45, 1.0, 0.5, 0.02, 1.0), 0.95);
         assert_eq!(lfo_modulate(0.45, -1.0, 0.5, 0.02, 1.0), 0.02);
+    }
+
+    #[test]
+    fn lfo_targets_are_sampled_at_the_requested_beat() {
+        let p = MelodyParams {
+            lfo1_target: EnumParam::new("LFO 1 Target", LfoTarget::Gate),
+            lfo1_wave: EnumParam::new("LFO 1 Wave", OscWave::Sine),
+            lfo1_rate: FloatParam::new("LFO 1 Rate (beats)", 1.0, FloatRange::Linear { min: 0.25, max: 16.0 }),
+            lfo1_depth: FloatParam::new("LFO 1 Depth", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            gate: FloatParam::new("Gate", 0.5, FloatRange::Linear { min: 0.02, max: 1.0 }),
+            ..MelodyParams::default()
+        };
+        let (_, g0, _) = p.lfo_targets(0.0);
+        let (_, g1, _) = p.lfo_targets(0.25); // sine peak a quarter-cycle later
+        assert!((g1 - g0 - 0.25).abs() < 1e-5, "gate {g0} -> {g1}");
+        // A fast LFO must move inside one sixteenth-note step, not only once per block.
+        let fast = MelodyParams {
+            lfo1_rate: FloatParam::new("LFO 1 Rate (beats)", 0.25, FloatRange::Linear { min: 0.25, max: 16.0 }),
+            ..p
+        };
+        let (_, a, _) = fast.lfo_targets(0.0);
+        let (_, b, _) = fast.lfo_targets(0.0625);
+        assert!((a - b).abs() > 0.2, "adjacent steps: {a} vs {b}");
     }
 
     #[test]
@@ -1085,6 +1124,43 @@ mod tests {
     }
 
     #[test]
+    fn arpeggiator_follows_the_selected_scale() {
+        let pat = generate(&GenParams {
+            kind: Mode::Arpeggiator, steps: 8, length: 8.0, pulses: 4, density: 1.0,
+            ..GenParams::default()
+        });
+        let params = |scale| MelodyParams { scale: EnumParam::new("Scale", scale), ..MelodyParams::default() };
+        // Step 1 is scale degree slot 2: a minor third in Minor, a major third in Major.
+        assert_eq!(params(Tuning::Minor).pitch_for(&pat, 1).0, 51);
+        assert_eq!(params(Tuning::Major).pitch_for(&pat, 1).0, 52);
+    }
+
+    #[test]
+    fn slot_based_modes_keep_the_tonic_at_two_octaves() {
+        let params = MelodyParams {
+            scale: EnumParam::new("Scale", Tuning::Major),
+            octaves: IntParam::new("Octaves", 2, IntRange::Linear { min: 1, max: 6 }),
+            ..MelodyParams::default()
+        };
+        for kind in [Mode::RudinShapiro, Mode::Sieve, Mode::Eulerian] {
+            let pat = generate(&GenParams {
+                kind, steps: 32, length: 32.0, pulses: 4, density: 1.0,
+                ..GenParams::default()
+            });
+            assert!(pat.slotted, "{kind:?} must use the slot path");
+            for i in 0..32 {
+                assert!(pat.slots[i] < 7, "{kind:?} slot {}", pat.slots[i]);
+                if !pat.hit[i] { continue; }
+                let (note, cents) = params.pitch_for(&pat, i);
+                let want = Tuning::Major.pitch_slot(pat.slots[i] as usize, 0, 12, 0.0);
+                let sounded = (note as i32 - 48) as f32 * 100.0 + cents;
+                let expected = want.0 as f32 * 100.0 + want.1;
+                assert!((sounded - expected).abs() < 0.01, "{kind:?} step {i}: {sounded} vs {expected}");
+            }
+        }
+    }
+
+    #[test]
     fn absolute_pitches_and_octave_flags_are_honoured() {
         let params = MelodyParams::default();
         let mut pat = Pattern::default();
@@ -1111,8 +1187,9 @@ mod tests {
     }
 
     #[test]
-    fn history_ring_holds_the_default_256_events() {
-        assert_eq!(HISTORY_LEN, 256);
+    fn history_ring_holds_a_dense_full_length_line() {
+        assert!(HISTORY_LEN >= 2 * MAX_STEPS, "a full loop emits at most two events per step");
+        assert_eq!(HISTORY_LEN, 4096);
     }
 
     #[test]

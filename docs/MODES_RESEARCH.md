@@ -38,7 +38,8 @@ Melodic (full range, `acid=false`):
   attractor interval, `phase`=initial x after a transient.
 - **Hénon map** (`henon_map`) — 2D attractor; a=1+0.4·density, b=0.3, start near the origin with a
   64-step transient and an escape guard.
-- **Arpeggiator** (`arpeggiator`) — chord-tone arp with direction selector (`phase`); `absolute=true`.
+- **Arpeggiator** (`arpeggiator`) — scale-degree arp over degrees 1-3-5-7 with direction selector
+  (`phase`); uses the single-octave degree path so it follows the selected scale/tuning.
 - **Walking bass** (`walking_bass`) — ping-pong chord tones on even steps plus chromatic approaches
   on weak steps; `absolute=true`.
 - **Hilbert curve** (`hilbert_curve`) — space-filling 2^k grid; `pulses`=order.

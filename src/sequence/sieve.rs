@@ -29,7 +29,7 @@ fn is_member(step: usize, cls: &[(usize, usize); 3], terms: usize) -> bool {
 
 /// Xenakis sieve: `M = (m1,r1) U (m2,r2) \ (m3,r3)`.
 pub(super) fn generate(p: &GenParams) -> Pattern {
-    let mut out = Pattern { steps: p.steps, ..Pattern::default() };
+    let mut out = Pattern { steps: p.steps, slotted: true, ..Pattern::default() };
     let n = p.steps.max(1);
     if p.pulses == 0 || p.density <= 0.0 {
         return out;
@@ -41,12 +41,17 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut score = [0.0f32; MAX_STEPS];
     let mut members = 0usize;
     let phase = frac(p.seed as f64 + p.phase as f64);
+    let shift = (phase * 7.0).round() as usize;
 
     for i in 0..n {
         let c0 = class_contains(i, cls[0]);
         let c1 = terms >= 2 && class_contains(i, cls[1]);
         let deg = ((i / cls[0].0.max(1)) + if c1 { 3 } else { 0 }) % 7;
-        out.u[i] = frac(phase + (deg as f64 + 0.5) / 7.0) as f32;
+        // Explicit slot: the old `frac(phase + (deg + 0.5) / 7)` contour put every slot on a bin
+        // edge above one octave, so the tonic disappeared. Slot 0 stays the tonic in any tuning.
+        let slot = ((deg + shift) % 7) as u8;
+        out.slots[i] = slot;
+        out.u[i] = (slot as f32 + 0.5) / 7.0;
         if !is_member(i, &cls, terms) {
             continue;
         }

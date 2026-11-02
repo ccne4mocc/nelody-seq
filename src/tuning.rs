@@ -108,14 +108,22 @@ impl Tuning {
         (semis as i32, cents - semis * 100.0)
     }
 
+    /// Like `pitch`, but `slot` names a scale degree inside one octave: slot 0 is always the tonic
+    /// and `oct` shifts the whole degree by octaves. The slot-based generators use this so their
+    /// contour cannot fall between degree bins at two or more octaves.
+    pub fn pitch_slot(self, slot: usize, oct: i32, edo: u32, root_cents: f32) -> (i32, f32) {
+        let span = self.degrees(1, edo).max(1);
+        let cents = self.degree_cents(slot % span, edo) + 1200.0 * oct as f32 + root_cents;
+        let semis = (cents / 100.0).round();
+        (semis as i32, cents - semis * 100.0)
+    }
+
     /// Like `pitch`, but `u` (0..1) picks a degree inside ONE octave and `oct` then shifts it by whole
     /// octaves. The acid generators use this so a line keeps its shape in any tuning.
     pub fn pitch_in_octave(self, u: f32, oct: i32, edo: u32, root_cents: f32) -> (i32, f32) {
         let span = self.degrees(1, edo).max(1);
-        let deg = ((u.clamp(0.0, 1.0) * span as f32) as usize).min(span - 1);
-        let cents = self.degree_cents(deg, edo) + 1200.0 * oct as f32 + root_cents;
-        let semis = (cents / 100.0).round();
-        (semis as i32, cents - semis * 100.0)
+        let slot = ((u.clamp(0.0, 1.0) * span as f32) as usize).min(span - 1);
+        self.pitch_slot(slot, oct, edo, root_cents)
     }
 }
 
@@ -200,6 +208,24 @@ mod tests {
         assert_eq!(Tuning::Minor.pitch_in_octave(0.01, 0, 12, 25.0), (0, 25.0));
         let (_, c) = Tuning::Pythagorean.pitch_in_octave(0.4, 1, 12, 0.0);
         assert!(c.abs() <= 50.0);
+    }
+
+    #[test]
+    fn pitch_slot_keeps_slot_zero_on_the_tonic() {
+        for t in [Tuning::Major, Tuning::Minor, Tuning::Dorian, Tuning::JustFiveLimit,
+                  Tuning::Pythagorean, Tuning::Meantone, Tuning::Harmonic] {
+            for k in 0..7 {
+                let (s, c) = t.pitch_slot(k, 0, 12, 0.0);
+                let want = t.degree_cents(k, 12);
+                assert!((s as f32 * 100.0 + c - want).abs() < 1e-3, "{t:?} slot {k}");
+            }
+        }
+        assert_eq!(Tuning::Major.pitch_slot(0, 2, 12, 0.0), (24, 0.0));
+        assert_eq!(Tuning::Major.pitch_slot(7, 0, 12, 0.0), (0, 0.0), "slots wrap inside the octave");
+        for edo in [5u32, 12, 19, 24, 31, 53, 72] {
+            assert_eq!(Tuning::Edo.pitch_slot(0, 0, edo, 0.0), (0, 0.0), "edo {edo}");
+            assert_eq!(Tuning::Edo.pitch_slot(1, 0, edo, 0.0).0, (1200.0 / edo as f32 / 100.0).round() as i32);
+        }
     }
 
     #[test]

@@ -12,7 +12,7 @@ fn bit(n: usize) -> u8 {
 }
 
 pub(super) fn generate(p: &GenParams) -> Pattern {
-    let mut out = Pattern { steps: p.steps, ..Pattern::default() };
+    let mut out = Pattern { steps: p.steps, slotted: true, ..Pattern::default() };
     let n = p.steps.max(1);
     if p.pulses == 0 || p.density <= 0.0 { return out; }
     let wanted = ((p.pulses.min(n) as f32 * p.density.clamp(0.0, 1.0)).round() as usize)
@@ -23,7 +23,9 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     for i in 0..n {
         let b = bit(i + offset);
         primary[i] = b == 1;
-        out.u[i] = (((i + b as usize) % 7) as f32 + 0.5) / 7.0;
+        let slot = ((i + b as usize) % 7) as u8;
+        out.slots[i] = slot;
+        out.u[i] = (slot as f32 + 0.5) / 7.0;
         out.orbit[i] = b as f32;
         out.state[i] = b;
         out.lsym[i] = b;

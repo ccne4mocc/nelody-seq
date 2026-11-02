@@ -43,7 +43,7 @@ index 14 because the melody modes build the non-acid half of that split.
 | 22 | Lévy Flight | Stochastic | New wave: heavy-tailed walk | Walk path + onset dots; Pareto α = 2 − 1.5·density, min step 0.02 + 0.06·density, folded |
 | 23 | Tent Map | Chaos | New wave: piecewise-linear map | Tent map + orbit/onset dots; μ = 1 + 0.99·density, pitch scaled to the attractor |
 | 24 | Hénon Map | Chaos | New wave: 2-D attractor | 2-D attractor scatter; a = 1 + 0.4·density, b = 0.3, start near origin with a 64-step transient |
-| 25 | Arpeggiator | Music Theory | New wave: chord-tone arp | Absolute piano roll with direction |
+| 25 | Arpeggiator | Music Theory | New wave: chord-tone arp | Diatonic piano roll (single-octave degree path): degrees 1-3-5-7 of the selected scale/tuning |
 | 26 | Walking Bass | Music Theory | New wave: chord + chromatic approach | Absolute piano roll; ping-pong chord tones on even steps, chromatic approach on the weak step, `phase` = approach side |
 | 27 | Hilbert Curve | Geometric | New wave: space-filling curve | 2-D Hilbert order grid/path |
 | 28 | Ulam Spiral Primes | Number Theory | New wave: prime spiral | 2-D Ulam spiral with prime/hit marks; starts at integer `1 + round(64·phase) + 5·variation` |
@@ -79,7 +79,7 @@ mapping highlights, for modes where the knob name is wrong in the generic sense:
 | 22 Lévy Flight | Target hits | Pareto tail α = 2 − 1.5·density and min step 0.02 + 0.06·density | Start position (0 = middle), no drift |
 | 23 Tent Map | Target hits | Map μ = 1 + 0.99·density | Initial x (after a 32-step transient) |
 | 24 Hénon Map | Target hits | Chaos a = 1 + 0.4·density | Initial x near the origin (64-step transient) |
-| 25 Arpeggiator | Chord tones (1–4) | Step gate | Direction (up/down/up-down/random) |
+| 25 Arpeggiator | Chord tones 1-3-5-7 (1–4 used) | Step gate | Direction (up/down/up-down/random) |
 | 26 Walking Bass | Chord tones (1–4) | Chromatic approach chance on the weak step | Approach side (below/above/mixed) |
 | 27 Hilbert Curve | Curve order (1–5) | Step gate | Quarter-turn rotation |
 | 28 Ulam Primes | Target hits | Prime keep fraction (spread over the primes) | Start integer `1 + round(64·phase) + 5·variation` |
@@ -100,8 +100,10 @@ in `sequence::tests::acid_knobs_only_add_or_remove_flags`.
 - One shared pattern snapshot drives audio output, the panel preview and MIDI export.
 - A Generate switch is host-mappable and bumps the persisted variation counter when it flips,
   on→off and off→on.
-- Rotate and mirror are post-generator transforms over every per-step view array; `Pattern.rotation`
-  and `Pattern.mirrored` let a panel map a display slot back to the generator step it drew.
+- Rotate and mirror are post-generator transforms over every per-step view array (including
+  `slots`); `Pattern.rotation` and `Pattern.mirrored` let a panel map a display slot back to the
+  generator step it drew. Slot-based contours (Rudin-Shapiro, Sieve, Eulerian) carry an explicit
+  `Pattern.slots` degree, so their pitch stays on scale-degrees instead of contour bins.
 - η-style deterministic randomize draws all groups in a fixed order and skips disabled scope
   bits, so enabling a group never changes what another group received.
 - Host-visible metadata (credits, waveform names, mode names) is read from the Rust side, so

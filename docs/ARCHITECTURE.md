@@ -53,7 +53,9 @@ its stored successor, circle-map phase, Markov degree, Eulerian circuit, CA spac
 L-system word, Tonnetz triangles, dice rolls, sieve classes). It also carries the scalars the
 generator actually used (`map_param`: logistic `r`, circle-map `K`, Sturmian α, tent μ, Hénon `a`;
 `osc`: cycles and phase offset), the finished `rotation` and `mirrored` flags, and
-`orbit_next[i] = f(orbit[i])` for the logistic cobweb. Acid modes keep their shape across tunings:
+`orbit_next[i] = f(orbit[i])` for the logistic cobweb. Slot-based contours (Rudin-Shapiro, Sieve,
+Eulerian) set `slotted` and an explicit `slots[i]` degree inside one octave, so slot 0 is the tonic
+at any octave count; `u` remains their panel contour. Acid modes keep their shape across tunings:
 `u` spans one octave and `oct` shifts it. Algorithms are deterministic — parameter snapshots carry
 seed and a persisted `variation` counter; no entropy source is consulted during playback.
 Rotation and mirror are shared post-transforms: they reorder every per-step view array, so the
@@ -91,7 +93,7 @@ semitone sent as bend, i.e. 100 cents away from the target.
 
 The audio callback remains a bounded MIDI scheduler. It publishes current-step, tempo and
 randomization requests through lock-free atomics and appends packed note events to
-`Shared::ring` (256 AtomicU64 words, wrap-around, `history::pack_detuned`). No `Vec`, `String`
+`Shared::ring` (4096 AtomicU64 words, wrap-around, `history::pack_detuned`). No `Vec`, `String`
 or mutex is allocated in the callback; the editor applies randomization through nice-plug's
 `ParamSetter` on its own thread.
 
@@ -101,10 +103,9 @@ Regenerate-after-N-lengths swaps the pattern inside the callback by regenerating
 snapshot the next block will compare against (it bumps `variation` first); a jittered seed there
 made `last_key` disagree with the parameters and regenerated a second time on the next block,
 discarding the new line mid-loop. Randomize-after-N-lengths only queues an atomic request. Two
-runtime LFOs are evaluated once per block at the block's start beat; they modulate Swing, Gate or
-Velocity only, so no pattern regeneration is needed. Swing tolerates the block step; fast
-Gate/Velocity rates are block-stepped too, and per-note evaluation is the planned follow-up if
-zipper noise becomes audible.
+runtime LFOs are sampled per event: swing at the nominal step beat (its onset depends on swing),
+gate and velocity at the resolved onset beat, so fast rates are not block-stepped. They modulate
+Swing, Gate or Velocity only, so no pattern regeneration is needed.
 
 ## Modes and the `max_steps` ceiling
 
@@ -133,9 +134,9 @@ window, and emits three SVG paths (black-key row shading, C-row grid, note recta
 octave-aligned ranges of at least two octaves). The window is `history_bars × 4 × 60 ms/BPM`
 (four beats per 4/4 bar), so the same setting reads the same at any tempo. Its ceiling is the
 pattern's own length in bars: `max_steps / (4 × rate.steps_per_beat())`. The ring holds
-`HISTORY_LEN = 256` events (128 notes), so a dense line over a long window silently loses its
-oldest events; that cap is only sufficient for the default window and a larger ring is the
-pending fix. Changing Max Steps or
+`HISTORY_LEN = 4096` events: a full 1024-step line emits at most two events per step (NoteOn +
+NoteOff, including retriggers and legato), so even the widest window fits with headroom.
+Changing Max Steps or
 the clock rate clamps the history window instead of leaving an impossible value in place. A cent offset shifts the note inside its own
 row, so NTS pitches are visible as microtonal offsets. Pairing keeps the ring's emission order
 for events in the same millisecond, and a NoteOff whose NoteOn already fell out of the ring is
@@ -160,7 +161,7 @@ first-run default is the host process working directory.
 | Parameter group | Parameters | Intended use |
 |---|---|---|
 | Pattern | `mode`, `steps` (1–1024), `max_steps` (64–1024), `round_steps`, `pulses`, `rotate`, `density`, `probability`, `velocity`, `regenerate_every`, `seed`, `generate`, `theme` | Pattern family, variation, palette. `steps` is bounded by `max_steps` at generation time; the default ceiling is 64, and changing it applies immediately because the arrays always have room for 1024 |
-| Randomization | `randomize_after_lengths`, `randomize_scope` (eight-bit mask: Mode, Length, Hits, Tuning, Clock, Phase, Acid, Feel) | Manual Randomize applies through the host setter; automatic randomization queues a request every N lengths while the editor is open. Feel includes velocity, NTS, swing and probability, so randomizing Feel can turn all microtonal bends off (NTS) — a narrower scope or a separate NTS bit is the pending decision |
+| Randomization | `randomize_after_lengths`, `randomize_scope` (eight-bit mask: Mode, Length, Hits, Tuning, Clock, Phase, Acid, Feel) | Manual Randomize applies through the host setter; automatic randomization queues a request every N lengths while the editor is open. Feel covers velocity, swing and probability; NTS is part of Tuning because turning it off removes every microtonal bend |
 | Algorithm shape | `phase`, `osc_rate`, `osc_wave` (8 waveforms), `ca_rule`, `symmetry` | Mode-specific; hidden in the UI when the selected mode never reads them. Waveform ids/names come from the `OscWave` enum |
 | Mode data bridge | `GenParams::mode_data: [f32; 4]` | Fixed slots for values a future typed `ModeParams` enum would own; currently zero-filled and documented per mode in `REFERENCE_MAPPING.md` |
 | Clock | `rate`, `gate`, `swing`, `freerun` | Beat grid, NoteOff duration, stopped-transport behaviour |
@@ -168,7 +169,7 @@ first-run default is the host process working directory.
 | Melody / tuning | `root` (pitch class), `scale` (12 tables or EDO), `octaves`, `edo`, `root_cents`, `midi_root`, `nts` | Pitch mapping. The tonic is `midi_root + root` semitones; non-12-TET detune is emitted as pitch bend while `nts` is on |
 | Acid flags | `slide`, `accent`, `oct_jump` | Per-note probabilities for the five acid modes. They only add or remove flags — never reshuffle the line (tested) |
 | Post-transforms | `invert`, `mirror`, `rotate` | Applied to the finished line: hit inversion, retrograde, circular rotation |
-| History | `history_bars` (legacy host id `history_beats`) | Window width of the always-recording piano-roll history, in 4/4 bars. The id is historical: the same field used to mean beats, and projects saved then reopen as bars (no automatic ÷4 migration yet; either migrate on load or introduce a new id) |
+| History | `history_bars` (host id) | Window width of the always-recording piano-roll history, in 4/4 bars. The old `history_beats` id meant beats under the same label, so it was retired rather than reused: projects saved with it reopen at the 4-bar default instead of a window four times too wide |
 
 `velocity` multiplies each step's `Pattern.acc` (step accents × acid accent flags), clamped to
 1.0. `expressive quantization` such as per-step velocity drag is intentionally absent:
@@ -194,10 +195,11 @@ variation comes from Generate, Randomize and the knobs.
   layer multiplied by the mode's own accent.
 - `invert` must give newly sounding steps their own contour (`fill` in `sequence::generate`);
   a plain boolean flip left every inverted-in note on `u = 0.0`, i.e. the lowest pitch.
-- `Pattern.acid` also opts non-acid generators into the single-octave degree path; Markov sets it
-  so slot 0 is the tonic in every tuning. Slot-based contours that still index `(k + 0.5)/7`
-  directly (Rudin-Shapiro, Sieve, Eulerian) lose the tonic at more than one octave; a
-  `Pattern.slots` contract is the planned fix.
+- `Pattern.acid` opts non-acid generators into the single-octave degree path (Markov and the
+  arpeggiator). `Pattern.slotted` + `slots[i]` names a scale-degree slot inside one octave and is
+  used by Rudin-Shapiro, Sieve and Eulerian; `pitch_for` maps it through `Tuning::pitch_slot`, so
+  slot 0 is the tonic at any octave count. `u` remains their panel contour. New slot-based
+  contours must set `slotted` and `slots`, not pack a degree into `u`.
 - Views must read `map_param`, `osc` and `orbit_next` from the pattern, or draw through
   `view::src_index`. Re-deriving `r`, `μ`, `a` or the phase from `density` is what made panels
   disagree with the audible line after rotate/mirror/variation.
@@ -224,7 +226,7 @@ variation comes from Generate, Randomize and the knobs.
   it until it is.
 - Panel geometry never re-derives a generator formula. `view::build` reads `Pattern`
   (`orbit`, `orbit_next`, `theta`, `lsym`, `ca`, `circuit`, `tri`, `roll`, `sieve_cls`,
-  `map_param`, `osc`) or exported helpers (`logistic_r` as a fallback, `circle_coupling`,
+  `map_param`, `osc`, `slots`) or exported helpers (`logistic_r` as a fallback, `circle_coupling`,
   `lsystem_threshold`, `golomb_order`, `sieve_classes`, `oscillator::value`). Two copies of one
   formula is how lines drift from what plays. When a transform has reordered the line, the view
   maps display slot → generator step with `view::src_index` (inverse mirror, then inverse

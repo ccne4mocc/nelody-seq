@@ -262,6 +262,9 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
         set(ctx, &p.octaves, octaves);
         set(ctx, &p.edo, edo);
         set(ctx, &p.root_cents, root_cents);
+        // NTS changes the sound class (it gates every microtonal bend), so it belongs with tuning,
+        // not with the velocity/swing feel group.
+        set(ctx, &p.nts, nts);
     }
     if scope_enabled(p, scope::CLOCK) {
         set(ctx, &p.rate, rate);
@@ -285,7 +288,6 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
         set(ctx, &p.probability, probability.clamp(0.0, 1.0));
         set(ctx, &p.velocity, velocity.clamp(0.01, 1.0));
         set(ctx, &p.swing, swing.clamp(0.0, 0.5));
-        set(ctx, &p.nts, nts);
     }
 }
 

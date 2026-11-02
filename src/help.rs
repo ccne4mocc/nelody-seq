@@ -46,7 +46,7 @@ pub(crate) fn math(p: &GenParams) -> String {
         Mode::LevyFlight => format!("Pareto α = {:.2} · min step {:.3} · jumps become onsets", crate::sequence::levy_alpha(d), crate::sequence::levy_step_min(d)),
         Mode::TentMap => format!("μ = {:.3} · x' = μ·min(x,1-x) · pitch scaled to the attractor", crate::sequence::tent_mu(d)),
         Mode::HenonMap => format!("a = {:.3} · b = 0.3 · start near origin, 64-step transient", crate::sequence::henon_a(d)),
-        Mode::Arpeggiator => format!("minor7 · {} tones · dir {} · gate {:.0}%", p.pulses.clamp(1, 4), ((p.phase * 4.0) as i32).clamp(0, 3), d * 100.0),
+        Mode::Arpeggiator => format!("scale degrees 1-3-5-7 · {} tones · dir {} · gate {:.0}%", p.pulses.clamp(1, 4), ((p.phase * 4.0) as i32).clamp(0, 3), d * 100.0),
         Mode::WalkingBass => format!("dominant7 ping-pong · {} tones · approach {:.0}% · dir {}", p.pulses.clamp(1, 4), d * 100.0, ((p.phase * 3.0) as i32).clamp(0, 2)),
         Mode::HilbertCurve => format!("order {} · {} cells · quarter-turn {}", p.pulses.clamp(1, 5), 1usize << (2 * p.pulses.clamp(1, 5)), ((p.phase * 4.0) as i32).clamp(0, 3)),
         Mode::UlamPrimes => format!("spiral side {} · from integer {} · {} onsets spread over the primes", (((n as f64).sqrt().ceil()) as usize).max(1), 1 + (p.phase * 64.0).round() as usize + 5 * p.variation as usize, (k as f32 * d).round().max(1.0)),

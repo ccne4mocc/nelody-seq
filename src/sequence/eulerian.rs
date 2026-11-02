@@ -3,7 +3,7 @@ use super::{shuffle, GenParams, Pattern, Rng};
 /// Eulerian circuit (Hierholzer, shuffled adjacency) over a random balanced digraph.
 /// Vertex 0 is a rest (except at steps=1), vertices 1..nv are pitches.
 pub(super) fn generate(p: &GenParams) -> Pattern {
-    let mut out = Pattern { steps: p.steps, ..Pattern::default() };
+    let mut out = Pattern { steps: p.steps, slotted: true, ..Pattern::default() };
     let n = p.steps.max(1);
     if p.pulses == 0 || p.density <= 0.0 {
         return out;
@@ -72,6 +72,9 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
             any = true;
         }
         out.u[i] = (dest.saturating_sub(1)) as f32 / (nv - 2).max(1) as f32;
+        // Vertex 1 is slot 0 (tonic), vertex 7 is slot 6; a rest gets a rotating slot so inverting
+        // the line does not land every new note on the tonic.
+        out.slots[i] = if dest == 0 { (i % 7) as u8 } else { (dest - 1) % 7 };
         out.acc[i] = if dest == 1 { 0.95 } else { 0.76 };
     }
     if !any {

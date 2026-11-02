@@ -153,6 +153,11 @@ pub struct Pattern {
     pub absolute: bool,
     /// A 303-style line: `u` spans one octave and `oct` shifts it, instead of the whole range.
     pub acid: bool,
+    /// The line uses explicit scale-degree slots. `slots[i]` selects a degree inside one octave
+    /// (mod the tuning's degrees) and `u` is only the panel contour. Used by the slot-based
+    /// contours (Rudin-Shapiro, Sieve, Eulerian) so slot 0 is always the tonic at any octave count.
+    pub slotted: bool,
+    pub slots: [u8; MAX_STEPS],
     /// Symbolic generator state (Markov degree, Eulerian vertex, …), 0 = rest.
     pub state: [u8; MAX_STEPS],
     /// Orbit samples used by the logistic-map and circle-map plots.
@@ -204,6 +209,8 @@ impl Default for Pattern {
             semis: [0; MAX_STEPS],
             absolute: false,
             acid: false,
+            slotted: false,
+            slots: [0; MAX_STEPS],
             state: [0; MAX_STEPS],
             orbit: [0.0; MAX_STEPS],
             theta: [0.0; MAX_STEPS],
@@ -489,6 +496,7 @@ pub fn generate(p: &GenParams) -> Pattern {
         let old_slide = out.slide;
         let old_semis = out.semis;
         let old_state = out.state;
+        let old_slots = out.slots;
         let old_orbit = out.orbit;
         let old_next = out.orbit_next;
         let old_theta = out.theta;
@@ -506,6 +514,7 @@ pub fn generate(p: &GenParams) -> Pattern {
             out.slide[i] = old_slide[src];
             out.semis[i] = old_semis[src];
             out.state[i] = old_state[src];
+            out.slots[i] = old_slots[src];
             out.orbit[i] = old_orbit[src];
             out.orbit_next[i] = old_next[src];
             out.theta[i] = old_theta[src];
@@ -548,6 +557,7 @@ pub fn generate(p: &GenParams) -> Pattern {
             out.slide.swap(i, j);
             out.semis.swap(i, j);
             out.state.swap(i, j);
+            out.slots.swap(i, j);
             out.orbit.swap(i, j);
             out.orbit_next.swap(i, j);
             out.theta.swap(i, j);
@@ -683,6 +693,19 @@ mod tests {
             assert_eq!(rot.hit[i], plain.hit[(i + 13) % 16], "rotate step {i}");
         }
         assert_eq!(rot.rotation, 3);
+    }
+
+    #[test]
+    fn slotted_contours_rotate_and_mirror_with_the_line() {
+        let p = GenParams { kind: Mode::RudinShapiro, steps: 16, pulses: 16, density: 1.0, ..GenParams::default() };
+        let plain = generate(&p);
+        assert!(plain.slotted);
+        let rot = generate(&GenParams { rotate: 3, ..p });
+        let mir = generate(&GenParams { mirror: true, ..p });
+        for i in 0..16 {
+            assert_eq!(rot.slots[i], plain.slots[(i + 13) % 16], "rotate slot {i}");
+            assert_eq!(mir.slots[i], plain.slots[15 - i], "mirror slot {i}");
+        }
     }
 
     // ---- regression tests for the mathematical/musical review ------------------------------
