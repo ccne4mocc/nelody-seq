@@ -258,11 +258,13 @@ variation comes from Generate, Randomize and the knobs.
   `ModRow` model only while it is open, using the live LFO clock for the current value and a
   zero-signal target read for the base value. Each row has a × that clears that LFO/target link.
 - `ModView` carries one `ModTargetView` per target every frame. `OptSlider` and `NumBox` use it
-  for a second base→modulated bar (normalized to the control's own display range) and for the
-  hover summary listing linked LFOs and their signed contribution to the range.
-- The hover summary is drawn in place inside the control, not as a floating popup: Slint 1.16
-  clips the option strips and has no public overlay/drop element, so an in-place menu avoids
-  both clipping and z-order problems while keeping the link information visible.
+  for a second base→modulated bar (normalized to the control's own display range) plus a
+  low-opacity band showing the maximum travel implied by the linked LFO depths.
+- `ModHover` carries the hovered target and the point below it. A single window-level tooltip
+  lists the linked LFOs and their signed contribution to the range. It is a plain Rectangle
+  with no TouchArea, so it never steals the click/drag that sets the parameter underneath.
+- The matrix updates its `ModRow` model in place while open; replacing the model every frame
+  recreated the repeater and interrupted the row delete button click.
 - Clock rate is one `RateField`. The wheel walks `Rate::RATE_ORDER` (base, dotted, triplet per
   value); a double-click opens an inline text field that accepts the enum labels or aliases
   (`1/16t`, `1/16.`, `1/16d`). The enum keeps host-state order; new divisions are appended.

@@ -31,6 +31,8 @@ export struct ModTargetView {
     max: float,
     base01: float,
     value01: float,
+    depth-up: float,
+    depth-down: float,
     lfo-text: string,
     count: int,
 }
@@ -55,6 +57,13 @@ export global ModRegistry {
     callback register(int, bool, length, length, length, length);
 }
 
+// Hovered modulation target and the point where its tooltip should be drawn (below the control).
+export global ModHover {
+    in-out property <int> target: -1;
+    in-out property <length> x: 0px;
+    in-out property <length> y: 0px;
+}
+
 // Effective value + linked-LFO summary for every numeric target, indexed by ModTarget::index.
 export global ModView {
     in property <[ModTargetView]> targets;
@@ -64,7 +73,7 @@ export global ModView {
         }
         return {
             target: -1, linked: false, base: 0, value: 0, min: 0, max: 1,
-            base01: 0, value01: 0, lfo-text: "", count: 0
+            base01: 0, value01: 0, depth-up: 0, depth-down: 0, lfo-text: "", count: 0
         };
     }
 }
@@ -182,7 +191,7 @@ component TuningChip inherits Rectangle {
     callback cycled();
     height: 28px; border-radius: 4px;
     background: root.active ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 100%) : (ta.has-hover ? Theme.control-hover : Theme.control);
-    Text { x: 6px; width: parent.width - 12px; height: parent.height; text: "\{root.label}  \{root.value}"; color: root.active ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: root.centered ? center : left; vertical-alignment: center; overflow: elide; }
+    Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.label == "" ? root.value : "\{root.label}  \{root.value}"; color: root.active ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: root.centered ? center : left; vertical-alignment: center; overflow: elide; }
     ta := TouchArea {
         clicked => { root.cycled(); }
         scroll-event(e) => {
@@ -203,10 +212,15 @@ component OptSlider inherits Rectangle {
     property <bool> mod-hover: root.mod-target >= 0 && ModDrag.lfo > 0
         && ModDrag.x >= root.absolute-position.x && ModDrag.x <= root.absolute-position.x + root.width
         && ModDrag.y >= root.absolute-position.y && ModDrag.y <= root.absolute-position.y + root.height;
+    property <bool> hovered: ta.has-hover;
     // Normalize on the control's own display range so the second bar lines up with the fill,
     // even when the host range is wider (Steps is 1–1024, the strip may show 1–128).
     property <float> mod-base01: Math.clamp((root.modview.base - root.opt.min) / Math.max(root.opt.max - root.opt.min, 0.0001), 0, 1);
     property <float> mod-value01: Math.clamp((root.modview.value - root.opt.min) / Math.max(root.opt.max - root.opt.min, 0.0001), 0, 1);
+    property <float> mod-up01: Math.min(1, root.modview.depth-up * (root.modview.max - root.modview.min) / Math.max(root.opt.max - root.opt.min, 0.0001));
+    property <float> mod-down01: Math.min(1, root.modview.depth-down * (root.modview.max - root.modview.min) / Math.max(root.opt.max - root.opt.min, 0.0001));
+    property <float> mod-band-low: Math.max(0, root.mod-base01 - root.mod-down01);
+    property <float> mod-band-high: Math.min(1, root.mod-base01 + root.mod-up01);
     function report-mod() {
         if (root.mod-target >= 0) {
             ModRegistry.register(root.mod-target, root.visible, root.absolute-position.x, root.absolute-position.y, root.width, root.height);
@@ -249,6 +263,16 @@ component OptSlider inherits Rectangle {
     }
     // Second, thinner bar: base → current modulated value. It moves with the LFO clock and
     // makes both direction and amount visible without changing the host value.
+    // Low-opacity band = maximum travel implied by the linked LFO depths.
+    if root.modview.linked: Rectangle {
+        x: parent.width * root.mod-band-low;
+        y: parent.height - 5px;
+        width: parent.width * Math.max(0, root.mod-band-high - root.mod-band-low);
+        height: 4px;
+        background: Theme.c3;
+        opacity: 0.20;
+    }
+    // Bright bar = base → current animated value.
     if root.modview.linked: Rectangle {
         x: parent.width * Math.min(root.mod-base01, root.mod-value01);
         y: parent.height - 4px;
@@ -264,17 +288,6 @@ component OptSlider inherits Rectangle {
     }
     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.opt.label; color: Theme.text; font-size: 11px; vertical-alignment: center; }
     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.opt.text; color: Theme.text; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
-    // Hover menu: linked LFOs and their contributions, shown in place so it cannot be clipped.
-    if root.modview.linked && ta.has-hover && !root.editing: Rectangle {
-        x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
-        border-radius: 3px; background: Theme.surface;
-        border-width: 1px; border-color: Theme.c3;
-        Text {
-            x: 6px; width: parent.width - 12px; height: parent.height;
-            text: root.modview.lfo-text; color: Theme.text; font-size: 9px;
-            vertical-alignment: center; overflow: elide;
-        }
-    }
     ta := TouchArea {
         pointer-event(e) => {
             if (!root.editing && e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
@@ -363,6 +376,20 @@ component OptSlider inherits Rectangle {
         running: root.mod-target >= 0;
         triggered => { root.report-mod(); }
     }
+    Timer {
+        interval: 40ms;
+        running: root.hovered && root.mod-target >= 0 && !root.editing;
+        triggered => {
+            ModHover.target = root.mod-target;
+            ModHover.x = root.absolute-position.x;
+            ModHover.y = root.absolute-position.y + root.height;
+        }
+    }
+    Timer {
+        interval: 40ms;
+        running: !root.hovered && ModHover.target == root.mod-target;
+        triggered => { ModHover.target = -1; }
+    }
 }
 // Click-to-edit numeric field. The TextInput only exists while editing, so the wheel and the
 // +/- buttons keep working after a typed value is committed, and the display always follows
@@ -381,8 +408,13 @@ component NumBox inherits Rectangle {
     property <bool> mod-hover: root.mod-target >= 0 && ModDrag.lfo > 0
         && ModDrag.x >= root.absolute-position.x && ModDrag.x <= root.absolute-position.x + root.width
         && ModDrag.y >= root.absolute-position.y && ModDrag.y <= root.absolute-position.y + root.height;
+    property <bool> hovered: tap.has-hover;
     property <float> mod-base01: Math.clamp((root.modview.base - root.minimum) / Math.max(root.maximum - root.minimum, 0.0001), 0, 1);
     property <float> mod-value01: Math.clamp((root.modview.value - root.minimum) / Math.max(root.maximum - root.minimum, 0.0001), 0, 1);
+    property <float> mod-up01: Math.min(1, root.modview.depth-up * (root.modview.max - root.modview.min) / Math.max(root.maximum - root.minimum, 0.0001));
+    property <float> mod-down01: Math.min(1, root.modview.depth-down * (root.modview.max - root.modview.min) / Math.max(root.maximum - root.minimum, 0.0001));
+    property <float> mod-band-low: Math.max(0, root.mod-base01 - root.mod-down01);
+    property <float> mod-band-high: Math.min(1, root.mod-base01 + root.mod-up01);
     function report-mod() {
         if (root.mod-target >= 0) {
             ModRegistry.register(root.mod-target, root.visible, root.absolute-position.x, root.absolute-position.y, root.width, root.height);
@@ -442,6 +474,14 @@ component NumBox inherits Rectangle {
         horizontal-alignment: right; vertical-alignment: center;
     }
     if root.modview.linked: Rectangle {
+        x: 1px + (parent.width - 35px) * root.mod-band-low;
+        y: parent.height - 4px;
+        width: (parent.width - 35px) * Math.max(0, root.mod-band-high - root.mod-band-low);
+        height: 3px;
+        background: Theme.c3;
+        opacity: 0.20;
+    }
+    if root.modview.linked: Rectangle {
         x: 1px + (parent.width - 35px) * Math.min(root.mod-base01, root.mod-value01);
         y: parent.height - 3px;
         width: (parent.width - 35px) * Math.abs(root.mod-value01 - root.mod-base01);
@@ -471,16 +511,6 @@ component NumBox inherits Rectangle {
                 return accept;
             }
             return reject;
-        }
-    }
-    if root.modview.linked && tap.has-hover && !root.edit-open: Rectangle {
-        x: 1px; y: 1px; width: parent.width - 36px; height: parent.height - 2px;
-        border-radius: 3px; background: Theme.surface;
-        border-width: 1px; border-color: Theme.c3;
-        Text {
-            x: 5px; width: parent.width - 10px; height: parent.height;
-            text: root.modview.lfo-text; color: Theme.text; font-size: 9px;
-            vertical-alignment: center; overflow: elide;
         }
     }
     editor := Rectangle {
@@ -536,6 +566,20 @@ component NumBox inherits Rectangle {
         interval: 250ms;
         running: root.mod-target >= 0;
         triggered => { root.report-mod(); }
+    }
+    Timer {
+        interval: 40ms;
+        running: root.hovered && root.mod-target >= 0 && !root.edit-open;
+        triggered => {
+            ModHover.target = root.mod-target;
+            ModHover.x = root.absolute-position.x;
+            ModHover.y = root.absolute-position.y + root.height;
+        }
+    }
+    Timer {
+        interval: 40ms;
+        running: !root.hovered && ModHover.target == root.mod-target;
+        triggered => { ModHover.target = -1; }
     }
 }
 
@@ -709,7 +753,7 @@ component LfoCell inherits Rectangle {
         }
         TuningChip {
             width: 28px; label: ""; value: root.rate-mode == 0 ? "Hz" : "BT"; centered: true;
-            active: root.rate-mode == 0; cycled => { root.rate-mode-toggled(); }
+            active: false; cycled => { root.rate-mode-toggled(); }
         }
         OptSlider {
             width: 84px; height: 25px; index: root.index + 23;
@@ -1785,5 +1829,22 @@ export component AppWindow inherits Window {
             }
         }
     }
+    }
+
+    // Linked-LFO tooltip below the hovered parameter. It is a plain rectangle (no TouchArea),
+    // so it never steals the click/drag that sets the parameter underneath.
+    if ModHover.target >= 0 && ModView.view(ModHover.target).linked && !root.matrix-open && ModDrag.lfo == 0: Rectangle {
+        x: Math.max(6px, Math.min(ModHover.x, root.base-width - 326px));
+        y: Math.min(ModHover.y + 2px, root.base-height - 26px);
+        width: 320px; height: 22px;
+        border-radius: 4px; background: Theme.surface;
+        border-width: 1px; border-color: Theme.c3;
+        drop-shadow-blur: 10px; drop-shadow-color: #00000055; drop-shadow-offset-y: 3px;
+        Text {
+            x: 8px; width: parent.width - 16px; height: parent.height;
+            text: ModView.view(ModHover.target).lfo-text;
+            color: Theme.text; font-size: 10px;
+            vertical-alignment: center; overflow: elide;
+        }
     }
 }

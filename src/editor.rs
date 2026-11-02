@@ -574,11 +574,18 @@ fn target_views(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<Mod
             let base01 = ((base - min) / span).clamp(0.0, 1.0);
             let value01 = ((value - min) / span).clamp(0.0, 1.0);
             let mut parts = Vec::new();
+            let mut depth_up = 0.0f32;
+            let mut depth_down = 0.0f32;
             for slot in 0..LFO_COUNT {
                 if !target_in_mask(p.lfo_link_mask(slot), target) {
                     continue;
                 }
                 let spec = p.lfo_spec(slot);
+                let depth = spec.depth.clamp(0.0, 1.0) * 0.5;
+                depth_up += depth;
+                if spec.polarity == LfoPolarity::Bipolar {
+                    depth_down += depth;
+                }
                 let speed = match spec.rate_mode {
                     LfoRateMode::Hz if spec.freq_hz >= 1_000.0 => {
                         format!("{:.1}k", spec.freq_hz / 1_000.0)
@@ -607,6 +614,8 @@ fn target_views(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<Mod
                 max,
                 base01,
                 value01,
+                depth_up: depth_up.min(1.0),
+                depth_down: depth_down.min(1.0),
                 lfo_text: SharedString::from(lfo_text),
                 count: parts.len() as i32,
             }
@@ -1053,7 +1062,19 @@ impl Editor for SlintEditor {
                 }
             }
             if ui.get_matrix_open() {
-                ui.set_mod_rows(ModelRc::new(VecModel::from(matrix_rows(p, live_clock))));
+                let rows = matrix_rows(p, live_clock);
+                let model = ui.get_mod_rows();
+                if model.row_count() == rows.len() {
+                    // Update in place. Replacing the model every frame recreates the repeater
+                    // elements and interrupts a click on the row's delete button.
+                    for (i, row) in rows.iter().enumerate() {
+                        if model.row_data(i).as_ref() != Some(row) {
+                            model.set_row_data(i, row.clone());
+                        }
+                    }
+                } else {
+                    ui.set_mod_rows(ModelRc::new(VecModel::from(rows)));
+                }
             }
             ui.set_free_run(p.free_run.value());
             ui.set_invert_on(p.invert.value());
@@ -1272,9 +1293,14 @@ mod tests {
         views[ModTarget::Steps.index()].linked = true;
         views[ModTarget::Steps.index()].base = 16.0;
         views[ModTarget::Steps.index()].value = 20.0;
-        views[ModTarget::Steps.index()].lfo_text = SharedString::from("LFO 1 Sine 0.50 Hz +20%");
+        views[ModTarget::Steps.index()].depth_up = 0.08;
+        views[ModTarget::Steps.index()].depth_down = 0.08;
+        views[ModTarget::Steps.index()].lfo_text = SharedString::from("LFO1 0.5Hz +20%");
         ui.global::<ModView>().set_targets(ModelRc::new(VecModel::from(views)));
         ui.show().unwrap();
+        let _ = window.try_dispatch_event(slint::platform::WindowEvent::PointerMoved {
+            position: slint::LogicalPosition::new(450.0, 178.0),
+        });
         let mut buffer = vec![slint::Rgb8Pixel::new(0, 0, 0); (WIDTH * HEIGHT) as usize];
         for _ in 0..40 {
             slint::platform::update_timers_and_animations();
@@ -1286,6 +1312,11 @@ mod tests {
         assert!(
             registered.load(std::sync::atomic::Ordering::Relaxed) > 0,
             "modulation drop targets were never registered"
+        );
+        assert_eq!(
+            ui.global::<ModHover>().get_target(),
+            ModTarget::Steps.index() as i32,
+            "hover timer did not report the parameter under the pointer"
         );
     }
 
