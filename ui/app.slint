@@ -1404,25 +1404,29 @@ export component AppWindow inherits Window {
                 // Tuning follows the acid row, still inside the parameter column so the MIDI
                 // history can sit directly under the presentation field.
                 Rectangle { height: 6px; }
+                Text {
+                    height: 12px; text: "TUNING"; color: Theme.text-muted;
+                    font-size: 10px; vertical-alignment: center;
+                }
+                // Root, Scale, Octave and NTS share one equal-width row (25% each).
                 HorizontalLayout {
                     height: 28px; spacing: 5px;
-                    Text { text: "TUNING"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-                    tuning-root := NumBox { width: 112px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; mod-target: 17; changed(v) => { root.set-opt(18, v); } }
+                    tuning-root := NumBox { horizontal-stretch: 1; height: 28px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; mod-target: 17; changed(v) => { root.set-opt(18, v); } }
                     // The scale list lives in a dropdown under this chip; the chip only shows the
                     // current scale and opens the list.
-                    scale-chip := TuningChip { width: 140px; label: "SCALE"; value: root.tuning-name + "  ▾"; centered: true; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
-                    Rectangle { horizontal-stretch: 1; }
+                    scale-chip := TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name + "  ▾"; centered: true; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
+                    tuning-oct := NumBox { horizontal-stretch: 1; height: 28px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; mod-target: 18; changed(v) => { root.set-opt(19, v); } }
+                    TuningChip { horizontal-stretch: 1; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
                 }
-                // Push the octave/NTS strip to the bottom edge of the parameter column.
-                Rectangle { vertical-stretch: 1; }
+                // EDO is only relevant for the Equal (EDO) scale; keep it on its own compact
+                // row rather than breaking the four equal-width tuning columns. The row stays
+                // instantiated so `text-focused` can still see its editor.
                 HorizontalLayout {
-                    height: 28px; spacing: 5px;
-                    // Octave and NTS Bend sit against the bottom-right edge of the parameter
-                    // column; EDO (when shown) stays immediately to their left.
-                    Rectangle { horizontal-stretch: 1; }
-                    edo-row := NumBox { visible: root.edo-active; height: 28px; width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; mod-target: 20; changed(v) => { root.set-opt(21, v); } }
-                    tuning-oct := NumBox { height: 28px; width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; mod-target: 18; changed(v) => { root.set-opt(19, v); } }
-                    TuningChip { width: 68px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
+                    height: root.edo-active ? 28px : 0px;
+                    visible: root.edo-active;
+                    spacing: 5px;
+                    edo-row := NumBox { horizontal-stretch: 1; height: 28px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; mod-target: 20; changed(v) => { root.set-opt(21, v); } }
+                    Rectangle { horizontal-stretch: 3; }
                 }
             }
         }
