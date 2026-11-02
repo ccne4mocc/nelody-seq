@@ -1,5 +1,10 @@
 use super::{pick, ACID_W, GenParams, Pattern, Rng};
 
+/// Proximity exponent for a leapiness knob (`osc_rate`): high = stepwise, low = leaps allowed.
+pub(crate) fn proximity_exp(osc_rate: f32) -> f32 {
+    2.8 * (1.0 - ((osc_rate - 0.125) / (8.0 - 0.125)).clamp(0.0, 1.0))
+}
+
 /// First-order Markov walk over rest (0) and 7 scale degrees (1..=7).
 /// `osc_rate` controls leapiness; `density` and `pulses` set note activity.
 pub(super) fn generate(p: &GenParams) -> Pattern {
@@ -12,8 +17,11 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let pulse_ratio = p.pulses.min(n) as f32 / n as f32;
     let event_chance = (p.density.clamp(0.0, 1.0) * (0.25 + pulse_ratio * 0.75)).clamp(0.05, 1.0);
     // osc_rate (0.125..8.0) shapes step vs leap preference.
-    let leap = ((p.osc_rate - 0.125) / (8.0 - 0.125)).clamp(0.0, 1.0);
-    let prox_exp = 2.8 * (1.0 - leap);
+    let prox_exp = proximity_exp(p.osc_rate);
+    // The 7 degrees are scale slots, not positions in the whole contour: at the default two octaves
+    // `(deg + 0.5) / 7` landed exactly on a bin edge and named degrees 1,3,5,..13, i.e. the tonic was
+    // unreachable. The single-octave path (as in the acid modes) makes slot 0 the tonic in any tuning.
+    out.acid = true;
     let mut deg = 0usize;
     let mut any = false;
     for i in 0..n {

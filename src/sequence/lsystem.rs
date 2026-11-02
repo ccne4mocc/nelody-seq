@@ -31,7 +31,9 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut len = 1usize;
     let family = ((p.seed.clamp(0.0, 0.999_999) * 4.0) as usize + p.variation as usize) % 4;
 
-    for _ in 0..12 {
+    // Fibonacci growth needs 16 rewrites to reach 1024 symbols; 12 stopped at 377 and the word
+    // then repeated (`symbols[i % len]`) for every longer loop. Still bounded: 16 passes over <= CAP.
+    for _ in 0..16 {
         if len >= n { break; }
         let mut next = [A; CAP];
         let mut next_len = 0usize;
@@ -57,14 +59,18 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
 
     let thr = threshold(p);
     let mut local = Rng::new(p.seed, p.variation, 0x1A57_0000);
-    let mut pitch = frac(p.seed as f64 + p.phase as f64);
+    // The contour is the running sum of the symbol steps, folded back into 0..1 (a reflected walk),
+    // so A really rises and B really falls. The old `frac(..)` wrapped, turning every overshoot into
+    // a leap across the whole range (13 of 31 steps jumped by more than half of it).
+    let mut walk = frac(p.seed as f64 + p.phase as f64);
     let mut any = false;
     for i in 0..n {
         let sym = symbols[i % len];
         out.lsym[i] = sym;
         // Grammar symbol steers pitch contour up (A) or down (B) by golden steps.
-        pitch = frac(pitch + if sym == A { PHI_INV * 0.5 } else { 1.0 - PHI_INV * 0.35 });
-        out.u[i] = pitch as f32;
+        walk += if sym == A { PHI_INV * 0.5 } else { -PHI_INV * 0.35 };
+        let f = walk.rem_euclid(2.0);
+        out.u[i] = (if f <= 1.0 { f } else { 2.0 - f }) as f32;
         out.orbit[i] = step_chance(thr, sym, i);
         let hit = (n == 1) || (p.density >= 0.99 && p.pulses >= n) || local.unit() < out.orbit[i];
         out.hit[i] = hit;

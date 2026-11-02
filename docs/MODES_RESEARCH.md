@@ -26,16 +26,24 @@ enum layer:
 ## 2. New modes to implement (append after `AcidShift`, indices 19+)
 
 Melodic (full range, `acid=false`):
-- **Thue-Morse** (`thue_morse`) — `t(n)=popcount(n) mod 2`; onset where 1, contour from run lengths.
-- **Rudin-Shapiro** (`rudin_shapiro`) — count of "11" substrings in binary n mod 2.
-- **Brownian walk** (`brownian`) — reflected random walk; `density`=step size, `phase`=drift.
-- **Lévy flight** (`levy_flight`) — heavy-tailed jumps; `density`=tail heaviness.
-- **Tent map** (`tent_map`) — piecewise-linear chaos map; `phase`=initial x.
-- **Hénon map** (`henon_map`) — 2D attractor; clamp state to [-2,2]; `phase`/`seed`=initial condition.
+- **Thue-Morse** (`thue_morse`) — `t(n)=popcount(n) mod 2`; onsets spread over the 1s, contour from
+  Nørgård's infinity series `a(2n)=-a(n), a(2n+1)=a(n)+1`.
+- **Rudin-Shapiro** (`rudin_shapiro`) — count of "11" substrings in binary n mod 2; onsets spread
+  evenly over the 1s.
+- **Brownian walk** (`brownian`) — reflected random walk; Gaussian step σ=0.01+0.2·density,
+  `phase`=start position.
+- **Lévy flight** (`levy_flight`) — heavy-tailed jumps; Pareto α=2−1.5·density, min step
+  0.02+0.06·density, folded into 0..1.
+- **Tent map** (`tent_map`) — piecewise-linear chaos map; μ=1+0.99·density, pitch scaled to the
+  attractor interval, `phase`=initial x after a transient.
+- **Hénon map** (`henon_map`) — 2D attractor; a=1+0.4·density, b=0.3, start near the origin with a
+  64-step transient and an escape guard.
 - **Arpeggiator** (`arpeggiator`) — chord-tone arp with direction selector (`phase`); `absolute=true`.
-- **Walking bass** (`walking_bass`) — chord tones + chromatic approaches; `absolute=true`.
+- **Walking bass** (`walking_bass`) — ping-pong chord tones on even steps plus chromatic approaches
+  on weak steps; `absolute=true`.
 - **Hilbert curve** (`hilbert_curve`) — space-filling 2^k grid; `pulses`=order.
-- **Ulam spiral primes** (`ulam_primes`) — onset where spiral position is prime.
+- **Ulam spiral primes** (`ulam_primes`) — onset where spiral position is prime; the spiral starts
+  at `1 + round(64·phase) + 5·variation`.
 
 Cellular:
 - Generic `Cellular` already supports all 256 rules via `ca_rule` (u8). Add UI
@@ -79,7 +87,7 @@ A. **Generic slots in GenParams** — add `mode_data: [f32; 4]` (or `[i32]`).
    Allocation-free, trivial threading, but untyped and still "shared" in spirit.
    Lowest risk.
 
-B. **Per-mode structs + enum** — define `enum ModeParams { None, Brownian { drift: f32, ... }, ... }`
+B. **Per-mode structs + enum** — define `enum ModeParams { None, Brownian { step: f32 }, ... }`
    and change `generate(p: &GenParams, extra: &ModeParams)`. Each sequence file
    owns its struct. Host builds `extra` in `gen_params()` from a small set of
    extra host params or derived values. Type-safe but touches every generator

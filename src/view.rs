@@ -3,7 +3,7 @@
 
 use crate::modes::Mode;
 use crate::sequence::{
-    hilbert_point, logistic_r, oscillator_value, oscillator_wave_count, CA_ROWS, MAX_STEPS,
+    hilbert_point, logistic_r, oscillator_value, oscillator_wave_count, Pattern, CA_ROWS, MAX_STEPS,
     TONNETZ_START,
 };
 use std::f32::consts::TAU;
@@ -142,8 +142,17 @@ fn x_of(i: usize, n: usize) -> f32 {
     10.0 + (P - 20.0) * i as f32 / n.max(1) as f32
 }
 
+/// Generator step that produced display slot `i`: the inverse of the rotation followed by the mirror
+/// that `sequence::generate` applies. Views that redraw generator geometry (residue classes,
+/// oscillator phase) must index through this or they drift away from the notes once the pattern is
+/// rotated, mirrored or regenerated (a new variation rotates by one step).
+fn src_index(pat: &Pattern, i: usize, n: usize) -> usize {
+    let j = if pat.mirrored { n - 1 - i } else { i };
+    (j + n - pat.rotation % n) % n
+}
+
 /// Draw the pitch contour through sounding steps (shared by the strip-style panels).
-fn contour(v: &mut View, pat: &crate::sequence::Pattern, n: usize) {
+fn contour(v: &mut View, pat: &Pattern, n: usize) {
     let mut started = false;
     for i in 0..n {
         if !pat.hit[i] { continue; }
@@ -152,7 +161,7 @@ fn contour(v: &mut View, pat: &crate::sequence::Pattern, n: usize) {
     }
 }
 
-fn strip_dots(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+fn strip_dots(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     for i in 0..n {
         if pat.hit[i] {
             v.nodes.push(Node { x: x_of(i, n), y: y_of(pat.u[i]), r: 4.2, on: true, cur: cur == i as i32, label: String::new() });
@@ -169,7 +178,7 @@ fn playhead_column(v: &mut View, n: usize, cur: i32) {
 
 /// Acid piano roll: a column per step, a row per pitch (octave flag + scale slot). Accented notes
 /// are solid, plain ones translucent; a slide is a line from the note to the note it glides into.
-fn acid_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+fn acid_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     let (x0, x1, y0, y1) = (6.0f32, P - 6.0, 12.0f32, P - 12.0);
     let sw = (x1 - x0) / n as f32;
     let pv = |i: usize| pat.oct[i] as f32 + pat.u[i];
@@ -196,7 +205,7 @@ fn acid_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
     }
     for i in (0..n).filter(|&i| pat.hit[i]) {
         let (xa, xb, y) = (x_of(i) + 0.8, x_of(i) + sw - 0.8, y_of(pv(i)));
-        let dst = if pat.acc[i] >= 0.95 { &mut v.solid } else { &mut v.fills };
+        let dst = if pat.acc[i] >= 0.9 { &mut v.solid } else { &mut v.fills };
         poly(dst, &[(xa, y - 4.0), (xb, y - 4.0), (xb, y + 4.0), (xa, y + 4.0)]);
         if pat.slide[i] {
             mv(&mut v.lines, xb, y);
@@ -214,7 +223,7 @@ fn acid_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
 }
 
 /// Directed graph over rest (0) plus seven scale degrees. Edges show the walk actually taken.
-fn markov_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+fn markov_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     let pos = |s: usize| polar(78.0, s as f32 / 8.0);
     for s in 1..8 {
         edge_path(&mut v.edges, pos(0), pos(s), 9.0);
@@ -246,14 +255,29 @@ fn markov_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32)
 }
 
 /// Oscillator panel: the exact waveform the generator sampled, plus the chosen onsets.
-fn oscillator_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32, wave: usize) {
+fn oscillator_view(v: &mut View, pat: &Pattern, n: usize, cur: i32, wave: usize) {
     let wave = wave % oscillator_wave_count;
-    let mut started = false;
-    for k in 0..=120 {
-        let phase = k as f32 / 120.0;
-        let y = P - 15.0 - crate::sequence::oscillator_value(wave, phase) * (P - 30.0);
-        let x = 10.0 + phase * (P - 20.0);
-        if !started { mv(&mut v.edges, x, y); started = true; } else { ln(&mut v.edges, x, y) }
+    // The exact curve the generator sampled: display slot `c` (continuous) came from generator step
+    // `g`, whose phase is `g / n * cycles + phase0`. Same y scale as the dots, so they sit on it.
+    let (cycles, phase0) = pat.osc;
+    let mut prev: Option<f32> = None;
+    let dense = 240usize;
+    for k in 0..=dense {
+        let c = k as f32 / dense as f32 * n as f32;
+        let g = {
+            let j = if pat.mirrored { n as f32 - 1.0 - c } else { c };
+            (j - pat.rotation as f32).rem_euclid(n as f32)
+        };
+        let phase = g / n as f32 * cycles + phase0;
+        let y = y_of(crate::sequence::oscillator_value(wave, phase));
+        let x = x_of(0, n) + (P - 20.0) * c / n as f32;
+        // start a new sub-path at the loop seam instead of drawing a false vertical connector
+        let seam = match prev {
+            Some(pg) => (g - pg).abs() > n as f32 / 2.0,
+            None => true,
+        };
+        if seam { mv(&mut v.edges, x, y) } else { ln(&mut v.edges, x, y) }
+        prev = Some(g);
     }
     strip_dots(v, pat, n, cur);
     contour(v, pat, n);
@@ -261,7 +285,7 @@ fn oscillator_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: 
 }
 
 /// L-System panel: the actual A/B word as a strip, with the contour above it.
-fn lsystem_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+fn lsystem_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     let cols = 16usize;
     let rows = n.div_ceil(cols).max(1);
     let cell = (P - 12.0) / cols as f32;
@@ -292,7 +316,7 @@ fn lsystem_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32
 }
 
 /// Sieve panel: the three residue-class lattice rows and the resulting mask.
-fn sieve_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+fn sieve_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     let cls = pat.sieve_cls;
     let rh = 46.0f32;
     for (k, &(m, r)) in cls.iter().enumerate() {
@@ -301,7 +325,7 @@ fn sieve_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) 
         for i in 0..n {
             if m == 0 { continue; }
             let x = x_of(i, n);
-            if i % m == r {
+            if src_index(pat, i, n) % m == r {
                 let dst = if pat.hit[i] { &mut v.solid } else { &mut v.fills };
                 poly(dst, &[(x - 2.0, y - 2.0), (x + 2.0, y - 2.0), (x + 2.0, y + 2.0), (x - 2.0, y + 2.0)]);
             }
@@ -315,28 +339,31 @@ fn sieve_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) 
     playhead_column(v, n, cur);
 }
 
-/// Fibonacci / Sturmian panel: the staircase of floor((i+1)α) with the slope marked.
-fn fibonacci_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
-    let mut started = false;
+/// Fibonacci / Sturmian panel: the staircase of floor((i+1)α) (running onset count) against the
+/// straight line of slope α it hugs, with the onsets marked on the steps.
+fn fibonacci_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
+    let total = (0..n).filter(|&i| pat.hit[i]).count();
+    let top = (total as f32).max(pat.map_param * n as f32).max(1.0);
+    let yc = |count: f32| y_of(count / top);
+    let mut count = 0.0f32;
+    mv(&mut v.edges, x_of(0, n), yc(0.0));
     for i in 0..n {
-        let x = x_of(i + 1, n);
-        let y = y_of(pat.u[i]);
-        if !started { mv(&mut v.edges, x_of(0, n), y); started = true; }
-        ln(&mut v.edges, x, y);
-        if i + 1 < n { ln(&mut v.edges, x, y_of(pat.u[i + 1])); }
-    }
-    for i in 0..n {
+        let x = x_of(i, n);
         if pat.hit[i] {
-            let y = y_of(pat.u[i]);
-            line(&mut v.edges, (x_of(i, n), 6.0), (x_of(i, n), P - 6.0));
-            v.nodes.push(Node { x: x_of(i, n), y, r: 4.0, on: true, cur: cur == i as i32, label: String::new() });
+            ln(&mut v.edges, x, yc(count));
+            count += 1.0;
+            ln(&mut v.edges, x, yc(count));
+            v.nodes.push(Node { x, y: yc(count), r: 4.0, on: true, cur: cur == i as i32, label: String::new() });
         }
     }
+    ln(&mut v.edges, x_of(n, n), yc(count));
+    // characteristic line: the same rise spread evenly over the loop
+    line(&mut v.lines, (x_of(0, n), yc(0.0)), (x_of(n, n), yc(total as f32)));
     playhead_column(v, n, cur);
 }
 
 /// Bernoulli panel: each step is a coin flip; hits sit on the contour, misses on the baseline.
-fn bernoulli_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+fn bernoulli_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     line(&mut v.edges, (8.0, P - 12.0), (P - 8.0, P - 12.0));
     for i in 0..n {
         let x = x_of(i, n);
@@ -350,25 +377,32 @@ fn bernoulli_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i
     playhead_column(v, n, cur);
 }
 
-/// Golomb panel: the ruler marks along a line, with every inter-mark gap drawn as an arc.
-fn golomb_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+/// Golomb panel: the ruler marks along a line with an arc over every pair of marks, its height
+/// proportional to the interval it spans. In a Golomb ruler no two arcs have the same width.
+fn golomb_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     let y = P * 0.5;
     line(&mut v.edges, (8.0, y), (P - 8.0, y));
     let marks: Vec<usize> = (0..n).filter(|&i| pat.hit[i]).collect();
-    for (a, &i) in marks.iter().enumerate() {
+    for &i in &marks {
         let x = x_of(i, n);
         line(&mut v.edges, (x, y - 10.0), (x, y + 10.0));
         v.nodes.push(Node { x, y, r: 5.0, on: true, cur: cur == i as i32, label: String::new() });
-        if let Some(&j) = marks.get(a + 1) {
-            let (xa, xb) = (x, x_of(j, n));
+    }
+    // all pairs for a real ruler (<= 12 marks, 66 arcs); neighbours only for dense inverted lines
+    let all_pairs = marks.len() <= 12;
+    for (a, &i) in marks.iter().enumerate() {
+        let last = if all_pairs { marks.len() } else { (a + 2).min(marks.len()) };
+        for &j in &marks[a + 1..last] {
+            let (xa, xb) = (x_of(i, n), x_of(j, n));
+            let h = 6.0 + 62.0 * (xb - xa) / (P - 20.0);
             mv(&mut v.lines, xa, y - 10.0);
-            let _ = write!(v.lines, "Q{:.1} {:.1} {:.1} {:.1} ", (xa + xb) / 2.0, y - 40.0, xb, y - 10.0);
+            let _ = write!(v.lines, "Q{:.1} {:.1} {:.1} {:.1} ", (xa + xb) / 2.0, y - 10.0 - 2.0 * h, xb, y - 10.0);
         }
     }
 }
 
 /// Dice panel: one cell per bar; the number rolled is the height, hits are filled.
-fn dice_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
+fn dice_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     for bar in 0..n.div_ceil(4) {
         let x0 = 8.0 + bar as f32 * (P - 16.0) / n.div_ceil(4) as f32;
         let w = (P - 16.0) / n.div_ceil(4) as f32 - 2.0;
@@ -388,23 +422,33 @@ fn dice_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
 }
 
 /// Logistic panel: the map's parabola and the orbit points the generator actually visited.
-fn logistic_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
-    let r = logistic_r(0.65);
+fn logistic_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
+    // r comes from the pattern (the generator's own value); it used to be logistic_r(0.65) always.
+    let r = if pat.map_param > 0.0 { pat.map_param } else { logistic_r(0.65) as f32 };
     let (bx, by, w, hgt) = (18.0, P - 63.0, P - 36.0, P - 85.0);
     mv(&mut v.edges, bx, by); ln(&mut v.edges, bx + w, by);
     mv(&mut v.edges, bx, by); ln(&mut v.edges, bx, by - hgt);
+    // the diagonal x_{n+1} = x_n the cobweb steps refer to
+    line(&mut v.edges, (bx, by), (bx + w, by - hgt));
     for s in 0..=48 {
         let x = s as f32 / 48.0;
-        let y = (r * x as f64 * (1.0 - x as f64)) as f32;
+        let y = (r * x * (1.0 - x)).clamp(0.0, 1.0);
         let px = bx + x * w;
         let py = by - y * hgt;
         if s == 0 { mv(&mut v.edges, px, py); } else { ln(&mut v.edges, px, py); }
     }
-    for i in 0..n.saturating_sub(1) {
-        let x = bx + pat.orbit[i] * w;
-        let y = by - pat.orbit[i + 1] * hgt;
+    for i in 0..n {
+        // (x_n, x_{n+1}) from the stored successor: on the parabola for any rotation or mirror.
+        let (x, y) = (pat.orbit[i], pat.orbit_next[i]);
+        let (px, py) = (bx + x * w, by - y * hgt);
         let on = pat.hit[i];
-        v.nodes.push(Node { x, y, r: if on { 4.0 } else { 2.0 }, on, cur: cur == i as i32, label: String::new() });
+        if on {
+            // cobweb: up from the diagonal to the curve, then across to the next x
+            mv(&mut v.lines, px, by - x * hgt);
+            ln(&mut v.lines, px, py);
+            ln(&mut v.lines, bx + y * w, py);
+        }
+        v.nodes.push(Node { x: px, y: py, r: if on { 4.0 } else { 2.0 }, on, cur: cur == i as i32, label: String::new() });
     }
     // slim orbit trace in the lower half
     for i in 0..n {
@@ -458,7 +502,7 @@ fn walk_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
 
 /// Tent map: the map curve for the current μ and the orbit points the generator visited.
 fn tent_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
-    let mu = (pat.nv as f32 / 1000.0).clamp(1.0, 2.0);
+    let mu = if pat.map_param > 0.0 { pat.map_param } else { pat.nv as f32 / 1000.0 }.clamp(1.0, 2.0);
     let mut started = false;
     for k in 0..=80 {
         let x = k as f32 / 80.0;
@@ -746,6 +790,83 @@ mod tests {
                 assert_ne!(a, b, "waves {i} and {j} draw the same icon");
             }
         }
+    }
+
+    fn count(path: &str) -> usize {
+        if path.trim() == "M0 0" { 0 } else { path.matches('M').count() }
+    }
+
+    #[test]
+    fn acid_accents_are_drawn_solid() {
+        for kind in [Mode::AcidRandom, Mode::AcidEuclid, Mode::AcidMarkov, Mode::AcidMotif, Mode::AcidShift] {
+            let g = GenParams { kind, steps: 32, pulses: 24, density: 0.8, accent: 1.0, ..GenParams::default() };
+            let pat = generate(&g);
+            let v = build(kind, &pat, 32, -1, 0, 0);
+            assert!(count(&v.solid) > 0, "{kind:?}: accent 100% drew no solid note");
+            let none = build(kind, &generate(&GenParams { accent: 0.0, ..g }), 32, -1, 0, 0);
+            assert_eq!(count(&none.solid), 0, "{kind:?}: accent 0% still drew solid notes");
+        }
+    }
+
+    #[test]
+    fn sieve_rows_follow_rotation_and_mirror() {
+        // every drawn onset must sit on one of the residue rows, however the line was rotated
+        for (rotate, mirror, variation) in [(0usize, false, 0u32), (3, false, 0), (0, true, 0), (5, true, 4), (0, false, 7)] {
+            let g = GenParams { kind: Mode::Sieve, steps: 32, pulses: 2, density: 1.0, rotate, mirror, variation, ..GenParams::default() };
+            let pat = generate(&g);
+            let v = build(Mode::Sieve, &pat, 32, -1, 0, 0);
+            let on_row = v.solid.matches('M').count();
+            let hits = (0..32).filter(|&i| pat.hit[i]).count();
+            // solid squares are class members that are also hits (one per class row they appear in)
+            assert!(on_row >= hits, "rotate {rotate} mirror {mirror} var {variation}: {on_row} solid cells for {hits} onsets");
+        }
+    }
+
+    #[test]
+    fn logistic_panel_uses_the_generators_r_and_puts_dots_on_the_curve() {
+        for density in [0.1f32, 0.65, 1.0] {
+            for mirror in [false, true] {
+                let g = GenParams { kind: Mode::Logistic, steps: 32, pulses: 12, density, mirror, rotate: 3, ..GenParams::default() };
+                let pat = generate(&g);
+                let r = pat.map_param;
+                assert!((r as f64 - crate::sequence::logistic_r(density)).abs() < 1e-6);
+                let v = build(Mode::Logistic, &pat, 32, -1, 0, 0);
+                assert!(!v.nodes.is_empty());
+                // same box as `logistic_view`: x in [bx, bx + w], y in [by - hgt, by]
+                let (bx, by, w, hgt) = (18.0, P - 63.0, P - 36.0, P - 85.0);
+                for n in &v.nodes {
+                    let x = (n.x - bx) / w;
+                    let y = (by - n.y) / hgt;
+                    assert!((y - r * x * (1.0 - x)).abs() < 2e-3, "density {density} mirror {mirror}: ({x},{y})");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn oscillator_curve_passes_through_the_dots() {
+        for (rate, phase, rotate, mirror) in [(1.0f32, 0.0f32, 0usize, false), (2.0, 0.3, 0, false), (3.5, 0.1, 5, false), (2.0, 0.0, 3, true)] {
+            let g = GenParams { kind: Mode::Oscillator, steps: 16, pulses: 16, density: 1.0, osc_rate: rate, phase, rotate, mirror, osc_wave: 0, ..GenParams::default() };
+            let pat = generate(&g);
+            let v = build(Mode::Oscillator, &pat, 16, -1, 0, 0);
+            // rebuild the polyline and test each dot against the nearest curve sample
+            let pts: Vec<(f32, f32)> = v.edges.split('M').flat_map(|seg| seg.split('L')).filter_map(|t| {
+                let mut it = t.split_whitespace().map(|x| x.parse::<f32>());
+                Some((it.next()?.ok()?, it.next()?.ok()?))
+            }).collect();
+            assert!(pts.len() > 100);
+            for n in &v.nodes {
+                let d = pts.iter().map(|p| ((p.0 - n.x).powi(2) + (p.1 - n.y).powi(2)).sqrt()).fold(f32::MAX, f32::min);
+                assert!(d < 2.5, "rate {rate} phase {phase} rotate {rotate} mirror {mirror}: dot {d} units off the curve");
+            }
+        }
+    }
+
+    #[test]
+    fn golomb_panel_arcs_scale_with_the_interval() {
+        let g = GenParams { kind: Mode::Golomb, steps: 64, pulses: 5, density: 1.0, ..GenParams::default() };
+        let v = build(Mode::Golomb, &generate(&g), 64, -1, 0, 0);
+        assert_eq!(count(&v.lines), 10, "5 marks -> C(5,2) arcs");
     }
 
     #[test]

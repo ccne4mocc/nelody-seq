@@ -28,7 +28,8 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     for bar in 0..n.div_ceil(4) {
         let sum: usize = (0..dice).map(|_| 1 + rng.below(6)).sum();
         let m = match dice {
-            1 => (sum - 1).min(10),
+            // one die: spread its 6 faces over the whole bank (cells 0,2,..,10); it used to reach only 0..5
+            1 => ((sum - 1) * 2).min(10),
             2 => (sum - 2).min(10),
             _ => ((sum - 3) * 10 / 15).min(10),
         };

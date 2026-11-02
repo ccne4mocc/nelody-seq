@@ -36,8 +36,12 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         .min(n);
     let mut wave = [0.0f32; MAX_STEPS];
     let v_shift = p.variation as f64 * 0.071;
+    let phase0 = (p.phase as f64 + p.seed as f64 * 0.5 + v_shift).rem_euclid(1.0);
+    // The panel needs the exact sampling to draw the curve through the dots (it used to draw one
+    // cycle from phase 0 whatever `osc_rate`, phase, seed and variation were).
+    out.osc = (rate as f32, phase0 as f32);
     for i in 0..n {
-        let ph = (i as f64 / n as f64 * rate + p.phase as f64 + p.seed as f64 * 0.5 + v_shift).rem_euclid(1.0) as f32;
+        let ph = (i as f64 / n as f64 * rate + phase0).rem_euclid(1.0) as f32;
         wave[i] = value(p.osc_wave, ph);
         out.orbit[i] = wave[i];
         out.u[i] = wave[i];

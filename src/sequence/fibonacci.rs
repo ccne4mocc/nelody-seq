@@ -1,5 +1,11 @@
 use super::{frac, GenParams, Pattern, Rng, PHI_INV};
 
+/// Sturmian slope for a density: `density * 1/phi`, so density 1.0 is exactly the golden slope and
+/// yields the Fibonacci word (the old 0.99 clamp stopped at 0.612 and never produced it).
+pub(crate) fn alpha(density: f32) -> f64 {
+    (density.clamp(0.05, 1.0) as f64 * PHI_INV).clamp(0.05, PHI_INV)
+}
+
 /// Sturmian (Fibonacci) word: floor((i+1)*alpha) - floor(i*alpha) with golden-ratio contour.
 pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut out = Pattern { steps: p.steps, ..Pattern::default() };
@@ -8,7 +14,8 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         return out;
     }
     let mut rng = Rng::new(p.seed, p.variation, 0xFB00_0000);
-    let alpha = (p.density.clamp(0.05, 0.99) as f64 * PHI_INV).clamp(0.05, 0.95);
+    let alpha = alpha(p.density);
+    out.map_param = alpha as f32;
     let phase = frac(p.seed as f64 + p.phase as f64 + p.variation as f64 * PHI_INV);
     let mut prev = 0i64;
     let mut any = false;

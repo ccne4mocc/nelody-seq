@@ -439,8 +439,11 @@ impl MelodyParams {
         } else {
             self.scale.value().pitch(pat.u[idx], octaves, edo, root_cents)
         };
+        // `semis` is already the nearest semitone and `cents` the remainder (-50..=50) that the pitch bend
+        // carries. A second `(cents / 100).round()` here turned an exact +-50c detune into a whole extra
+        // semitone: 24-EDO quarter tones and root_cents = +-50 sounded 100c away from the target.
         let base = self.midi_root.value().clamp(0, 120) + self.root.value().clamp(0, 11) + semis;
-        ((base + (cents / 100.0).round() as i32).clamp(0, 127) as u8, cents)
+        (base.clamp(0, 127) as u8, cents)
     }
 }
 
@@ -705,6 +708,11 @@ impl Plugin for Nelody {
     fn process(&mut self, buffer: &mut Buffer, _aux: &mut AuxiliaryBuffers, context: &mut impl ProcessContext<Self>) -> ProcessStatus {
         let p = self.params.clone();
         let nts = p.nts.value();
+        if !nts && self.bent {
+            // NTS switched off while a bend is outstanding: nothing else would ever recentre it.
+            self.bent = false;
+            context.send_event(NoteEvent::MidiPitchBend { timing: 0, channel: 0, value: 0.5 });
+        }
         if self.pending_reset {
             self.pending_reset = false;
             self.stop_all(context, nts);
@@ -807,13 +815,10 @@ impl Plugin for Nelody {
                 if let Some(cycle) = regeneration_cycle_at(k, self.loop_length, every, self.last_regen_cycle) {
                     p.variation.fetch_add(1, Relaxed);
                     self.shared.regen_pulse.fetch_add(1, Relaxed);
-                    let mut next_key = p.gen_params();
-                    // Rotation-only modes: vary the seed so regeneration changes the line, not just
-                    // its rotation.
-                    if matches!(p.mode.value(), Mode::RudinShapiro | Mode::ThueMorse | Mode::UlamPrimes) {
-                        let mut rng = crate::sequence::Rng::new(next_key.seed, next_key.variation, 0x5EED_5EED);
-                        next_key.seed = rng.unit();
-                    }
+                    // `variation` was bumped above, so this key is exactly what the next block's
+                    // `gen_params()` returns. (A jittered-seed key here made `last_key` differ from the
+                    // parameters, so the very next block regenerated again with the real seed.)
+                    let next_key = p.gen_params();
                     self.pattern = generate(&next_key);
                     self.loop_length = next_key.length as f64;
                     self.last_key = Some(next_key);
@@ -1049,6 +1054,34 @@ mod tests {
             ..MelodyParams::default()
         };
         assert_eq!(transposed.pitch_for(&pat, 0).0, 50, "root pitch class shifts the whole line");
+    }
+
+    #[test]
+    fn quarter_tones_and_edge_root_cents_land_on_the_right_note() {
+        // 24-EDO degree 1 = +50c: note 48 + 1 semitone is wrong, 48 with +50c bend is right.
+        let params = MelodyParams {
+            scale: EnumParam::new("Scale", Tuning::Edo),
+            edo: IntParam::new("EDO Divisions", 24, IntRange::Linear { min: 1, max: MAX_EDO as i32 }),
+            octaves: IntParam::new("Octaves", 1, IntRange::Linear { min: 1, max: 6 }),
+            ..MelodyParams::default()
+        };
+        let mut pat = Pattern::default();
+        for deg in 0..24usize {
+            pat.u[deg] = (deg as f32 + 0.5) / 24.0;
+            let (note, cents) = params.pitch_for(&pat, deg);
+            let sounded = (note as i32 - 48) as f32 * 100.0 + cents;
+            assert!((sounded - deg as f32 * 50.0).abs() < 0.01, "deg {deg}: {sounded}c");
+            assert!(cents.abs() <= 50.0);
+        }
+        let edge = MelodyParams {
+            root_cents: FloatParam::new("Root Cents", 50.0, FloatRange::Linear { min: -50.0, max: 50.0 }),
+            ..MelodyParams::default()
+        };
+        let mut abs = Pattern::default();
+        abs.absolute = true;
+        abs.semis[0] = 7;
+        let (note, cents) = edge.pitch_for(&abs, 0);
+        assert_eq!(((note as i32 - 48) as f32 * 100.0 + cents), 750.0);
     }
 
     #[test]

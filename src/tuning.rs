@@ -64,8 +64,10 @@ impl Tuning {
             Tuning::Pythagorean => &[0.0, 90.22, 203.91, 294.13, 407.82, 498.04, 588.27, 701.96, 792.18, 905.87, 996.09, 1109.78],
             // 3/2 narrowed by a quarter syntonic comma (81/80), which gives a 5/4 major third.
             Tuning::Meantone => &[0.0, 117.11, 193.16, 310.26, 386.31, 503.42, 620.53, 696.58, 813.69, 889.74, 1006.84, 1082.89],
-            // 9/8 10/8 11/8 12/8 13/8 14/8 15/8 16/8 (the last is the octave itself).
-            Tuning::Harmonic => &[203.91, 386.31, 551.32, 701.96, 840.53, 968.83, 1088.27, 1200.0],
+            // Harmonics 8..15 over the fundamental 8: 8/8 9/8 10/8 11/8 12/8 13/8 14/8 15/8. The table
+            // used to start at 9/8 and end on 1200c, so the tonic itself was missing from every octave
+            // (and acid slot 0, the root-biased one, sounded the 9/8 above it).
+            Tuning::Harmonic => &[0.0, 203.91, 386.31, 551.32, 701.96, 840.53, 968.83, 1088.27],
             // Near-even pentatonic, ~240c per tone.
             Tuning::Slendro => &[0.0, 240.0, 480.0, 720.0, 960.0],
             Tuning::Edo => &[],
@@ -84,7 +86,11 @@ impl Tuning {
     /// Cents above the root for degree `deg` (already clamped to `degrees()`).
     pub fn degree_cents(self, deg: usize, edo: u32) -> f32 {
         match self {
-            Tuning::Edo => (deg % edo.clamp(1, MAX_EDO) as usize) as f32 * 1200.0 / edo.clamp(1, MAX_EDO) as f32,
+            Tuning::Edo => {
+                let e = edo.clamp(1, MAX_EDO) as usize;
+                // The octave term was missing: with `octaves` > 1 every upper octave replayed the first.
+                (deg % e) as f32 * 1200.0 / e as f32 + 1200.0 * (deg / e) as f32
+            }
             _ => {
                 let n = self.cents().len();
                 self.cents()[deg % n] + 1200.0 * (deg / n) as f32
@@ -153,7 +159,7 @@ mod tests {
         near(Tuning::Meantone, 3.0 / 12.0, 3, 10.26);
         near(Tuning::JustFiveLimit, 2.0 / 7.0, 4, -13.69);
         near(Tuning::JustFiveLimit, 4.0 / 7.0, 7, 1.96);
-        near(Tuning::Harmonic, 2.0 / 8.0, 6, -48.68);
+        near(Tuning::Harmonic, 3.0 / 8.0, 6, -48.68);
         for t in [Tuning::Pythagorean, Tuning::Meantone, Tuning::JustFiveLimit, Tuning::Harmonic, Tuning::Slendro] {
             let cents = t.cents();
             assert!(cents.windows(2).all(|w| w[0] < w[1]), "{t:?} table is not ascending");
@@ -194,6 +200,46 @@ mod tests {
         assert_eq!(Tuning::Minor.pitch_in_octave(0.01, 0, 12, 25.0), (0, 25.0));
         let (_, c) = Tuning::Pythagorean.pitch_in_octave(0.4, 1, 12, 0.0);
         assert!(c.abs() <= 50.0);
+    }
+
+    #[test]
+    fn edo_upper_octaves_climb() {
+        // 19-EDO over two octaves: degree 19 is the octave, not a replay of degree 0.
+        assert_eq!(Tuning::Edo.degree_cents(19, 19), 1200.0);
+        assert!((Tuning::Edo.degree_cents(28, 19) - (9.0 * 1200.0 / 19.0 + 1200.0)).abs() < 1e-3);
+        let (lo, _) = Tuning::Edo.pitch(0.01, 2, 19, 0.0);
+        let (hi, _) = Tuning::Edo.pitch(0.99, 2, 19, 0.0);
+        assert!(hi - lo >= 22, "two octaves must span ~24 semitones, got {}", hi - lo);
+        for edo in [5u32, 12, 19, 24, 31, 53, 72] {
+            let n = Tuning::Edo.degrees(3, edo);
+            assert!(Tuning::Edo.degree_cents(n - 1, edo) > 2400.0, "edo {edo}");
+        }
+    }
+
+    #[test]
+    fn every_table_starts_on_the_tonic() {
+        for t in [Tuning::Major, Tuning::Minor, Tuning::Dorian, Tuning::PentMinor, Tuning::PentMajor,
+                  Tuning::Chromatic, Tuning::JustFiveLimit, Tuning::Pythagorean, Tuning::Meantone,
+                  Tuning::Harmonic, Tuning::Slendro] {
+            assert_eq!(t.cents()[0], 0.0, "{t:?} has no tonic");
+            assert!(*t.cents().last().unwrap() < 1200.0, "{t:?} repeats the octave inside the table");
+        }
+    }
+
+    #[test]
+    fn detune_is_always_inside_half_a_semitone_and_rebuilds_the_target() {
+        // 24-EDO quarter tones and +-50 root cents sit exactly on the rounding boundary.
+        for (t, edo) in [(Tuning::Edo, 24u32), (Tuning::Edo, 48), (Tuning::Edo, 72), (Tuning::Major, 12)] {
+            for rc in [-50.0f32, -49.0, 0.0, 49.0, 50.0] {
+                let span = t.degrees(2, edo);
+                for deg in 0..span {
+                    let (s, c) = t.pitch((deg as f32 + 0.5) / span as f32, 2, edo, rc);
+                    assert!(c.abs() <= 50.0 + 1e-3, "{t:?} {edo} deg {deg} rc {rc}: detune {c}");
+                    let want = t.degree_cents(deg, edo) + rc;
+                    assert!((s as f32 * 100.0 + c - want).abs() < 1e-2, "{t:?} {edo} deg {deg} rc {rc}");
+                }
+            }
+        }
     }
 
     #[test]

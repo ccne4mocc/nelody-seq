@@ -14,12 +14,16 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     }
     let omega = p.pulses.min(n).max(1) as f64 / n as f64;
     let k = coupling(p.density);
+    out.map_param = k as f32;
     let mut th = frac(p.seed as f64 + p.phase as f64 + p.variation as f64 * PHI_INV);
     let mut any = false;
     for i in 0..n {
         let next = th + omega - k / TAU * (TAU * th).sin();
-        let fired = next >= 1.0;
-        th = next - next.floor();
+        // 1e-9 slack: at K = 0 the accumulated rotation lands within rounding error of an integer
+        // and used to miss a wrap, giving `pulses - 1` onsets (10 of 306 tested combinations).
+        let wraps = (next + 1e-9).floor();
+        let fired = wraps >= 1.0;
+        th = (next - wraps).max(0.0);
         out.hit[i] = fired;
         if fired {
             any = true;

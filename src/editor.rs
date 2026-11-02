@@ -124,11 +124,6 @@ fn pulse_limit(mode: Mode, cells: i32) -> i32 {
     }
 }
 
-/// Next mode after a wheel notch. Clamping, not wrapping, matches every other picker.
-fn step_mode(current: i32, delta: i32, count: i32) -> i32 {
-    (current + delta).clamp(0, (count - 1).max(0))
-}
-
 /// One mode-selection path for the list and the mode-header wheel.
 fn apply_mode(c: &Arc<dyn GuiContext>, p: &MelodyParams, index: i32) {
     let last = <Mode as Enum>::variants().len() as i32 - 1;
@@ -432,8 +427,8 @@ impl Editor for SlintEditor {
                 ui.on_set_mode(move |v| apply_mode(&c, &p, v));
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_step_mode(move |delta| {
-                    let count = <Mode as Enum>::variants().len() as i32;
-                    apply_mode(&c, &p, step_mode(p.mode.value().to_index() as i32, delta, count));
+                    // step through the order the list is drawn in, not the raw host index
+                    apply_mode(&c, &p, p.mode.value().step_in_display_order(delta).to_index() as i32);
                 });
             }
             {
@@ -502,15 +497,8 @@ impl Editor for SlintEditor {
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_generate_pressed(move || {
-                    // Modes whose output is otherwise rotation-only: perturb the seed so Generate
-                    // produces a visibly different line instead of just rotating the same one.
-                    if matches!(p.mode.value(), Mode::RudinShapiro | Mode::ThueMorse | Mode::UlamPrimes) {
-                        let mut rng = Rng::new(p.seed.value(), p.variation.load(std::sync::atomic::Ordering::Relaxed), 0x5EED_5EED);
-                        set(&c, &p.seed, rng.unit());
-                    }
-                    set(&c, &p.generate, !p.generate.value());
-                });
+                // Generate bumps `variation`; every generator now consumes it, so the Seed knob stays put.
+                ui.on_generate_pressed(move || set(&c, &p.generate, !p.generate.value()));
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
@@ -780,15 +768,6 @@ mod tests {
         let mut indices: Vec<i32> = entries.iter().filter(|e| !e.header).map(|e| e.index).collect();
         indices.sort_unstable();
         assert_eq!(indices, (0..<Mode as Enum>::variants().len() as i32).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn mode_wheel_steps_clamp_at_both_ends() {
-        assert_eq!(step_mode(4, 1, 19), 5);
-        assert_eq!(step_mode(4, -1, 19), 3);
-        assert_eq!(step_mode(0, -1, 19), 0);
-        assert_eq!(step_mode(18, 1, 19), 18);
-        assert_eq!(step_mode(0, 1, 0), 0);
     }
 
     #[test]

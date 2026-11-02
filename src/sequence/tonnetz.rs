@@ -20,6 +20,49 @@ pub fn tonnetz_root_pc(a: i32, b: i32, up: bool) -> i32 {
     (7 * a + 4 * b + if up { 0 } else { 4 }).rem_euclid(12)
 }
 
+/// Shortest signed distance between two pitch classes, in -6..=5 semitones.
+fn shortest(d: i32) -> i32 {
+    (d + 6).rem_euclid(12) - 6
+}
+
+/// Parsimonious voice leading: voices that are common tones of the new triad stay put and each
+/// remaining voice moves to the free pitch class by the shortest way. For P, L and R exactly one
+/// voice moves, by 1, 1 and 2 semitones. (The old code re-sorted pitch classes into 0..11 on every
+/// chord, so the lowest voice leapt by up to 11 semitones on an L move and the mean motion per chord
+/// was 2.2 semitones against the neo-Riemannian minimum of 1.3.)
+fn lead(old: [i32; 3], pcs: [i32; 3]) -> [i32; 3] {
+    let mut out = old;
+    let mut taken = [false; 3];
+    let mut keeps = [false; 3];
+    for v in 0..3 {
+        for k in 0..3 {
+            if !taken[k] && old[v].rem_euclid(12) == pcs[k] {
+                taken[k] = true;
+                keeps[v] = true;
+                break;
+            }
+        }
+    }
+    for v in 0..3 {
+        if keeps[v] {
+            continue;
+        }
+        let from = old[v].rem_euclid(12);
+        let mut best = (i32::MAX, 0usize, 0i32);
+        for k in 0..3 {
+            if !taken[k] {
+                let d = shortest(pcs[k] - from);
+                if d.abs() < best.0 {
+                    best = (d.abs(), k, d);
+                }
+            }
+        }
+        taken[best.1] = true;
+        out[v] = old[v] + best.2;
+    }
+    out
+}
+
 /// Tonnetz walk: P/L/R neo-Riemannian moves on the triangular lattice; each triad is arpeggiated.
 pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut out = Pattern { steps: p.steps, ..Pattern::default() };
@@ -33,6 +76,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let (mut a, mut b, mut up) = (TONNETZ_START.0, TONNETZ_START.1, true);
     let start_pc = tonnetz_root_pc(a, b, up);
     let mut last_tf = 3usize;
+    let mut voices = [0i32, 4, 7];
     out.absolute = true;
     for i in 0..n {
         if i > 0 && i % l == 0 {
@@ -45,17 +89,26 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
                 if let Some((na, nb, nu)) = tonnetz_transform(a, b, up, tf) {
                     (a, b, up) = (na, nb, nu);
                     last_tf = tf;
+                    let r = (tonnetz_root_pc(a, b, up) - start_pc).rem_euclid(12);
+                    voices = lead(voices, [r, (r + if up { 4 } else { 3 }) % 12, (r + 7) % 12]);
+                    // Keep the chord in the playable window by whole octaves; with 1-2 semitone
+                    // moves this triggers only after a long run in one direction.
+                    let mean = voices.iter().sum::<i32>() as f32 / 3.0;
+                    if mean < -3.0 {
+                        voices.iter_mut().for_each(|v| *v += 12);
+                    } else if mean >= 11.0 {
+                        voices.iter_mut().for_each(|v| *v -= 12);
+                    }
                     break;
                 }
             }
         }
-        let r = (tonnetz_root_pc(a, b, up) - start_pc).rem_euclid(12);
-        let mut tones = [r, (r + if up { 4 } else { 3 }) % 12, (r + 7) % 12];
+        let mut tones = voices;
         tones.sort_unstable();
         let j = i % l;
         let semi = tones[j % 3] + 12 * ((j as i32 / 3) % 2);
         out.semis[i] = semi as i8;
-        out.u[i] = (semi as f32 / 24.0).clamp(0.0, 1.0);
+        out.u[i] = ((semi as f32 + 12.0) / 36.0).clamp(0.0, 1.0);
         out.tri[i] = (a as u8, b as u8, up);
         out.hit[i] = j == 0 || rng.unit() < dens;
         out.acc[i] = if j == 0 { 0.95 } else { 0.72 };

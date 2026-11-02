@@ -23,10 +23,10 @@ index 14 because the melody modes build the non-acid half of that split.
 | 2 | Logistic Map | Chaos | `_nMelody_old` Logistic | Parabola + the orbit points the generator visited |
 | 3 | Eulerian Walk | Geometric | `_nMelody_old` Euler | Directed graph, Hierholzer circuit, rest vertex R |
 | 4 | Arnold Circle Map | Chaos | `_nMelody_old` CircleMap | Phasor: outer circle, inner θ circle, unwrapped phase spiral |
-| 5 | Mozart Dice | Stochastic | `_nMelody_old` Dice (11-cell bank) | One cell per bar, rolled pitch as bar height |
+| 5 | Mozart Dice | Stochastic | `_nMelody_old` Dice (11-cell bank) | One cell per bar, rolled pitch as bar height; one die spans cells 0,2,…,10 and `density` is transposition jitter |
 | 6 | Tonnetz Walk | Music Theory | nDrums Markov position filled by the melody project's Tonnetz | P/L/R lattice with visited triangles filled, walk line, note-name nodes |
 | 7 | Cellular Automaton | Cellular | nDrums Cellular on one ring | CA space-time rings, selected generation solid, playhead column |
-| 8 | Markov Walk | Stochastic | nDrums Markov over the 7-degree melody graph | Graph over rest + 7 degrees, taken edges drawn |
+| 8 | Markov Walk | Stochastic | nDrums Markov over the 7-degree melody graph | Graph over rest + 7 degrees, taken edges drawn; single-octave degree path, slot 0 = tonic |
 | 9 | Oscillator / Phase | Rhythm | nDrums Oscillator re-purposed: the sampled curve IS the pitch contour | Waveform curve + step dots + contour + playhead column |
 | 10 | L-System Grammar | Rhythm | Both (nDrums wording, `_nMelody_old` A/B contour mapping) | A/B word strip with A=bar/B=dot, contour over it |
 | 11 | Xenakis Sieve | Number Theory | nDrums Sieve with degree-per-residue-class melody | Three residue-class rows with member dots, mask shows which survive |
@@ -37,19 +37,19 @@ index 14 because the melody modes build the non-acid half of that split.
 | 16 | Acid Markov | Acid | nDrums Markov position filled by the melody project's transition chains | Acid piano roll |
 | 17 | Acid Motif | Acid | `_nMelody_old` AcidMotif (mutating repeats) | Acid piano roll |
 | 18 | Acid Shift Register | Acid |Both lineage: nDrums L-System slot, `_nMelody_old` register distillation | Acid piano roll (register fields as rows) |
-| 19 | Thue-Morse | Number Theory | New wave: automatic sequence | Binary word strip + run-length contour |
-| 20 | Rudin-Shapiro | Number Theory | New wave: automatic sequence | Binary word strip + index contour |
-| 21 | Brownian Walk | Stochastic | New wave: reflected random walk | Walk path + onset dots |
-| 22 | Lévy Flight | Stochastic | New wave: heavy-tailed walk | Walk path + onset dots |
-| 23 | Tent Map | Chaos | New wave: piecewise-linear map | Tent map + orbit/onset dots |
-| 24 | Hénon Map | Chaos | New wave: 2-D attractor | 2-D attractor scatter |
+| 19 | Thue-Morse | Number Theory | New wave: automatic sequence | Binary word strip + Nørgård infinity-series contour; onsets spread evenly over the 1s, `phase`/variation slide the window |
+| 20 | Rudin-Shapiro | Number Theory | New wave: automatic sequence | Binary word strip + index contour; onsets spread evenly over the 1s |
+| 21 | Brownian Walk | Stochastic | New wave: reflected random walk | Walk path + onset dots; Gaussian step σ = 0.01 + 0.2·density, `phase` = start position (no drift) |
+| 22 | Lévy Flight | Stochastic | New wave: heavy-tailed walk | Walk path + onset dots; Pareto α = 2 − 1.5·density, min step 0.02 + 0.06·density, folded |
+| 23 | Tent Map | Chaos | New wave: piecewise-linear map | Tent map + orbit/onset dots; μ = 1 + 0.99·density, pitch scaled to the attractor |
+| 24 | Hénon Map | Chaos | New wave: 2-D attractor | 2-D attractor scatter; a = 1 + 0.4·density, b = 0.3, start near origin with a 64-step transient |
 | 25 | Arpeggiator | Music Theory | New wave: chord-tone arp | Absolute piano roll with direction |
-| 26 | Walking Bass | Music Theory | New wave: chord + chromatic approach | Absolute piano roll with approach notes |
+| 26 | Walking Bass | Music Theory | New wave: chord + chromatic approach | Absolute piano roll; ping-pong chord tones on even steps, chromatic approach on the weak step, `phase` = approach side |
 | 27 | Hilbert Curve | Geometric | New wave: space-filling curve | 2-D Hilbert order grid/path |
-| 28 | Ulam Spiral Primes | Number Theory | New wave: prime spiral | 2-D Ulam spiral with prime/hit marks |
+| 28 | Ulam Spiral Primes | Number Theory | New wave: prime spiral | 2-D Ulam spiral with prime/hit marks; starts at integer `1 + round(64·phase) + 5·variation` |
 
 Everything else in Nelody's UI is either the nDrums design untouched (header, generate/
-randomize buttons, clock row, settings slide-in, credits, scope chips, 860×760 fixed window)
+randomize buttons, clock row, settings slide-in, credits, scope chips, 860×675 fixed window)
 or the melody-specific replacements of the two drum-only slots:
 
 | nDrums slot | Nelody replacement |
@@ -74,20 +74,21 @@ mapping highlights, for modes where the knob name is wrong in the generic sense:
 | 8 Markov | Walk activity | Rest probability | Leapiness (via osc_rate) |
 | 11 Sieve | Union terms (0–2) | Fraction of members kept | Residue shift |
 | 14–18 acid | Note count / motif length / register width | Root bias / leapiness | Mutation / register flip |
-| 19–20 Thue-Morse / Rudin-Shapiro | Target hits (weighted toward 1s) | Keep fraction | Word offset |
-| 21 Brownian | Target hits | Step size | Drift |
-| 22 Lévy Flight | Target hits | Tail weight | Drift |
-| 23 Tent Map | Target hits | Map μ | Initial x |
-| 24 Hénon Map | Target hits | Chaos a | Initial x |
+| 19–20 Thue-Morse / Rudin-Shapiro | Target hits (spread over the 1s) | Keep fraction | Word offset |
+| 21 Brownian | Target hits | Gaussian step σ = 0.01 + 0.2·density | Start position (0 = middle), no drift |
+| 22 Lévy Flight | Target hits | Pareto tail α = 2 − 1.5·density and min step 0.02 + 0.06·density | Start position (0 = middle), no drift |
+| 23 Tent Map | Target hits | Map μ = 1 + 0.99·density | Initial x (after a 32-step transient) |
+| 24 Hénon Map | Target hits | Chaos a = 1 + 0.4·density | Initial x near the origin (64-step transient) |
 | 25 Arpeggiator | Chord tones (1–4) | Step gate | Direction (up/down/up-down/random) |
-| 26 Walking Bass | Chord tones (1–4) | Chromatic approach chance | Direction (below/above/mixed) |
+| 26 Walking Bass | Chord tones (1–4) | Chromatic approach chance on the weak step | Approach side (below/above/mixed) |
 | 27 Hilbert Curve | Curve order (1–5) | Step gate | Quarter-turn rotation |
-| 28 Ulam Primes | Target hits | Prime keep fraction | — |
+| 28 Ulam Primes | Target hits | Prime keep fraction (spread over the primes) | Start integer `1 + round(64·phase) + 5·variation` |
 | Symmetry | Hidden entirely (`shows-param` returns false for key 11) — a drum-only idea | | |
 
 `GenParams::mode_data` is the Phase-5 bridge for future typed mode parameters: fixed, zero-filled
 slots whose meaning belongs to the individual mode. Until a mode documents a slot, it must leave
-the array untouched.
+the array untouched. The first candidate is a Brownian/Lévy step-size slot, so `density` can own
+the hit count without also deciding how far the walk moves.
 
 The acid knobs map 1:1 to `_nMelody_old`: `slide`, `accent`, `oct_jump`. They are filtered
 through sharpness in the old project's "effective value" interface; here they are plain
@@ -99,7 +100,8 @@ in `sequence::tests::acid_knobs_only_add_or_remove_flags`.
 - One shared pattern snapshot drives audio output, the panel preview and MIDI export.
 - A Generate switch is host-mappable and bumps the persisted variation counter when it flips,
   on→off and off→on.
-- Rotate is a post-generator circular shift over every per-step view array.
+- Rotate and mirror are post-generator transforms over every per-step view array; `Pattern.rotation`
+  and `Pattern.mirrored` let a panel map a display slot back to the generator step it drew.
 - η-style deterministic randomize draws all groups in a fixed order and skips disabled scope
   bits, so enabling a group never changes what another group received.
 - Host-visible metadata (credits, waveform names, mode names) is read from the Rust side, so

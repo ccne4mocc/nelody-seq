@@ -7,6 +7,13 @@ fn nbr(row: &[bool; MAX_STEPS], n: usize, j: usize) -> u8 {
     (l << 2) | (c << 1) | r
 }
 
+/// The last four generations of one column read as a 4-bit number (current row = bit 0). The old
+/// 3-cell neighbourhood code can only be 1..4 on a live rule-30 cell, so the melody never left the
+/// bottom 57% of the range; the column code reaches every odd value 1..15 and uses the CA's memory.
+fn column_code(ca: &[[bool; MAX_STEPS]; CA_ROWS], row: usize, j: usize) -> u32 {
+    (0..4).fold(0u32, |a, b| a | ((row >= b && ca[row - b][j]) as u32) << b)
+}
+
 pub(crate) fn selected_row(p: &GenParams) -> usize {
     if p.steps <= 1 {
         0
@@ -45,7 +52,6 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     }
     let gi = selected_row(p);
     out.ca_play = gi;
-    let src = out.ca[gi.saturating_sub(1)];
     let mut any = false;
     for j in 0..n {
         let gate = 0.35 + 0.65 * p.density.clamp(0.0, 1.0);
@@ -54,7 +60,8 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         if out.hit[j] {
             any = true;
         }
-        out.u[j] = nbr(&src, n, j) as f32 / 7.0;
+        let code = column_code(&out.ca, gi, j);
+        out.u[j] = code as f32 / 15.0;
         out.acc[j] = 0.82;
     }
     if !any {

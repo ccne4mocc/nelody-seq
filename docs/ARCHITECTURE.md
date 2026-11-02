@@ -48,13 +48,19 @@ plus transition state. The melody side also carries `_nMelody_old`'s note-transi
 (Fresh / Retrigger / Legato / Tie) and its packed-note history ring.
 
 `sequence::Pattern` is fixed-size: one hit array, one contour `u` (0..1 across the selected
-tuning), per-step accent/oct/slide/semis, plus per-mode visualization state (logistic orbit,
-circle-map phase, Markov degree, Eulerian circuit, CA space-time history, L-system word,
-Tonnetz triangles, dice rolls, sieve classes). Acid modes keep their shape across tunings: `u`
-spans one octave and `oct` shifts it. Algorithms are deterministic — parameter snapshots carry
+tuning), per-step accent/oct/slide/semis, plus per-mode visualization state (logistic orbit and
+its stored successor, circle-map phase, Markov degree, Eulerian circuit, CA space-time history,
+L-system word, Tonnetz triangles, dice rolls, sieve classes). It also carries the scalars the
+generator actually used (`map_param`: logistic `r`, circle-map `K`, Sturmian α, tent μ, Hénon `a`;
+`osc`: cycles and phase offset), the finished `rotation` and `mirrored` flags, and
+`orbit_next[i] = f(orbit[i])` for the logistic cobweb. Acid modes keep their shape across tunings:
+`u` spans one octave and `oct` shifts it. Algorithms are deterministic — parameter snapshots carry
 seed and a persisted `variation` counter; no entropy source is consulted during playback.
-Rotation is a shared post-transform and rotates every per-step view array, so the playhead
-always matches what is drawn.
+Rotation and mirror are shared post-transforms: they reorder every per-step view array, so the
+playhead always matches what is drawn. A view that redraws generator geometry (residue classes,
+oscillator phase) maps a display slot back with `view::src_index` rather than assuming slot ==
+generator step. Every generator must consume `variation`, or Generate only rotates the same line
+(guarded by `new_modes_vary_with_variation_and_never_pin`).
 
 ## Audio/MIDI thread
 
@@ -74,7 +80,14 @@ A slide holds the note until the next sounding step or `SLIDE_OVERLAP` past it, 
 scheduler hits first — the overlap is only a safety net for a line that never gets a next
 note. NoteOff is always emitted before any retrigger at the same timeline position, on
 expiry, during stop, on reset, and after a detected transport jump. `nts` gates both the pitch
-bend and whether history stores the detune; `stop_all` resets the bend to centre.
+bend and whether history stores the detune; `stop_all` resets the bend to centre, and switching
+`nts` off while a bend is outstanding recentres it at the next block instead of leaving the
+whole voice detuned.
+
+`Tuning::pitch`/`pitch_in_octave` return the nearest semitone plus the detune remainder in
+−50..50 cents. `pitch_for` consumes both as-is and must not round the remainder again: doing so
+turned an exact +50-cent degree (24-EDO quarter tones, `root_cents = ±50`) into a whole extra
+semitone sent as bend, i.e. 100 cents away from the target.
 
 The audio callback remains a bounded MIDI scheduler. It publishes current-step, tempo and
 randomization requests through lock-free atomics and appends packed note events to
@@ -84,9 +97,14 @@ or mutex is allocated in the callback; the editor applies randomization through 
 
 Regenerate-after-N-lengths swaps the pattern inside the callback by regenerating from a fresh
 `gen_params()` snapshot — generation is allocation-free (guarded by test) and bounded by the
-`max_steps` ceiling, so this is safe on the audio thread. Randomize-after-N-lengths only
-queues an atomic request. Two runtime LFOs are evaluated before scheduling each block; they
-modulate Swing, Gate or Velocity only, so no pattern regeneration is needed.
+`max_steps` ceiling, so this is safe on the audio thread. The regeneration key is exactly the
+snapshot the next block will compare against (it bumps `variation` first); a jittered seed there
+made `last_key` disagree with the parameters and regenerated a second time on the next block,
+discarding the new line mid-loop. Randomize-after-N-lengths only queues an atomic request. Two
+runtime LFOs are evaluated once per block at the block's start beat; they modulate Swing, Gate or
+Velocity only, so no pattern regeneration is needed. Swing tolerates the block step; fast
+Gate/Velocity rates are block-stepped too, and per-note evaluation is the planned follow-up if
+zipper noise becomes audible.
 
 ## Modes and the `max_steps` ceiling
 
@@ -114,7 +132,10 @@ snapshots the ring and `history::build` pairs NoteOn/NoteOff into segments, clip
 window, and emits three SVG paths (black-key row shading, C-row grid, note rectangles with
 octave-aligned ranges of at least two octaves). The window is `history_bars × 4 × 60 ms/BPM`
 (four beats per 4/4 bar), so the same setting reads the same at any tempo. Its ceiling is the
-pattern's own length in bars: `max_steps / (4 × rate.steps_per_beat())`. Changing Max Steps or
+pattern's own length in bars: `max_steps / (4 × rate.steps_per_beat())`. The ring holds
+`HISTORY_LEN = 256` events (128 notes), so a dense line over a long window silently loses its
+oldest events; that cap is only sufficient for the default window and a larger ring is the
+pending fix. Changing Max Steps or
 the clock rate clamps the history window instead of leaving an impossible value in place. A cent offset shifts the note inside its own
 row, so NTS pitches are visible as microtonal offsets. Pairing keeps the ring's emission order
 for events in the same millisecond, and a NoteOff whose NoteOn already fell out of the ring is
@@ -139,7 +160,7 @@ first-run default is the host process working directory.
 | Parameter group | Parameters | Intended use |
 |---|---|---|
 | Pattern | `mode`, `steps` (1–1024), `max_steps` (64–1024), `round_steps`, `pulses`, `rotate`, `density`, `probability`, `velocity`, `regenerate_every`, `seed`, `generate`, `theme` | Pattern family, variation, palette. `steps` is bounded by `max_steps` at generation time; the default ceiling is 64, and changing it applies immediately because the arrays always have room for 1024 |
-| Randomization | `randomize_after_lengths`, `randomize_scope` (eight-bit mask: Mode, Length, Hits, Tuning, Clock, Phase, Acid, Feel) | Manual Randomize applies through the host setter; automatic randomization queues a request every N lengths while the editor is open. Feel includes velocity, bend, swing and probability |
+| Randomization | `randomize_after_lengths`, `randomize_scope` (eight-bit mask: Mode, Length, Hits, Tuning, Clock, Phase, Acid, Feel) | Manual Randomize applies through the host setter; automatic randomization queues a request every N lengths while the editor is open. Feel includes velocity, NTS, swing and probability, so randomizing Feel can turn all microtonal bends off (NTS) — a narrower scope or a separate NTS bit is the pending decision |
 | Algorithm shape | `phase`, `osc_rate`, `osc_wave` (8 waveforms), `ca_rule`, `symmetry` | Mode-specific; hidden in the UI when the selected mode never reads them. Waveform ids/names come from the `OscWave` enum |
 | Mode data bridge | `GenParams::mode_data: [f32; 4]` | Fixed slots for values a future typed `ModeParams` enum would own; currently zero-filled and documented per mode in `REFERENCE_MAPPING.md` |
 | Clock | `rate`, `gate`, `swing`, `freerun` | Beat grid, NoteOff duration, stopped-transport behaviour |
@@ -147,11 +168,39 @@ first-run default is the host process working directory.
 | Melody / tuning | `root` (pitch class), `scale` (12 tables or EDO), `octaves`, `edo`, `root_cents`, `midi_root`, `nts` | Pitch mapping. The tonic is `midi_root + root` semitones; non-12-TET detune is emitted as pitch bend while `nts` is on |
 | Acid flags | `slide`, `accent`, `oct_jump` | Per-note probabilities for the five acid modes. They only add or remove flags — never reshuffle the line (tested) |
 | Post-transforms | `invert`, `mirror`, `rotate` | Applied to the finished line: hit inversion, retrograde, circular rotation |
-| History | `history_bars` (id `history_beats`) | Window width of the always-recording piano-roll history, in 4/4 bars |
+| History | `history_bars` (legacy host id `history_beats`) | Window width of the always-recording piano-roll history, in 4/4 bars. The id is historical: the same field used to mean beats, and projects saved then reopen as bars (no automatic ÷4 migration yet; either migrate on load or introduce a new id) |
 
 `velocity` multiplies each step's `Pattern.acc` (step accents × acid accent flags), clamped to
 1.0. `expressive quantization` such as per-step velocity drag is intentionally absent:
 variation comes from Generate, Randomize and the knobs.
+
+## Generator, selection and pitch contracts
+
+- `pick(w, r)` treats `w` as relative weights and normalises by their sum. Callers may pass a
+  root-heavy table that does not sum to one; zero-weight slots are unreachable. The old code
+  compared the uniform draw against the unnormalised running sum, so the first slot swallowed the
+  draw and acid modes played two degrees (Markov one).
+- `select_spread(primary, n, k, hits)` marks exactly `k` steps. When `k` is at most the number of
+  structural steps (`primary`), picks are evenly centred among them; when it is larger, every
+  structural step is kept and the surplus is spread over the rests. Do not reintroduce `top_k`
+  with an arbitrary tie-breaker for Thue-Morse, Rudin-Shapiro or Ulam: it emptied the last quarter
+  of the loop.
+- `fold01(x)` is the exact triangle reflection into 0..=1 for any displacement; walked modes
+  (Brownian, Lévy) must use it instead of iterative `if x < 0 { -x }` reflection, which pins long
+  jumps to the wall.
+- Acid accent flags are `0.95` (accented) versus `0.76` (plain). The metric accent layer is reduced
+  to a ±1.5 % shimmer for acid lines so an accented off-beat note stays louder than a plain
+  downbeat; the panel's solid threshold is `acc >= 0.9`. Non-acid lines keep the full metric
+  layer multiplied by the mode's own accent.
+- `invert` must give newly sounding steps their own contour (`fill` in `sequence::generate`);
+  a plain boolean flip left every inverted-in note on `u = 0.0`, i.e. the lowest pitch.
+- `Pattern.acid` also opts non-acid generators into the single-octave degree path; Markov sets it
+  so slot 0 is the tonic in every tuning. Slot-based contours that still index `(k + 0.5)/7`
+  directly (Rudin-Shapiro, Sieve, Eulerian) lose the tonic at more than one octave; a
+  `Pattern.slots` contract is the planned fix.
+- Views must read `map_param`, `osc` and `orbit_next` from the pattern, or draw through
+  `view::src_index`. Re-deriving `r`, `μ`, `a` or the phase from `density` is what made panels
+  disagree with the audible line after rotate/mirror/variation.
 
 ## Where state lives
 
@@ -174,9 +223,12 @@ variation comes from Generate, Randomize and the knobs.
   same slots. A drawing needing per-lane colour would require changing `ViewNode`; not worth
   it until it is.
 - Panel geometry never re-derives a generator formula. `view::build` reads `Pattern`
-  (orbit, theta, lsym, ca, circuit, tri, roll, sieve_cls) or exported helpers
-  (`logistic_r`, `circle_coupling`, `lsystem_threshold`, `ruler_order`, `sieve_classes`,
-  `oscillator::value`). Two copies of one formula is how lines drift from what plays.
+  (`orbit`, `orbit_next`, `theta`, `lsym`, `ca`, `circuit`, `tri`, `roll`, `sieve_cls`,
+  `map_param`, `osc`) or exported helpers (`logistic_r` as a fallback, `circle_coupling`,
+  `lsystem_threshold`, `golomb_order`, `sieve_classes`, `oscillator::value`). Two copies of one
+  formula is how lines drift from what plays. When a transform has reordered the line, the view
+  maps display slot → generator step with `view::src_index` (inverse mirror, then inverse
+  rotation).
 - The waveform picker draws `view::wave_icon_paths()` in a 100×40 icon viewbox. Each icon is
   sampled from `oscillator::value`, so the picker cannot advertise a shape the generator does
   not play; Slint only receives the finished paths.
@@ -201,9 +253,10 @@ variation comes from Generate, Randomize and the knobs.
   sequencing state.
 - Mode order is stable and shared: `Mode` in `src/modes.rs` is the host parameter, the
   generator dispatch key and the UI index. A test pins all 29 indices; acid starts at 14.
-- Scrolling over the current-mode header steps to the next/previous mode and clamps at the
-  ends (`step_mode` in `src/editor.rs`). The open mode list keeps the wheel for its own
-  scrolling.
+- Scrolling over the current-mode header steps to the next/previous mode in the *displayed*
+  (grouped) order and clamps at the ends (`Mode::step_in_display_order`): the list is sorted by
+  group label then host index, so walking the raw host index would jump between groups. The open
+  mode list keeps the wheel for its own scrolling.
 - The mode dropdown is grouped by `Mode::group()`; `ModeEntry` rows carry a host index for
   options and -1 for group headers. Sorting is display-only, so host indices never move.
 - New geometric modes use their natural 2-D view: Hilbert curve grid, Ulam spiral, Hénon

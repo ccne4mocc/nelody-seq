@@ -34,13 +34,20 @@ mod walking_bass;
 // The panel draws these algorithms' own curves and cutoffs rather than restating their
 // formulas, so these re-exports exist for `crate::view` alone.
 pub(crate) use circle_map::coupling as circle_coupling;
-pub(crate) use golomb::ruler_order;
+pub(crate) use brownian::sigma as brownian_sigma;
+pub(crate) use cellular::selected_row as cellular_row;
+pub(crate) use henon_map::a_of as henon_a;
+pub(crate) use levy_flight::{step_min as levy_step_min, tail_alpha as levy_alpha};
+pub(crate) use fibonacci::alpha as fibonacci_alpha;
+pub(crate) use golomb::effective_order as golomb_order;
 pub(crate) use hilbert_curve::point as hilbert_point;
-pub(crate) use logistic::r_of as logistic_r;
+pub(crate) use logistic::{r_of as logistic_r, x0 as logistic_x0};
 pub(crate) use lsystem::threshold as lsystem_threshold;
+pub(crate) use markov::proximity_exp as markov_proximity_exp;
 pub(crate) use oscillator::value as oscillator_value;
 pub(crate) use oscillator::WAVE_COUNT as oscillator_wave_count;
 pub(crate) use sieve::classes as sieve_classes;
+pub(crate) use tent_map::mu_of as tent_mu;
 pub(crate) use tonnetz::TONNETZ_START;
 
 // The mode enum is the host parameter type, shared with the generators: one list of modes,
@@ -171,6 +178,18 @@ pub struct Pattern {
     /// Steps the finished pattern was rotated by. Display slot `i` holds the generator's step
     /// `(i + steps - rotation) % steps`; the panel uses this to draw the geometry that produced it.
     pub rotation: usize,
+    /// The finished line was retrograded (`mirror`), applied after the rotation. Together with
+    /// `rotation` this lets the panel map a display slot back to the generator step.
+    pub mirrored: bool,
+    /// The scalar that shapes the mode's map, as the generator used it: logistic `r`, circle-map
+    /// `K`, Sturmian slope `alpha`. Zero when the mode has none. The view reads this instead of
+    /// re-deriving it from `density`, so a drawn curve cannot drift from the audible one.
+    pub map_param: f32,
+    /// Oscillator sampling: `(cycles per pattern, phase offset at generator step 0)`.
+    pub osc: (f32, f32),
+    /// Logistic successor `f(orbit[i])`, stored per step so the panel never has to pair
+    /// neighbouring slots (rotation and mirror reorder them).
+    pub orbit_next: [f32; MAX_STEPS],
 }
 
 impl Default for Pattern {
@@ -199,6 +218,10 @@ impl Default for Pattern {
             sieve_cls: [(2, 1), (3, 2), (5, 3)],
             roll: [0; MAX_STEPS],
             rotation: 0,
+            mirrored: false,
+            map_param: 0.0,
+            osc: (1.0, 0.0),
+            orbit_next: [0.0; MAX_STEPS],
         }
     }
 }
@@ -251,15 +274,28 @@ pub(super) fn shuffle<T>(slice: &mut [T], rng: &mut Rng) {
     }
 }
 
-/// Weighted pick from a small fixed bank; returns the last slot when the draw overflows.
+/// Weighted pick from a small fixed bank. `r` is a uniform draw in `0..1`; the weights are
+/// relative (they do not have to sum to one), so slot `i` is chosen with probability
+/// `w[i] / sum(w)`. Zero-weight slots are never chosen.
+///
+/// The draw used to be compared against the *unnormalised* running sum. With the root-heavy
+/// tables below (sums of 2.7..3.7) the first slot or two swallowed the whole `0..1` range, so
+/// Acid Random/Euclid/Motif only ever played 2 scale degrees and Markov / Acid Markov exactly one.
 pub(super) fn pick(w: &[f32], r: f32) -> usize {
-    let r = r.clamp(0.0, 0.999_999);
+    let total: f32 = w.iter().map(|x| x.max(0.0)).sum();
+    if !total.is_finite() || total <= 0.0 { return 0; }
+    let target = r.clamp(0.0, 0.999_999) * total;
     let mut acc = 0.0;
+    let mut last = 0;
     for (i, &weight) in w.iter().enumerate() {
-        acc += weight.max(0.0);
-        if r < acc { return i; }
+        let weight = weight.max(0.0);
+        if weight > 0.0 {
+            acc += weight;
+            last = i;
+            if target < acc { return i; }
+        }
     }
-    w.len().saturating_sub(1)
+    last
 }
 
 /// Base scale-degree weights: root-heavy, stepping is cheaper than leaping.
@@ -332,6 +368,38 @@ pub(super) fn top_k(scores: &[f32; MAX_STEPS], n: usize, k: usize, hits: &mut [b
     for &(_, i) in &ranked[..k] { hits[i] = true; }
 }
 
+/// Triangle-wave reflection into 0..=1, exact for any displacement. The old `if x < 0 { -x }`
+/// loops (4 or 8 passes) need steps no larger than the range and pin a long jump to the wall.
+pub(super) fn fold01(x: f64) -> f64 {
+    let m = x.rem_euclid(2.0);
+    if m <= 1.0 { m } else { 2.0 - m }
+}
+
+/// Mark `k` steps, spread evenly over the structural ones first. `primary[i]` flags the steps the
+/// algorithm itself calls onsets (Thue-Morse 1s, primes). Fewer than `k`: take every primary step.
+/// More: pick `k` evenly spaced among them. The old ranking (`top_k` on run length, `cell % 7`, or
+/// `i * 1e-6`) broke ties towards the start of the loop, so the last quarter of a thinned
+/// Thue-Morse or Ulam line stayed empty and surplus onsets piled up at the end. Allocation-free.
+pub(super) fn select_spread(primary: &[bool; MAX_STEPS], n: usize, k: usize, hits: &mut [bool; MAX_STEPS]) {
+    hits[..n].fill(false);
+    let k = k.min(n);
+    if k == 0 { return; }
+    let m = primary[..n].iter().filter(|&&b| b).count();
+    let mark = |want: usize, which: bool, hits: &mut [bool; MAX_STEPS]| {
+        let cnt = if which { m } else { n - m };
+        if want == 0 || cnt == 0 { return; }
+        let (mut c, mut j) = (0usize, 0usize);
+        for i in 0..n {
+            if primary[i] != which { continue; }
+            // the j-th of `want` picks candidate floor((2j+1)·cnt / 2·want): centred in its slice
+            if j < want && c == (2 * j + 1) * cnt / (2 * want) { hits[i] = true; j += 1; }
+            c += 1;
+        }
+    };
+    mark(k.min(m), true, hits);
+    if k > m { mark(k - m, false, hits); }
+}
+
 /// Stable step accents: downbeat and backbeat emphasized, with a deterministic human touch.
 fn accents(out: &mut Pattern, p: &GenParams) {
     for i in 0..out.steps {
@@ -391,7 +459,8 @@ pub fn generate(p: &GenParams) -> Pattern {
     q.osc_wave %= oscillator::WAVE_COUNT;
     let mut out = run_mode(&q);
     out.steps = steps;
-    out.acid = q.kind.is_acid();
+    // Modes may opt in to the single-octave degree path on their own (Markov does).
+    out.acid |= q.kind.is_acid();
 
     // Probability is applied after the algorithm so it behaves consistently across modes.
     for i in 0..steps {
@@ -421,6 +490,7 @@ pub fn generate(p: &GenParams) -> Pattern {
         let old_semis = out.semis;
         let old_state = out.state;
         let old_orbit = out.orbit;
+        let old_next = out.orbit_next;
         let old_theta = out.theta;
         let old_lsym = out.lsym;
         let old_ca = out.ca;
@@ -437,6 +507,7 @@ pub fn generate(p: &GenParams) -> Pattern {
             out.semis[i] = old_semis[src];
             out.state[i] = old_state[src];
             out.orbit[i] = old_orbit[src];
+            out.orbit_next[i] = old_next[src];
             out.theta[i] = old_theta[src];
             out.lsym[i] = old_lsym[src];
             out.step_edge[i] = old_edge[src];
@@ -449,12 +520,24 @@ pub fn generate(p: &GenParams) -> Pattern {
     }
 
     if q.invert {
+        // Generators leave `u == 0.0` on their rests, so a plain flip turned every new note into the
+        // lowest pitch. Give those steps a contour that wanders on from the previous sounding note.
+        // Acid generators fill `u` on every step, so the `u == 0.0` guard leaves their degree slots
+        // alone; Markov opts into the acid pitch path but still leaves rests at 0.
+        let fill = !out.absolute;
+        let mut last = (0..steps).rev().find(|&i| out.hit[i]).map(|i| out.u[i] as f64).unwrap_or(0.5);
         for i in 0..steps {
-            out.hit[i] = !out.hit[i];
+            let was_hit = out.hit[i];
+            if fill {
+                if was_hit { last = out.u[i] as f64; }
+                else if out.u[i] == 0.0 { out.u[i] = frac(last + 1.0 - PHI_INV) as f32; last = out.u[i] as f64; }
+            }
+            out.hit[i] = !was_hit;
             if !out.hit[i] { out.slide[i] = false; }
         }
     }
 
+    out.mirrored = q.mirror;
     if q.mirror {
         for i in 0..steps / 2 {
             let j = steps - 1 - i;
@@ -466,6 +549,7 @@ pub fn generate(p: &GenParams) -> Pattern {
             out.semis.swap(i, j);
             out.state.swap(i, j);
             out.orbit.swap(i, j);
+            out.orbit_next.swap(i, j);
             out.theta.swap(i, j);
             out.lsym.swap(i, j);
             out.step_edge.swap(i, j);
@@ -477,10 +561,15 @@ pub fn generate(p: &GenParams) -> Pattern {
 
     // Metric accents land after rotation so they stay tied to the beat grid; each mode's own
     // accent is already rotated above, and the two multiply.
+    // A 303 has no metric dynamics, only the accent flag. Multiplying 0.95 (accent) by the 0.68..1.0
+    // metric weight and the 0.9..1.0 human touch let an accented off-beat note (down to 0.58) play
+    // *softer* than a plain downbeat (0.76), and kept `acc` below the view's solid threshold forever.
+    // For acid lines the metric layer is reduced to a +-1.5% shimmer so flag and velocity agree.
     let mode_accents = out.acc;
     accents(&mut out, &q);
     for i in 0..steps {
-        out.acc[i] = (out.acc[i] * mode_accents[i]).clamp(0.05, 1.0);
+        let metric = if out.acid { 0.985 + 0.015 * out.acc[i] } else { out.acc[i] };
+        out.acc[i] = (metric * mode_accents[i]).clamp(0.05, 1.0);
     }
     out
 }
@@ -596,9 +685,310 @@ mod tests {
         assert_eq!(rot.rotation, 3);
     }
 
+    // ---- regression tests for the mathematical/musical review ------------------------------
+
+    fn base(kind: Mode) -> GenParams {
+        GenParams { kind, probability: 1.0, ..GenParams::default() }
+    }
+
     #[test]
-    fn acid_knobs_only_add_or_remove_flags() {
-        let acid = Mode::all().filter(|m| m.is_acid()).collect::<Vec<_>>();
+    fn pick_follows_the_normalised_weights() {
+        let mut rng = Rng::new(0.3, 0, 1);
+        for w in [ACID_W, acid_weights(0.0), acid_weights(0.8), acid_weights(1.0)] {
+            let total: f32 = w.iter().sum();
+            let mut count = [0usize; 7];
+            let draws = 70_000;
+            for _ in 0..draws { count[pick(&w, rng.unit())] += 1; }
+            for k in 0..7 {
+                let (got, want) = (count[k] as f32 / draws as f32, w[k] / total);
+                assert!((got - want).abs() < 0.01, "slot {k}: {got} vs {want} for {w:?}");
+            }
+        }
+        assert_eq!(pick(&[0.0, 0.0, 2.0, 0.0], 0.0), 2, "zero weights are never chosen");
+        assert_eq!(pick(&[0.0, 0.0, 2.0, 0.0], 0.999_999), 2);
+        assert_eq!(pick(&[1.0, 1.0], 0.5), 1);
+    }
+
+    #[test]
+    fn weighted_modes_reach_every_scale_slot() {
+        for kind in [Mode::AcidRandom, Mode::AcidEuclid, Mode::AcidMarkov, Mode::AcidMotif, Mode::Markov] {
+            let mut seen = [false; 8];
+            for variation in 0..30 {
+                let out = generate(&GenParams { steps: 64, length: 64.0, pulses: 32, density: 0.8, variation, ..base(kind) });
+                for i in 0..64 { if out.hit[i] { seen[out.state[i] as usize] = true; } }
+            }
+            assert!(seen[1..8].iter().all(|&s| s), "{kind:?} only reached slots {seen:?}");
+        }
+    }
+
+    #[test]
+    fn markov_uses_the_single_octave_degree_path_so_slot_zero_is_the_tonic() {
+        let out = generate(&GenParams { steps: 32, length: 32.0, pulses: 32, density: 1.0, ..base(Mode::Markov) });
+        assert!(out.acid, "Markov must opt in to pitch_in_octave");
+        for i in 0..32 {
+            if out.hit[i] { assert_eq!(out.u[i], (out.state[i] as f32 - 0.5) / 7.0); assert_eq!(out.oct[i], 0); }
+        }
+    }
+
+    #[test]
+    fn acid_accent_flag_stays_louder_than_a_plain_note_on_any_beat() {
+        for kind in Mode::all().filter(|m| m.is_acid()) {
+            let out = generate(&GenParams { steps: 64, length: 64.0, pulses: 48, density: 0.8, accent: 0.5, ..base(kind) });
+            let (mut lo_acc, mut hi_plain) = (f32::MAX, 0.0f32);
+            for i in 0..64 {
+                if !out.hit[i] { continue; }
+                if out.acc[i] >= 0.9 { lo_acc = lo_acc.min(out.acc[i]); } else { hi_plain = hi_plain.max(out.acc[i]); }
+            }
+            assert!(lo_acc < f32::MAX, "{kind:?} produced no accent at 50%");
+            assert!(lo_acc > hi_plain + 0.1, "{kind:?}: accent {lo_acc} vs plain {hi_plain}");
+        }
+    }
+
+    #[test]
+    fn inverted_in_notes_get_their_own_pitch() {
+        for kind in [Mode::Euclidean, Mode::Golomb, Mode::Logistic, Mode::Dice, Mode::Fibonacci, Mode::Markov] {
+            let g = GenParams { steps: 16, length: 16.0, pulses: 5, density: 0.8, ..base(kind) };
+            let plain = generate(&g);
+            let inv = generate(&GenParams { invert: true, ..g });
+            let fresh: Vec<f32> = (0..16).filter(|&i| inv.hit[i] && !plain.hit[i]).map(|i| inv.u[i]).collect();
+            assert!(fresh.len() >= 2, "{kind:?}");
+            assert!(fresh.iter().any(|&u| u > 0.0), "{kind:?}: every inverted-in note sits on u = 0");
+            assert!(fresh.windows(2).any(|w| w[0] != w[1]), "{kind:?}: inverted-in notes are one repeated pitch");
+        }
+    }
+
+    #[test]
+    fn logistic_successor_is_exact_under_rotate_mirror_and_variation() {
+        let g = GenParams { steps: 32, length: 32.0, pulses: 16, density: 0.9, ..base(Mode::Logistic) };
+        for g in [g, GenParams { rotate: 5, ..g }, GenParams { mirror: true, ..g }, GenParams { variation: 3, mirror: true, rotate: 7, ..g }] {
+            let out = generate(&g);
+            let r = out.map_param;
+            assert!((r as f64 - logistic::r_of(g.density)).abs() < 1e-6);
+            for i in 0..32 {
+                assert!((out.orbit_next[i] - r * out.orbit[i] * (1.0 - out.orbit[i])).abs() < 2e-5, "slot {i}");
+            }
+        }
+    }
+
+    #[test]
+    fn logistic_orbit_is_not_reseeded_near_the_edges_at_r_four() {
+        // Over many loops at r = 4 the old 0.001 window re-seeded ~2% of steps; consecutive orbit
+        // values must now obey the map except for the (astronomically rare) true escape.
+        let mut broken = 0;
+        let mut total = 0;
+        for variation in 0..64 {
+            let out = generate(&GenParams { steps: 256, length: 256.0, pulses: 8, density: 1.0, variation, ..base(Mode::Logistic) });
+            let r = out.map_param;
+            let shift = out.rotation;
+            for i in 0..255 {
+                if (i + 1 + 256 - shift) % 256 == 0 { continue; } // the rotation seam
+                total += 1;
+                if (out.orbit[i + 1] - r * out.orbit[i] * (1.0 - out.orbit[i])).abs() > 5e-4 { broken += 1; }
+            }
+        }
+        assert!(broken * 200 < total, "{broken}/{total} orbit steps violate x' = r x (1-x)");
+    }
+
+    #[test]
+    fn golomb_keeps_distinct_intervals_whenever_it_fits() {
+        for n in [4usize, 8, 12, 16, 24, 32, 48, 64, 100, 256] {
+            for pulses in 2..=12usize {
+                let out = generate(&GenParams { steps: n, length: n as f32, pulses, density: 1.0, ..base(Mode::Golomb) });
+                let hits: Vec<usize> = (0..n).filter(|&i| out.hit[i]).collect();
+                assert_eq!(hits.len(), golomb::effective_order(pulses, n).min(n), "n={n} pulses={pulses}: marks merged");
+                let mut seen = std::collections::BTreeSet::new();
+                // rotation/variation move the loop seam, so compare circular-order gaps, not positions
+                let sorted: Vec<usize> = hits.clone();
+                for a in 0..sorted.len() { for b in a + 1..sorted.len() {
+                    // linear differences are rotation dependent; only check the unrotated variation 0
+                    if out.rotation == 0 { assert!(seen.insert(sorted[b] - sorted[a]), "n={n} pulses={pulses}: repeated interval"); }
+                }}
+            }
+        }
+        assert_eq!(golomb::effective_order(12, 16), 5);
+        assert_eq!(golomb::effective_order(12, 200), 12);
+    }
+
+    #[test]
+    fn eulerian_vertices_stay_inside_the_graph() {
+        for pulses in 3..=8usize {
+            for variation in 0..40u32 {
+                for seed in [0.1f32, 0.6, 0.9] {
+                    let out = generate(&GenParams { steps: 32, length: 32.0, pulses, density: 1.0, seed, variation, ..base(Mode::Eulerian) });
+                    assert!((0..32).all(|i| (out.state[i] as usize) < out.nv), "pulses {pulses} variation {variation}");
+                    assert!((0..32).all(|i| (0.0..=1.0).contains(&out.u[i])));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn circle_map_without_coupling_fires_exactly_pulses_times() {
+        for n in [8usize, 12, 16, 24, 32, 48, 64] {
+            for k in 1..=n / 2 {
+                for seed in [0.0f32, 0.271, 0.5] {
+                    let out = generate(&GenParams { steps: n, length: n as f32, pulses: k, density: 1.0, seed, phase: 0.0, ..base(Mode::CircleMap) });
+                    assert_eq!((0..n).filter(|&i| out.hit[i]).count(), k, "n={n} k={k} seed={seed}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn density_one_is_the_exact_fibonacci_word() {
+        let a = fibonacci::alpha(1.0);
+        assert!((a - PHI_INV).abs() < 1e-12);
+        let n = 610; // a Fibonacci number: the word has F(14) - 1 onsets over it
+        let out = generate(&GenParams { steps: n, length: n as f32, pulses: n, density: 1.0, seed: 0.0, phase: 0.0, ..base(Mode::Fibonacci) });
+        let hits = (0..n).filter(|&i| out.hit[i]).count();
+        assert!((hits as f64 - n as f64 * a).abs() <= 1.5, "{hits} onsets of {n}");
+        // gaps of a golden Sturmian word are only 1 and 2 steps long
+        let on: Vec<usize> = (0..n).filter(|&i| out.hit[i]).collect();
+        assert!(on.windows(2).all(|w| (1..=2).contains(&(w[1] - w[0]))));
+    }
+
+    #[test]
+    fn l_system_matches_an_independent_expansion_and_its_contour_is_continuous() {
+        // independent reference: unbounded rewriting with a Vec, same four production families
+        fn reference(family: usize, n: usize) -> Vec<u8> {
+            let rule = |sym: u8| -> Vec<u8> {
+                match (sym, family) {
+                    (0, 0) => vec![0, 1], (0, 1) => vec![0, 0, 1], (0, 2) => vec![1, 0], (0, _) => vec![0, 1, 0],
+                    (_, 0) => vec![0], (_, 1) => vec![1, 0], (_, 2) => vec![0, 1], (_, _) => vec![0],
+                }
+            };
+            let mut w = vec![0u8];
+            while w.len() < n { w = w.iter().flat_map(|&c| rule(c)).collect(); }
+            w
+        }
+        for family in 0..4usize {
+            let g = GenParams { steps: 1024, length: 1024.0, pulses: 1024, density: 1.0, seed: family as f32 * 0.25 + 0.01, variation: 0, ..base(Mode::LSystem) };
+            let out = generate(&g);
+            let want = reference(family, 1024);
+            assert!((0..1024).all(|i| out.lsym[i] == want[i]), "family {family}: word differs from the reference rewrite");
+            let max_step = (1..1024).map(|i| (out.u[i] - out.u[i - 1]).abs()).fold(0.0f32, f32::max);
+            assert!(max_step <= 0.32, "family {family}: contour jumps by {max_step}");
+        }
+    }
+
+    #[test]
+    fn cellular_pitch_spans_more_than_the_old_neighbourhood_code() {
+        // Rule 30 from one seed: old code (3-cell neighbourhood / 7) gave {1,2,3,4}/7 = at most 0.57.
+        let mut set = std::collections::BTreeSet::new();
+        for gen in [3usize, 5, 8, 10, 12, 14] {
+            let out = generate(&GenParams { steps: 64, length: 64.0, pulses: gen, density: 1.0, variation: 0, ..base(Mode::Cellular) });
+            for i in 0..64 { if out.hit[i] { set.insert((out.u[i] * 15.0).round() as u32); } }
+        }
+        assert!(set.len() >= 6, "alphabet {set:?}");
+        assert!(*set.iter().last().unwrap() >= 13, "top of range unused: {set:?}");
+        assert!(set.iter().all(|c| c % 2 == 1), "a live cell has bit 0 set: {set:?}");
+    }
+
+    #[test]
+    fn tonnetz_voice_leading_is_parsimonious() {
+        let out = generate(&GenParams { steps: 192, length: 192.0, pulses: 3, density: 1.0, variation: 0, ..base(Mode::Tonnetz) });
+        let mut recentred = 0;
+        for c in 1..64 {
+            let a: Vec<i32> = (0..3).map(|j| out.semis[(c - 1) * 3 + j] as i32).collect();
+            let b: Vec<i32> = (0..3).map(|j| out.semis[c * 3 + j] as i32).collect();
+            let moved: i32 = (0..3).map(|j| (a[j] - b[j]).abs()).sum();
+            if moved > 12 { recentred += 1; continue; } // a whole-octave recentre
+            assert!(moved <= 2, "chord {c}: {a:?} -> {b:?} moves {moved} semitones");
+            let pcs: std::collections::BTreeSet<i32> = b.iter().map(|x| x.rem_euclid(12)).collect();
+            assert_eq!(pcs.len(), 3);
+        }
+        assert!(recentred <= 8, "{recentred} octave recentres in 64 chords");
+    }
+
+    #[test]
+    fn select_spread_is_exact_even_and_prefers_structural_steps() {
+        for n in [8usize, 16, 32, 100] {
+            let mut primary = [false; MAX_STEPS];
+            for i in 0..n { primary[i] = i % 3 == 0 || i % 7 == 0; }
+            let m = primary[..n].iter().filter(|&&b| b).count();
+            for k in 1..=n {
+                let mut hits = [false; MAX_STEPS];
+                select_spread(&primary, n, k, &mut hits);
+                assert_eq!(hits[..n].iter().filter(|&&h| h).count(), k, "n={n} k={k}");
+                if k <= m { assert!((0..n).all(|i| !hits[i] || primary[i]), "n={n} k={k}: left the structural steps"); }
+                else { assert!((0..n).all(|i| !primary[i] || hits[i]), "n={n} k={k}: dropped a structural step"); }
+            }
+            // even spread: with k <= m the gaps between picks never exceed twice the mean gap
+            for k in [2usize, 3, 5] {
+                if k > m { continue; }
+                let mut hits = [false; MAX_STEPS];
+                select_spread(&primary, n, k, &mut hits);
+                let on: Vec<usize> = (0..n).filter(|&i| hits[i]).collect();
+                let widest = on.windows(2).map(|w| w[1] - w[0]).max().unwrap_or(0);
+                assert!(widest <= 2 * n / k + 2, "n={n} k={k}: gap {widest} in {on:?}");
+            }
+        }
+        let mut h = [true; MAX_STEPS];
+        select_spread(&[false; MAX_STEPS], 0, 3, &mut h); // n = 0 must not panic
+    }
+
+    #[test]
+    fn fold01_reflects_any_displacement() {
+        for (x, want) in [(0.3, 0.3), (-0.3, 0.3), (1.2, 0.8), (2.5, 0.5), (-1.25, 0.75), (1e6 + 0.25, 0.25), (-7.0, 1.0)] {
+            assert!((fold01(x) - want).abs() < 1e-9, "{x} -> {} want {want}", fold01(x));
+        }
+    }
+
+    #[test]
+    fn new_modes_vary_with_variation_and_never_pin() {
+        for kind in [Mode::ThueMorse, Mode::Brownian, Mode::LevyFlight, Mode::TentMap, Mode::HenonMap, Mode::WalkingBass, Mode::UlamPrimes] {
+            let line = |v: u32| { let o = generate(&GenParams { steps: 32, length: 32.0, pulses: 8, density: 0.65, variation: v, rotate: 0, ..base(kind) });
+                (0..32).map(|j| (o.hit[(j + o.rotation) % 32], (o.u[(j + o.rotation) % 32] * 1000.0) as i32, o.semis[(j + o.rotation) % 32])).collect::<Vec<_>>() };
+            assert_ne!(line(0), line(1), "{kind:?}: Generate would only rotate the same line");
+        }
+    }
+
+    #[test]
+    fn pattern_remembers_how_it_was_rotated_and_mirrored() {
+        let g = GenParams { steps: 16, length: 16.0, pulses: 5, rotate: 3, mirror: true, ..base(Mode::Euclidean) };
+        let out = generate(&g);
+        assert!(out.mirrored);
+        assert_eq!(out.rotation, 3);
+        assert!(!generate(&GenParams { mirror: false, ..g }).mirrored);
+    }
+
+    /// Sweep every mode across step counts, densities, variations and the post-transforms. Guards
+    /// the bounded/finite invariant end to end: no panics, no writes past `steps`, every contour and
+    /// accent finite and in range, and every mode still sounds at one step and full density.
+    #[test]
+    fn all_modes_stay_finite_and_bounded_across_the_parameter_sweep() {
+        for kind in Mode::all() {
+            for steps in [1usize, 2, 7, 16, 31, 64, 255, 1024] {
+                for density in [0.0f32, 0.5, 1.0] {
+                    for variation in [0u32, 1] {
+                        for rotate in [0usize, steps / 3] {
+                            for mirror in [false, true] {
+                                for invert in [false, true] {
+                                    let p = GenParams {
+                                        kind, steps, length: steps as f32, pulses: steps, density,
+                                        variation, rotate, mirror, invert, probability: 1.0,
+                                        ..GenParams::default()
+                                    };
+                                    let out = generate(&p);
+                                    assert_eq!(out.steps, steps);
+                                    assert!(out.hit[steps..].iter().all(|h| !h), "{kind:?} hit past steps");
+                                    for i in 0..steps {
+                                        assert!(out.u[i].is_finite() && (0.0..=1.0).contains(&out.u[i]), "{kind:?} u[{i}]");
+                                        assert!(out.acc[i].is_finite() && (0.0..=1.0).contains(&out.acc[i]), "{kind:?} acc[{i}]");
+                                        assert!(out.orbit[i].is_finite() && out.theta[i].is_finite(), "{kind:?} orbit");
+                                    }
+                                    if steps == 1 && density == 1.0 && !invert { assert!(out.hit[0], "{kind:?} silent"); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn acid_knobs_only_add_or_remove_flags() {        let acid = Mode::all().filter(|m| m.is_acid()).collect::<Vec<_>>();
         assert_eq!(acid.len(), 5);
         for kind in acid {
             let base = GenParams { kind, steps: 16, pulses: 7, density: 0.8, probability: 1.0, ..GenParams::default() };

@@ -105,6 +105,22 @@ impl Mode {
         }
     }
 
+    /// The order the mode list is drawn in: grouped by `group().label()`, then host index. The mode
+    /// header wheel must step through this order, not the raw host index, or one notch from
+    /// Euclidean lands on Golomb (a different group, far away in the list).
+    pub fn display_order() -> Vec<Mode> {
+        let mut modes: Vec<Mode> = (0..<Mode as Enum>::variants().len()).map(Mode::from_index).collect();
+        modes.sort_by_key(|m| (m.group().label(), m.to_index()));
+        modes
+    }
+
+    /// Next mode `delta` notches along `display_order`, clamped at both ends.
+    pub fn step_in_display_order(self, delta: i32) -> Mode {
+        let order = Mode::display_order();
+        let pos = order.iter().position(|m| *m == self).unwrap_or(0) as i32;
+        order[(pos + delta).clamp(0, order.len() as i32 - 1) as usize]
+    }
+
     /// Every mode, for tests that sweep all of them. Production dispatch matches on the variant,
     /// so this stays compiled out of the audio path.
     #[cfg(test)]
@@ -128,5 +144,26 @@ mod tests {
             }
         }
         assert_eq!(seen.len(), 8, "expected all eight groups to be used");
+    }
+
+    #[test]
+    fn the_wheel_walks_the_displayed_order_and_visits_every_mode_once() {
+        let order = Mode::display_order();
+        assert_eq!(order.len(), <Mode as Enum>::variants().len());
+        let mut at = order[0];
+        let mut walked = vec![at];
+        for _ in 1..order.len() {
+            let next = at.step_in_display_order(1);
+            assert_ne!(next, at);
+            assert_eq!(next.step_in_display_order(-1), at);
+            walked.push(next);
+            at = next;
+        }
+        assert_eq!(walked, order);
+        assert_eq!(at.step_in_display_order(1), at, "clamps at the end");
+        assert_eq!(order[0].step_in_display_order(-1), order[0], "clamps at the start");
+        // consecutive list entries share a group unless the group changes exactly once per boundary
+        let changes = order.windows(2).filter(|w| w[0].group() != w[1].group()).count();
+        assert_eq!(changes, 7);
     }
 }
