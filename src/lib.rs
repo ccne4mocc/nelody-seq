@@ -323,7 +323,7 @@ impl Default for MelodyParams {
             osc_wave: EnumParam::new("Oscillator Wave", OscWave::Sine),
             ca_rule: IntParam::new("Cellular Automaton Rule", 30, IntRange::Linear { min: 0, max: 255 }),
             symmetry: IntParam::new("Crystallographic Symmetry", 4, IntRange::Linear { min: 1, max: 8 }),
-            theme: EnumParam::new("Theme", Theme::Sketchbook),
+            theme: EnumParam::new("Theme", Theme::Neon),
             rate: EnumParam::new("Rate", Rate::Sixteenth),
             gate: FloatParam::new("Gate", 0.12, FloatRange::Linear { min: 0.02, max: 1.0 }),
             swing: FloatParam::new("Swing", 0.0, FloatRange::Linear { min: 0.0, max: 0.5 }),
@@ -680,6 +680,7 @@ impl Nelody {
 /// Author contact, shared by the plug-in metadata and the Credits panel.
 pub mod contact {
     pub const AUTHOR: &str = "ccne4mocc / feN";
+    pub const VERSION: &str = env!("CARGO_PKG_VERSION");
     pub const WEBSITE: &str = "https://ndrums.feneutral.com";
     pub const GITHUB: &str = "https://github.com/ccne4mocc";
     pub const SUPPORT: &str = "";
@@ -691,7 +692,7 @@ impl Plugin for Nelody {
     const VENDOR: &'static str = contact::AUTHOR;
     const URL: &'static str = contact::GITHUB;
     const EMAIL: &'static str = contact::EMAIL;
-    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+    const VERSION: &'static str = contact::VERSION;
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout { main_input_channels: None, main_output_channels: None, ..AudioIOLayout::const_default() }];
     const MIDI_INPUT: MidiConfig = MidiConfig::None;
     const MIDI_OUTPUT: MidiConfig = MidiConfig::MidiCCs;
@@ -950,12 +951,18 @@ mod tests {
         }
     }
 
-    /// The UI addresses modes by index, so the enum order is a host-visible contract.
+    #[test]
+    fn neon_is_the_default_theme() {
+        assert_eq!(MelodyParams::default().theme.value(), Theme::Neon);
+        assert_eq!(contact::VERSION, "1.1.0");
+    }
+
     #[test]
     fn mode_data_bridge_defaults_to_zero() {
         assert_eq!(GenParams::default().mode_data, [0.0; 4]);
     }
 
+    /// The UI addresses modes by index, so the enum order is a host-visible contract.
     #[test]
     fn mode_indices_match_the_ui() {
         for (index, mode) in [

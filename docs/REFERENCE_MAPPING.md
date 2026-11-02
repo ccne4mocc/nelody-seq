@@ -37,8 +37,8 @@ index 14 because the melody modes build the non-acid half of that split.
 | 16 | Acid Markov | Acid | nDrums Markov position filled by the melody project's transition chains | Acid piano roll |
 | 17 | Acid Motif | Acid | `_nMelody_old` AcidMotif (mutating repeats) | Acid piano roll |
 | 18 | Acid Shift Register | Acid |Both lineage: nDrums L-System slot, `_nMelody_old` register distillation | Acid piano roll (register fields as rows) |
-| 19 | Thue-Morse | Number Theory | New wave: automatic sequence | Binary word strip + Nørgård infinity-series contour; onsets spread evenly over the 1s, `phase`/variation slide the window |
-| 20 | Rudin-Shapiro | Number Theory | New wave: automatic sequence | Binary word strip + index contour; onsets spread evenly over the 1s |
+| 19 | Thue-Morse | Number Theory | New wave: automatic sequence | Binary word strip + Nørgård infinity-series contour; onsets spread evenly over the 1s, `phase`/seed/variation slide the window |
+| 20 | Rudin-Shapiro | Number Theory | New wave: automatic sequence | Binary word strip + index contour; onsets spread evenly over the 1s, `phase`/seed/variation slide the window |
 | 21 | Brownian Walk | Stochastic | New wave: reflected random walk | Walk path + onset dots; Gaussian step σ = 0.01 + 0.2·density, `phase` = start position (no drift) |
 | 22 | Lévy Flight | Stochastic | New wave: heavy-tailed walk | Walk path + onset dots; Pareto α = 2 − 1.5·density, min step 0.02 + 0.06·density, folded |
 | 23 | Tent Map | Chaos | New wave: piecewise-linear map | Tent map + orbit/onset dots; μ = 1 + 0.99·density, pitch scaled to the attractor |
@@ -46,7 +46,7 @@ index 14 because the melody modes build the non-acid half of that split.
 | 25 | Arpeggiator | Music Theory | New wave: chord-tone arp | Diatonic piano roll (single-octave degree path): degrees 1-3-5-7 of the selected scale/tuning |
 | 26 | Walking Bass | Music Theory | New wave: chord + chromatic approach | Absolute piano roll; ping-pong chord tones on even steps, chromatic approach on the weak step, `phase` = approach side |
 | 27 | Hilbert Curve | Geometric | New wave: space-filling curve | 2-D Hilbert order grid/path |
-| 28 | Ulam Spiral Primes | Number Theory | New wave: prime spiral | 2-D Ulam spiral with prime/hit marks; starts at integer `1 + round(64·phase) + 5·variation` |
+| 28 | Ulam Spiral Primes | Number Theory | New wave: prime spiral | 2-D Ulam spiral with prime/hit marks; starts at integer `1 + round(64·phase) + round(64·seed) + 5·variation` |
 
 Everything else in Nelody's UI is either the nDrums design untouched (header, generate/
 randomize buttons, clock row, settings slide-in, credits, scope chips, 860×675 fixed window)
@@ -82,7 +82,7 @@ mapping highlights, for modes where the knob name is wrong in the generic sense:
 | 25 Arpeggiator | Chord tones 1-3-5-7 (1–4 used) | Step gate | Direction (up/down/up-down/random) |
 | 26 Walking Bass | Chord tones (1–4) | Chromatic approach chance on the weak step | Approach side (below/above/mixed) |
 | 27 Hilbert Curve | Curve order (1–5) | Step gate | Quarter-turn rotation |
-| 28 Ulam Primes | Target hits | Prime keep fraction (spread over the primes) | Start integer `1 + round(64·phase) + 5·variation` |
+| 28 Ulam Primes | Target hits | Prime keep fraction (spread over the primes) | Start integer `1 + round(64·phase) + round(64·seed) + 5·variation` |
 | Symmetry | Hidden entirely (`shows-param` returns false for key 11) — a drum-only idea | | |
 
 `GenParams::mode_data` is the Phase-5 bridge for future typed mode parameters: fixed, zero-filled

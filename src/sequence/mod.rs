@@ -967,6 +967,17 @@ mod tests {
     }
 
     #[test]
+    fn seed_changes_the_slot_word_and_spiral_line() {
+        for kind in [Mode::ThueMorse, Mode::RudinShapiro, Mode::UlamPrimes] {
+            let line = |seed: f32| {
+                let o = generate(&GenParams { steps: 32, length: 32.0, pulses: 8, density: 1.0, seed, rotate: 0, ..base(kind) });
+                (o.hit, o.u, o.slots)
+            };
+            assert_ne!(line(0.05), line(0.65), "{kind:?}: Seed does not change pitch or rhythm");
+        }
+    }
+
+    #[test]
     fn pattern_remembers_how_it_was_rotated_and_mirrored() {
         let g = GenParams { steps: 16, length: 16.0, pulses: 5, rotate: 3, mirror: true, ..base(Mode::Euclidean) };
         let out = generate(&g);

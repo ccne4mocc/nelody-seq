@@ -40,6 +40,13 @@ fn log_line(text: &str) {
     }
 }
 
+/// One row of the flattened, grouped mode list. Header rows carry index -1.
+struct ModeEntry {
+    group: SharedString,
+    index: i32,
+    header: bool,
+}
+
 /// Sorted, grouped mode list for the dropdown. Header rows carry index -1; option rows carry the
 /// stable host index so sorting never changes what the host sees.
 fn mode_entries() -> Vec<ModeEntry> {
@@ -58,6 +65,47 @@ fn mode_entries() -> Vec<ModeEntry> {
         entries.push(ModeEntry { group: SharedString::new(), index: i as i32, header: false });
     }
     entries
+}
+
+/// Pair the grouped entries into two-column rows: a header row stays full-width and each group's
+/// modes fill left/right slots. This mirrors the nDrums mode picker while keeping Nelody's 300px
+/// dropdown width.
+fn mode_rows() -> Vec<ModeRow> {
+    let entries = mode_entries();
+    let mut rows = Vec::new();
+    let mut i = 0;
+    while i < entries.len() {
+        if !entries[i].header {
+            i += 1;
+            continue;
+        }
+        rows.push(ModeRow {
+            header: true,
+            group: entries[i].group.clone(),
+            left: -1,
+            right: -1,
+            has_right: false,
+        });
+        i += 1;
+        let start = i;
+        while i < entries.len() && !entries[i].header {
+            i += 1;
+        }
+        let items = &entries[start..i];
+        let mut j = 0;
+        while j < items.len() {
+            let has_right = j + 1 < items.len();
+            rows.push(ModeRow {
+                header: false,
+                group: SharedString::new(),
+                left: items[j].index,
+                right: if has_right { items[j + 1].index } else { -1 },
+                has_right,
+            });
+            j += 2;
+        }
+    }
+    rows
 }
 
 pub fn create(params: Arc<MelodyParams>, shared: Arc<Shared>) -> Box<dyn Editor> {
@@ -558,7 +606,8 @@ impl Editor for SlintEditor {
             ui.set_lfo_target_names(ModelRc::new(VecModel::from(
                 <LfoTarget as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));
-            ui.set_mode_entries(ModelRc::new(VecModel::from(mode_entries())));
+            ui.set_mode_rows(ModelRc::new(VecModel::from(mode_rows())));
+            ui.set_app_version(SharedString::from(crate::contact::VERSION));
             ui.set_settings_path(SharedString::from(crate::globals::config_path_display()));
             ui.set_credit_author(SharedString::from(crate::contact::AUTHOR));
             ui.set_credit_website(SharedString::from(crate::contact::WEBSITE));
@@ -768,6 +817,30 @@ mod tests {
         assert!(entries.iter().any(|e| e.index == Mode::HilbertCurve.to_index() as i32));
         // Every host index appears exactly once and all headers are in sorted group order.
         let mut indices: Vec<i32> = entries.iter().filter(|e| !e.header).map(|e| e.index).collect();
+        indices.sort_unstable();
+        assert_eq!(indices, (0..<Mode as Enum>::variants().len() as i32).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn mode_rows_pair_two_modes_per_row_and_keep_every_host_index() {
+        let rows = mode_rows();
+        assert!(rows[0].header, "the first row must be a group header");
+        assert_eq!(rows[0].group.as_str(), "Acid");
+        let mut indices = Vec::new();
+        for row in &rows {
+            if row.header {
+                assert_eq!((row.left, row.right, row.has_right), (-1, -1, false));
+                continue;
+            }
+            assert!(row.left >= 0);
+            indices.push(row.left);
+            if row.has_right {
+                assert!(row.right >= 0);
+                indices.push(row.right);
+            } else {
+                assert_eq!(row.right, -1, "a one-column row must not name a right mode");
+            }
+        }
         indices.sort_unstable();
         assert_eq!(indices, (0..<Mode as Enum>::variants().len() as i32).collect::<Vec<_>>());
     }

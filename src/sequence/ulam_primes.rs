@@ -27,7 +27,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let wanted = ((p.pulses.min(n) as f32 * p.density.clamp(0.0, 1.0)).round() as usize).max(1).min(n);
     let side = (((n as f64).sqrt().ceil()) as i32).max(1);
     out.nv = side as usize;
-    let offset = (p.phase * 64.0).round() as usize + 5 * p.variation as usize;
+    let offset = (p.phase * 64.0).round() as usize + 5 * p.variation as usize + (p.seed * 64.0).round() as usize;
     let mut primary = [false; MAX_STEPS];
     let mut xs = [0i32; MAX_STEPS];
     let mut ys = [0i32; MAX_STEPS];
@@ -73,7 +73,7 @@ mod tests {
     use super::*;
 
     fn g(variation: u32, phase: f32) -> GenParams {
-        GenParams { steps: 32, length: 32.0, pulses: 6, density: 1.0, variation, phase, rotate: 0, ..GenParams::default() }
+        GenParams { steps: 32, length: 32.0, pulses: 6, density: 1.0, variation, phase, seed: 0.0, rotate: 0, ..GenParams::default() }
     }
 
     fn sounding(variation: u32, phase: f32) -> Vec<usize> {

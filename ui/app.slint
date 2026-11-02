@@ -1,25 +1,25 @@
 import { ScrollView } from "std-widgets.slint";
 // Nelody: algorithm-first MIDI melody sequencer. Rust pushes deterministic pattern and view data.
 export global Theme {
-    in-out property <color> c1: #a67c00;
-    in-out property <color> c2: #3f6591;
-    in-out property <color> c3: #9c4f43;
-    in-out property <color> hi: #a93226;
-    in-out property <color> bg1: #f3eee2;
-    in-out property <color> bg2: #eee7d8;
-    in-out property <color> bg3: #e8dfcd;
-    in-out property <color> surface: #faf5e9;
-    in-out property <color> control: #e5dcc9;
-    in-out property <color> control-hover: #d7ccb5;
-    in-out property <color> text: #2f2b25;
-    in-out property <color> text-muted: #7a7061;
-    in-out property <color> border: #c7bca8;
-    in-out property <color> cell-off: #ded5c3;
-    in-out property <color> on-accent: #fdf9f0;
+    in-out property <color> c1: #22d3ee;
+    in-out property <color> c2: #a3e635;
+    in-out property <color> c3: #f472b6;
+    in-out property <color> hi: #ffffff;
+    in-out property <color> bg1: #0b1020;
+    in-out property <color> bg2: #111127;
+    in-out property <color> bg3: #160f24;
+    in-out property <color> surface: #11152a;
+    in-out property <color> control: #1c2240;
+    in-out property <color> control-hover: #2b3158;
+    in-out property <color> text: #e5e7eb;
+    in-out property <color> text-muted: #9aa3b5;
+    in-out property <color> border: #343a5c;
+    in-out property <color> cell-off: #1a2038;
+    in-out property <color> on-accent: #0b0f14;
 }
 
 export struct ViewNode { x: length, y: length, r: length, on: bool, cur: bool, label: string }
-export struct ModeEntry { group: string, index: int, header: bool }
+export struct ModeRow { header: bool, group: string, left: int, right: int, has-right: bool }
 export struct Opt { label: string, min: float, max: float, value: float, text: string, step: float, number: string, scale: float }
 
 // One numeric-entry session shared by every generator option strip. A global avoids wiring a
@@ -473,13 +473,14 @@ component RateField inherits Rectangle {
     }
 }
 
-// Mode picker with group headers. The host index stays in ModeEntry.index; header rows carry -1.
+// Mode picker with group headers in two columns. Header rows are full-width; host indices stay in
+// ModeRow.left/right so pairing two entries never changes what the host sees.
 component ModeDropdown inherits Rectangle {
-    in property <[ModeEntry]> entries;
+    in property <[ModeRow]> rows;
     in property <[string]> names;
     in property <int> current;
     callback selected(int);
-    width: 300px; height: 360px;
+    width: 300px; height: 420px;
     background: Theme.surface; border-width: 1px; border-color: Theme.border;
     drop-shadow-blur: 16px; drop-shadow-color: #00000055; drop-shadow-offset-y: 4px;
     clip: true;
@@ -488,25 +489,30 @@ component ModeDropdown inherits Rectangle {
         vertical-scrollbar-policy: as-needed;
         VerticalLayout {
             spacing: 3px; padding: 8px; alignment: start;
-            height: 33px + root.entries.length * 29px;
-            Rectangle { height: 20px; }
-            for i in root.entries.length: Rectangle {
-                height: root.entries[i].header ? 20px : 26px;
+            for r in root.rows: Rectangle {
+                height: r.header ? 18px : 24px;
                 border-radius: 3px;
-                background: root.entries[i].header
-                    ? transparent
-                    : (root.entries[i].index == root.current ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (item-touch.has-hover ? Theme.control-hover : Theme.control));
-                Text {
-                    x: 8px; width: parent.width - 16px; height: parent.height;
-                    text: root.entries[i].header ? root.entries[i].group : root.names[root.entries[i].index];
-                    color: root.entries[i].header ? Theme.text-muted : (root.entries[i].index == root.current ? Theme.on-accent : Theme.text);
-                    font-size: root.entries[i].header ? 8px : 10px;
-                    font-weight: root.entries[i].header ? 700 : 400;
+                background: transparent;
+                if r.header: Text {
+                    x: 6px; width: parent.width - 12px; height: parent.height;
+                    text: r.group; color: Theme.text-muted; font-size: 8px; font-weight: 700;
                     vertical-alignment: center; overflow: elide;
                 }
-                item-touch := TouchArea {
-                    enabled: !root.entries[i].header;
-                    clicked => { if (!root.entries[i].header) { root.selected(root.entries[i].index); } }
+                if !r.header: HorizontalLayout {
+                    spacing: 6px;
+                    Rectangle {
+                        horizontal-stretch: 1; height: parent.height; border-radius: 3px;
+                        background: r.left == root.current ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (left-touch.has-hover ? Theme.control-hover : Theme.control);
+                        Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.names[r.left]; color: r.left == root.current ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; overflow: elide; }
+                        left-touch := TouchArea { clicked => { root.selected(r.left); } }
+                    }
+                    if r.has-right: Rectangle {
+                        horizontal-stretch: 1; height: parent.height; border-radius: 3px;
+                        background: r.right == root.current ? @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%) : (right-touch.has-hover ? Theme.control-hover : Theme.control);
+                        Text { x: 6px; width: parent.width - 12px; height: parent.height; text: root.names[r.right]; color: r.right == root.current ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; overflow: elide; }
+                        right-touch := TouchArea { clicked => { root.selected(r.right); } }
+                    }
+                    if !r.has-right: Rectangle { horizontal-stretch: 1; }
                 }
             }
         }
@@ -645,8 +651,9 @@ export component AppWindow inherits Window {
     // Any text field with keyboard focus. Rust reads this each frame (see `keys.rs`).
     out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || edo-row.editing || midi-root-box.editing || cents-box.editing || hist-box.editing || rate-field.editing || OptEdit.index >= 0;
     in-out property <string> export-status: "";
-    in property <int> theme-index: 0;
-    in property <[ModeEntry]> mode-entries;
+    in property <int> theme-index: 1;
+    in property <[ModeRow]> mode-rows;
+    in property <string> app-version: "";
     in-out property <bool> mode-menu-open: false;
     // Dropdown anchors. The window layout is fixed at 860x675, so the two menus hang directly
     // under the mode header and the Scale chip instead of sliding in from a window edge.
@@ -958,7 +965,7 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         x: 8px; width: parent.width - 16px; height: parent.height; spacing: 6px;
                         Text { text: "MODE  ·  \{root.mode-names[root.mode]}"; color: Theme.c1; font-size: 13px; font-weight: 700; vertical-alignment: center; }
-                        Text { horizontal-stretch: 1; text: root.mode-math; color: Theme.text-muted; font-size: 11px; font-italic: true; vertical-alignment: center; overflow: elide; }
+                        Rectangle { horizontal-stretch: 1; }
                         Text { text: "▾"; color: Theme.c1; font-size: 13px; font-weight: 700; vertical-alignment: center; }
                     }
                     mode-menu-touch := TouchArea {
@@ -976,9 +983,9 @@ export component AppWindow inherits Window {
                     }
                 }
                 Text { text: root.mode-help[root.mode]; color: Theme.text; font-size: 13px; wrap: word-wrap; }
-                Rectangle { height: 2px; }
-                // A little more air between the description and the live generator controls.
-                Rectangle { height: 8px; }
+                // The live generator formula sits between the prose description and the controls.
+                Text { height: 16px; text: root.mode-math; color: Theme.text-muted; font-size: 11px; font-italic: true; vertical-alignment: center; overflow: elide; }
+                Rectangle { height: 4px; }
                 HorizontalLayout { spacing: 5px;
                     OptSlider { opt: root.opts[0]; index: 0; changed(v) => { root.set-opt(0, v); } }
                     if root.shows-param(root.mode, 1): OptSlider { opt: root.opts[1]; index: 1; changed(v) => { root.set-opt(1, v); } }
@@ -1030,11 +1037,12 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout {
                     height: 28px; spacing: 5px;
-                    Rectangle { width: 44px; }
+                    // Octave and NTS Bend sit against the right edge of the parameter column;
+                    // EDO (when shown) stays immediately to their left.
+                    Rectangle { horizontal-stretch: 1; }
                     edo-row := NumBox { visible: root.edo-active; width: 96px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; changed(v) => { root.set-opt(21, v); } }
                     tuning-oct := NumBox { width: 96px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(19, v); } }
                     TuningChip { width: 68px; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
-                    Rectangle { horizontal-stretch: 1; }
                 }
             }
         }
@@ -1150,8 +1158,8 @@ export component AppWindow inherits Window {
     }
     if root.mode-menu-open: ModeDropdown {
         x: root.mode-menu-x; y: root.mode-menu-y;
-        width: 300px; height: 360px;
-        entries: root.mode-entries; names: root.mode-names; current: root.mode;
+        width: 300px; height: 420px;
+        rows: root.mode-rows; names: root.mode-names; current: root.mode;
         selected(i) => { root.set-mode(i); root.mode-menu-open = false; }
     }
     // The Scale list follows its chip, which lives in the parameter column now.
@@ -1318,6 +1326,7 @@ export component AppWindow inherits Window {
             TextInput { read-only: true; text: root.credit-github; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
             TextInput { read-only: true; text: root.credit-support; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
             TextInput { read-only: true; text: root.credit-email; color: Theme.text-muted; font-size: 9px; height: 22px; vertical-alignment: center; }
+            Text { height: 14px; text: "v\{root.app-version}"; color: Theme.text-muted; font-size: 8px; horizontal-alignment: right; vertical-alignment: center; }
             }
         }
     }

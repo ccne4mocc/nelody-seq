@@ -259,8 +259,7 @@ variation comes from Generate, Randomize and the knobs.
   (grouped) order and clamps at the ends (`Mode::step_in_display_order`): the list is sorted by
   group label then host index, so walking the raw host index would jump between groups. The open
   mode list keeps the wheel for its own scrolling.
-- The mode dropdown is grouped by `Mode::group()`; `ModeEntry` rows carry a host index for
-  options and -1 for group headers. Sorting is display-only, so host indices never move.
+- The mode dropdown is grouped by `Mode::group()` and laid out in two columns; `ModeRow` pairs two host indices per row (`left`/`right`) and group headers stay full-width. Sorting and pairing are display-only, so host indices never move.
 - New geometric modes use their natural 2-D view: Hilbert curve grid, Ulam spiral, Hénon
   attractor. The Euclidean necklace stays a ring because the 2-D necklace is the clearest
   reading of the rhythm.

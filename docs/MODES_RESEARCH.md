@@ -27,9 +27,9 @@ enum layer:
 
 Melodic (full range, `acid=false`):
 - **Thue-Morse** (`thue_morse`) — `t(n)=popcount(n) mod 2`; onsets spread over the 1s, contour from
-  Nørgård's infinity series `a(2n)=-a(n), a(2n+1)=a(n)+1`.
+  Nørgård's infinity series `a(2n)=-a(n), a(2n+1)=a(n)+1`; phase/seed/variation slide the word.
 - **Rudin-Shapiro** (`rudin_shapiro`) — count of "11" substrings in binary n mod 2; onsets spread
-  evenly over the 1s.
+  evenly over the 1s; phase/seed/variation slide the word.
 - **Brownian walk** (`brownian`) — reflected random walk; Gaussian step σ=0.01+0.2·density,
   `phase`=start position.
 - **Lévy flight** (`levy_flight`) — heavy-tailed jumps; Pareto α=2−1.5·density, min step
@@ -44,7 +44,7 @@ Melodic (full range, `acid=false`):
   on weak steps; `absolute=true`.
 - **Hilbert curve** (`hilbert_curve`) — space-filling 2^k grid; `pulses`=order.
 - **Ulam spiral primes** (`ulam_primes`) — onset where spiral position is prime; the spiral starts
-  at `1 + round(64·phase) + 5·variation`.
+  at `1 + round(64·phase) + round(64·seed) + 5·variation`.
 
 Cellular:
 - Generic `Cellular` already supports all 256 rules via `ca_rule` (u8). Add UI

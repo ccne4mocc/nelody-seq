@@ -24,7 +24,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let n = p.steps.max(1);
     if p.pulses == 0 || p.density <= 0.0 { return out; }
     let wanted = ((p.pulses.min(n) as f32 * p.density.clamp(0.0, 1.0)).round() as usize).max(1).min(n);
-    let offset = (p.phase * 16.0).round() as usize + p.variation as usize;
+    let offset = (p.phase * 16.0).round() as usize + p.variation as usize + (p.seed * 64.0).round() as usize;
     let mut primary = [false; MAX_STEPS];
     for i in 0..n {
         let b = bit(i + offset);
