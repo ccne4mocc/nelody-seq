@@ -759,7 +759,7 @@ component LfoCell inherits Rectangle {
             opt: {
                 label: "Rate",
                 min: root.rate-mode == 0 ? 0.01 : 0.25,
-                max: root.rate-mode == 0 ? 1000 : 16,
+                max: root.rate-mode == 0 ? 10 : 16,
                 value: root.rate-mode == 0 ? root.freq : root.beats,
                 text: root.rate-mode == 0 ? root.format-hz(root.freq) : "\{Math.round(root.beats * 100) / 100}",
                 step: root.rate-mode == 0 ? 0.01 : 0.25,

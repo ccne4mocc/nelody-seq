@@ -1534,11 +1534,12 @@ mod tests {
     #[test]
     fn hz_formatter_and_parser_are_hz_only() {
         assert_eq!(format_hz(0.5), "0.50 Hz");
-        assert_eq!(format_hz(125.0), "125 Hz");
-        assert_eq!(format_hz(1_500.0), "1000 Hz");
+        assert_eq!(format_hz(7.5), "7.50 Hz");
+        assert_eq!(format_hz(10.0), "10.0 Hz");
+        assert_eq!(format_hz(1_500.0), "10.0 Hz");
         assert_eq!(parse_hz("0.5"), Some(0.5));
-        assert_eq!(parse_hz(" 1000 hz "), Some(1_000.0));
-        assert_eq!(parse_hz("20000"), Some(1_000.0));
+        assert_eq!(parse_hz(" 10 hz "), Some(10.0));
+        assert_eq!(parse_hz("20000"), Some(10.0));
         assert_eq!(parse_hz("nope"), None);
     }
 

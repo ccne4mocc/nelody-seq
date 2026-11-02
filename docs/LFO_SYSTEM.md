@@ -15,7 +15,7 @@ Bipolar:   signal = depth × (2 × wave − 1)    // −depth..+depth
 Unipolar:  signal = depth × wave              // 0..depth
 ```
 
-Hz LFOs (0.01–1000 Hz) use the host beat converted through the current tempo (`beat × 60 / BPM`). Beat-synced
+Hz LFOs (0.01–10 Hz) use the host beat converted through the current tempo (`beat × 60 / BPM`). Beat-synced
 LFOs divide the host beat by the beat rate. Transport jumps therefore move the LFO phase with the
 transport, and free-run uses the same clock. When transport is stopped and free-run is off, the
 phase holds and the picker dot freezes.

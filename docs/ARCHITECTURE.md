@@ -104,7 +104,7 @@ snapshot the next block will compare against (it bumps `variation` first); a jit
 made `last_key` disagree with the parameters and regenerated a second time on the next block,
 discarding the new line mid-loop. Randomize-after-N-lengths only queues an atomic request.
 
-Four runtime LFOs are evaluated from a host-beat clock. Hz LFOs (0.01–1000 Hz) use `beat × 60 / BPM`;
+Four runtime LFOs are evaluated from a host-beat clock. Hz LFOs (0.01–10 Hz) use `beat × 60 / BPM`;
 beat-synced LFOs use `beat / rate`. Swing is sampled at the nominal step beat (its onset depends
 on swing); gate, velocity and tuning are sampled at the resolved onset, so fast rates are not
 block-stepped. Pattern-shaping targets (Steps, Pulses, Rotate, Density, Seed, Osc phase/rate,
@@ -172,7 +172,7 @@ first-run default is the host process working directory.
 | Algorithm shape | `phase`, `osc_rate`, `osc_wave` (8 waveforms), `ca_rule`, `symmetry` | Mode-specific; hidden in the UI when the selected mode never reads them. Waveform ids/names come from the `OscWave` enum |
 | Mode data bridge | `GenParams::mode_data: [f32; 4]` | Fixed slots for values a future typed `ModeParams` enum would own; currently zero-filled and documented per mode in `REFERENCE_MAPPING.md` |
 | Clock | `rate`, `gate`, `swing`, `freerun` | Beat grid, NoteOff duration, stopped-transport behaviour |
-| LFO | `lfoN_wave`, `lfoN_rate_mode`, `lfoN_freq`, `lfoN_rate`, `lfoN_depth`, `lfoN_phase`, `lfoN_polarity` for N = 1–4; persisted `lfoN_links` masks; legacy `lfo1_target`/`lfo2_target` | Four runtime LFOs. Hz (0.01–1000) is the default speed, with beat sync as the alternative. Bipolar spans ±depth; unipolar spans 0..depth. Links are drag/drop targets stored as one 24-bit mask per LFO. Feel/tuning targets are sampled per note; generator targets at loop boundaries. Legacy single-target values are treated as one link while the new mask is empty. Runtime modulation is not written back to host parameters and is not part of MIDI export |
+| LFO | `lfoN_wave`, `lfoN_rate_mode`, `lfoN_freq`, `lfoN_rate`, `lfoN_depth`, `lfoN_phase`, `lfoN_polarity` for N = 1–4; persisted `lfoN_links` masks; legacy `lfo1_target`/`lfo2_target` | Four runtime LFOs. Hz (0.01–10) is the default speed, with beat sync as the alternative. Bipolar spans ±depth; unipolar spans 0..depth. Links are drag/drop targets stored as one 24-bit mask per LFO. Feel/tuning targets are sampled per note; generator targets at loop boundaries. Legacy single-target values are treated as one link while the new mask is empty. Runtime modulation is not written back to host parameters and is not part of MIDI export |
 | Melody / tuning | `root` (pitch class), `scale` (12 tables or EDO), `octaves`, `edo`, `root_cents`, `midi_root`, `nts` | Pitch mapping. The tonic is `midi_root + root` semitones; non-12-TET detune is emitted as pitch bend while `nts` is on |
 | Acid flags | `slide`, `accent`, `oct_jump` | Per-note probabilities for the five acid modes. They only add or remove flags — never reshuffle the line (tested) |
 | Post-transforms | `invert`, `mirror`, `rotate` | Applied to the finished line: hit inversion, retrograde, circular rotation |

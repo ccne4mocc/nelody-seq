@@ -12,7 +12,7 @@ pub const LFO_COUNT: usize = 4;
 
 /// Highest free-running LFO frequency. The speed field is Hz-only; kHz is deliberately not
 /// offered because the scheduler samples LFOs per event, not at audio rate.
-pub const LFO_MAX_HZ: f32 = 1_000.0;
+pub const LFO_MAX_HZ: f32 = 10.0;
 
 /// A user-editable numeric parameter that an LFO may modulate.
 ///
