@@ -41,7 +41,7 @@ pub(crate) fn math(p: &GenParams) -> String {
         Mode::AcidMotif => format!("motif {} steps · mutation {:.2} per repeat", p.pulses.clamp(2, 16), p.phase * 0.6),
         Mode::AcidShift => format!("{}-bit register · P(flip) = {:.2} · fields r/a/s/o", p.pulses.clamp(4, 16), p.phase * 0.5),
         Mode::ThueMorse => format!("t(n) = popcount(n) mod 2 · Nørgård infinity-series contour · {} onsets spread over the 1s", (k as f32 * d).round().max(1.0)),
-        Mode::RudinShapiro => format!("parity of 11-pairs · scale-run contour · {} onsets spread over the 1s", (k as f32 * d).round().max(1.0)),
+        Mode::RudinShapiro => format!("parity of 11-pairs · scale-degree slot contour · {} onsets spread over the 1s", (k as f32 * d).round().max(1.0)),
         Mode::Brownian => format!("step σ = {:.3} (Gaussian) · start {:.2} · largest steps onset", crate::sequence::brownian_sigma(d), (0.5 + p.phase).fract()),
         Mode::LevyFlight => format!("Pareto α = {:.2} · min step {:.3} · jumps become onsets", crate::sequence::levy_alpha(d), crate::sequence::levy_step_min(d)),
         Mode::TentMap => format!("μ = {:.3} · x' = μ·min(x,1-x) · pitch scaled to the attractor", crate::sequence::tent_mu(d)),
