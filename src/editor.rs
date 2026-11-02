@@ -1169,7 +1169,13 @@ mod tests {
             .unwrap();
         window.set_size(slint::PhysicalSize::new(WIDTH, HEIGHT));
         let ui = AppWindow::new().unwrap();
-        ui.global::<ModRegistry>().on_register(|_, _, _, _, _, _| {});
+        let registered = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let registered_in_cb = registered.clone();
+        ui.global::<ModRegistry>().on_register(move |target, visible, _, _, _, _| {
+            if target >= 0 && visible {
+                registered_in_cb.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        });
         ui.global::<ModDrag>().on_dropped(|_, _, _| {});
         ui.show().unwrap();
         let mut buffer = vec![slint::Rgb8Pixel::new(0, 0, 0); (WIDTH * HEIGHT) as usize];
@@ -1180,6 +1186,10 @@ mod tests {
             });
             std::thread::sleep(Duration::from_millis(15));
         }
+        assert!(
+            registered.load(std::sync::atomic::Ordering::Relaxed) > 0,
+            "modulation drop targets were never registered"
+        );
     }
 
     #[test]

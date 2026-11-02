@@ -604,18 +604,20 @@ component LfoCell inherits Rectangle {
             Text { text: "\{root.index}"; color: Theme.on-accent; font-size: 9px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
             handle-touch := TouchArea {
                 pointer-event(e) => {
-                    if (e.button == PointerEventButton.left) {
-                        if (e.kind == PointerEventKind.down) {
-                            ModDrag.lfo = root.index;
-                            ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
-                            ModDrag.y = handle-touch.absolute-position.y + handle-touch.mouse-y;
-                        } else if (e.kind == PointerEventKind.move && ModDrag.lfo == root.index) {
-                            ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
-                            ModDrag.y = handle-touch.absolute-position.y + handle-touch.mouse-y;
-                        } else if (e.kind == PointerEventKind.up && ModDrag.lfo == root.index) {
-                            ModDrag.dropped(root.index, ModDrag.x, ModDrag.y);
-                            ModDrag.lfo = 0;
-                        }
+                    // Slint reports move events with button = Other, so the move branch must not
+                    // be gated on the left button. Only down/up carry the real button.
+                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                        ModDrag.lfo = root.index;
+                        ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
+                        ModDrag.y = handle-touch.absolute-position.y + handle-touch.mouse-y;
+                    } else if (e.kind == PointerEventKind.move && ModDrag.lfo == root.index) {
+                        ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
+                        ModDrag.y = handle-touch.absolute-position.y + handle-touch.mouse-y;
+                    } else if (e.kind == PointerEventKind.up && ModDrag.lfo == root.index) {
+                        ModDrag.dropped(root.index, ModDrag.x, ModDrag.y);
+                        ModDrag.lfo = 0;
+                    } else if (e.kind == PointerEventKind.cancel) {
+                        ModDrag.lfo = 0;
                     }
                 }
             }
