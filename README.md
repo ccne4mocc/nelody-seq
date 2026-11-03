@@ -86,7 +86,7 @@ loading, parameter rescans after state load, and tolerant VST3 activation before
 
 ## Compatibility
 
-Version 1.3.0 uses the host identity `com.nelodyseq.nelodyseq` (CLAP) and `nelody-seq` (VST3 class
+Version 1.3.1 uses the host identity `com.nelodyseq.nelodyseq` (CLAP) and `nelody-seq` (VST3 class
 ID). Sessions created with the old `com.nelody.nelody` / `Nelody` IDs must replace the plug-in
 instance.
 
@@ -130,9 +130,9 @@ vendor/               vendored Slint/baseview adapter
 
 | Document | Contents |
 |---|---|
+| [`docs/README.md`](docs/README.md) | Documentation index |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Layers, invariants and data flow |
 | [`docs/REFERENCE_MAPPING.md`](docs/REFERENCE_MAPPING.md) | Where every mode and view came from |
-| [`docs/MODES_RESEARCH.md`](docs/MODES_RESEARCH.md) | Mode research and design notes |
 | [`docs/LFO_SYSTEM.md`](docs/LFO_SYSTEM.md) | LFO clocks, targets, links and persistence |
 | [`docs/HOST_VERIFICATION.md`](docs/HOST_VERIFICATION.md) | What has actually been tested |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | Release and host smoke-test checklist |

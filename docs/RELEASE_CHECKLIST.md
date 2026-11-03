@@ -9,7 +9,8 @@ Run this against a clean checkout of the release commit. Record host/API/OS resu
 - [ ] `cargo xtask bundle nelody-seq --release` succeeds.
 - [ ] `target/bundled/nelody-seq.clap` and `target/bundled/nelody-seq.vst3` exist.
 - [ ] CLAP id is `com.nelodyseq.nelodyseq`; VST3 class id is `nelody-seq`.
-- [ ] Version, vendor and contact details match `src/lib.rs` (`contact` and `Plugin`).
+- [ ] Version, vendor and the visible author/GitHub credit match `src/lib.rs` (`contact` and
+      `Plugin`). No email or support URL should be baked into the plug-in metadata.
 - [ ] `LICENSE` is GPL-3.0-or-later and every bundle contains the license/notice text the
       distribution channel requires.
 - [ ] No `assert_process_allocs` feature is enabled in the release build.

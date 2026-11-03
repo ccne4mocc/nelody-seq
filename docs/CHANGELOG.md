@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.1 — Documentation cleanup
+
+### Changed
+
+- Consolidated the docs tree under a single index: architecture, reference mapping, LFO system,
+  verification, release checklist and changelog are the canonical current documents.
+- Removed the superseded `MODES_RESEARCH.md` implementation plan. Its shipped behaviour is covered
+  by `REFERENCE_MAPPING.md` and `ARCHITECTURE.md`; historical detail stays in Git history.
+- Trimmed the fractal/geometric/cellular research to a future backlog; Life-like CA is marked
+  implemented (mode 29).
+- Refreshed host-verification counts and the Windows workflow status.
+
 ## 1.3.0 — Editor, Life mode and release cleanup
 
 ### Added

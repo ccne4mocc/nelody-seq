@@ -6,7 +6,7 @@ combination. Everything else is **untested**, even when the plug-in bundles and 
 
 ## Build under test
 
-- Version: 1.3.0
+- Version: 1.3.1
 - Bundles: `target/bundled/nelody-seq.clap`, `target/bundled/nelody-seq.vst3`
 - Build command: `cargo xtask bundle nelody-seq --release`
 - Date: 2026-11-03
@@ -15,7 +15,7 @@ combination. Everything else is **untested**, even when the plug-in bundles and 
 
 | Check | Result | Notes |
 |---|---|---|
-| `cargo test --lib` | **pass** | 175 tests, 0 ignored (2026-11-03). |
+| `cargo test --lib` | **pass** | 183 passed, 0 ignored (2026-11-03). |
 | Carla CLAP discovery | **pass** | `carla-discovery-native CLAP .clap` reports the expected name, label and 75 input parameters. |
 | Carla VST3 discovery | **pass** | `carla-discovery-native VST3 target/bundled/nelody-seq.vst3` reports name `nelody seq`, label, maker and 75 input parameters. Requires the pinned nice-plug fork that defers activation until `setupProcessing()`. |
 | CLAP validator | **pass** | `clap-validator 0.4.1`: **33 passed, 0 failed, 11 skipped**. The pinned nice-plug fork bounds malformed state lengths and rescans parameter values after a state load. |
@@ -38,3 +38,7 @@ combination. Everything else is **untested**, even when the plug-in bundles and 
 
 Run every row in `RELEASE_CHECKLIST.md` and record `pass`, `fail` or `n/a` with a note. Do not
 promote a row to **verified** from a scan alone.
+
+The Windows bundle workflow is manual-only. It cross-compiles MSVC artifacts on GitHub Actions,
+but those artifacts are still unverified; no real Windows or Wine run has been recorded for this
+plug-in. macOS is not configured.

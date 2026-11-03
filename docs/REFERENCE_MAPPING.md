@@ -112,6 +112,7 @@ in `sequence::tests::acid_knobs_only_add_or_remove_flags`.
   bits, so enabling a group never changes what another group received. Values come from
   mode-aware palettes, so a Euclidean line randomizes to 3, 5 or 7 pulses and every mode stays
   inside its own `pulse_limit`.
-- Host-visible metadata (credits, waveform names, mode names) is read from the Rust side, so
-  the panel cannot drift from the plug-in metadata.
+- Host-visible metadata (author/GitHub credit, waveform names, mode names) is read from the Rust
+  side, so the panel cannot drift from the plug-in metadata. The contact email and support link
+  were removed from the plug-in; the support link lives in the README.
 - All user-facing parameters are host-automatable; nothing musical lives outside the host.
