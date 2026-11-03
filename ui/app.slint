@@ -1610,9 +1610,9 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-                Text { text: root.mode-help[root.mode]; color: Theme.text; font-size: 13px; wrap: word-wrap; }
+                Text { text: root.mode-help[root.mode]; color: Theme.text; font-size: 13px; horizontal-alignment: left; wrap: word-wrap; }
                 // The live generator formula sits between the prose description and the controls.
-                Text { height: 16px; text: root.mode-math; color: Theme.text-muted; font-size: 11px; font-italic: true; vertical-alignment: center; overflow: elide; }
+                Text { height: 16px; text: root.mode-math; color: Theme.text-muted; font-size: 11px; font-italic: true; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 Rectangle { height: 4px; }
                 HorizontalLayout { spacing: 5px;
                     OptSlider { opt: root.opts[0]; index: 0; mod-target: 0; changed(v) => { root.set-opt(0, v); } }
@@ -2172,13 +2172,14 @@ export component AppWindow inherits Window {
                 export-touch := TipTouch { hint: "Write the current loop to a MIDI file"; clicked => { root.export-midi(); } }
             }
         }
-        // Thin status strip: hover descriptions and edit/export feedback live here.
+        // Thin status strip: hover descriptions and edit/export feedback live here. Keep the
+        // inset and alignment identical to nrum seq so both editors read the same.
         Rectangle {
             height: 20px; border-radius: 3px;
             background: Theme.surface.with-alpha(0.55);
             border-width: 1px; border-color: Theme.border.with-alpha(0.7);
             Text {
-                x: 5px; width: parent.width - 10px; height: parent.height;
+                x: 8px; width: parent.width - 16px; height: parent.height;
                 text: HoverTip.text != ""
                     ? HoverTip.text
                     : (root.edit-status != ""
@@ -2187,7 +2188,7 @@ export component AppWindow inherits Window {
                             ? root.export-status
                             : "width = gate · brightness = velocity/accent · outline = slide · tap = hit, drag = gate"));
                 color: HoverTip.text != "" ? Theme.text : Theme.text-muted;
-                font-size: 9px; vertical-alignment: center; overflow: elide;
+                font-size: 9px; horizontal-alignment: left; vertical-alignment: center; overflow: elide;
             }
         }
     }
@@ -2481,7 +2482,7 @@ export component AppWindow inherits Window {
             x: 8px; width: parent.width - 16px; height: parent.height;
             text: ModView.view(ModHover.target).lfo-text;
             color: Theme.text; font-size: 10px;
-            vertical-alignment: center; overflow: elide;
+            horizontal-alignment: left; vertical-alignment: center; overflow: elide;
         }
     }
 }
