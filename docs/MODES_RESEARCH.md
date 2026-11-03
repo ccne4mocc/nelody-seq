@@ -17,7 +17,7 @@ enum layer:
 - `impl Mode { pub fn group(self) -> ModeGroup { ... } }` returns a small
   `ModeGroup` enum. `ModeGroup` is `#[derive]` debug/clone/copy, not
   host-visible.
-- The shared taxonomy with nrum sequencer is explicit and ordered: Rhythm, Stochastic,
+- The shared taxonomy with nrum seq is explicit and ordered: Rhythm, Stochastic,
   Chaos / Physics, Fractal, Cellular, Geometric, Number Theory, Music Theory,
   Acid. `ModeGroup::ALL` is the single source of that order and `rank()` feeds
   `display_order`; do not sort the labels alphabetically.
@@ -77,7 +77,7 @@ Goal: LFOs modulate any host parameter by drag/drop link, no user matrix yet.
   struct, not in project state. Persist links? Links are arguably project state;
   store target id + params in project state via extra persisted fields (host
   params cannot represent "link" cleanly — needs `#[persist]` sidecar fields in
-  `NelodySequencer`).
+  `NelodySeq`).
 - **Drag/drop**: UI drag from a param strip onto an LFO slot (or LFO onto param)
   sets `target_param_id`. Visual: highlight target, show link badge.
 - **Real-time safety**: LFO evaluation uses host sample timing (beat position),
@@ -106,7 +106,7 @@ C. **Trait objects** — `generate(p, &dyn ModeParams)`; rejected: allocation/
    vtable on audio path and not `Copy`.
 
 D. **Mode-keyed parameter bank in plugin** — host params remain shared; mode-
-   specific knobs are stored in `NelodySequencer` as `HashMap`-free fixed arrays keyed by
+   specific knobs are stored in `NelodySeq` as `HashMap`-free fixed arrays keyed by
    mode, exposed to UI only when that mode is active. Still needs plumbing into
    `gen_params()`. Combines with B.
 

@@ -1,10 +1,10 @@
-# nelody sequencer
+# nelody seq
 
-Algorithmic melodic MIDI sequencer (CLAP + VST3), the melody-sister of the nrum sequencer. Same
+Algorithmic melodic MIDI sequencer (CLAP + VST3), the melody-sister of the nrum seq. Same
 architecture, settings and UI design — one mono 303-style voice instead of an
 eight-lane drum kit, and a right-to-left MIDI piano roll where the drum matrix used to be.
 
-Route the track to a mono synth. nelody sequencer emits **notes, not percussion**: microtonal tunings,
+Route the track to a mono synth. nelody seq emits **notes, not percussion**: microtonal tunings,
 pitch slides, legato and accents travel over MIDI channel 1.
 
 - **29 generators**, deterministic and bounded: 24 melodic algorithms (Euclidean necklace,
@@ -40,18 +40,24 @@ pitch slides, legato and accents travel over MIDI channel 1.
   tuning targets are sampled per note; pattern-shaping targets are sampled at loop boundaries
   and regenerate the line without allocating in the audio callback.
 
+## Compatibility
+
+Version 1.2.0 uses the new host identity `com.nelodyseq.nelodyseq` (CLAP) and `nelody-seq` (VST3
+class ID). Sessions created with the old `com.nelody.nelody` / `Nelody` IDs must replace the
+plug-in instance.
+
 ## Build
 
 ```sh
 cargo test --lib
-cargo xtask bundle nelody-sequencer --release   # -> target/bundled/nelody-sequencer.clap + nelody-sequencer.vst3
+cargo xtask bundle nelody-seq --release   # -> target/bundled/nelody-seq.clap + nelody-seq.vst3
 ```
 
 ## Documentation
 
 `docs/ARCHITECTURE.md` explains the layers and invariants. `docs/LFO_SYSTEM.md` documents the
 LFO clocks, target cadence, link storage and drag interaction. `docs/REFERENCE_MAPPING.md`
-tracks which nrum sequencer/nMelody mode became which nelody sequencer mode. `AGENTS.md` is the change-ownership
+tracks which nrum seq / nMelody mode became which nelody seq mode. `AGENTS.md` is the change-ownership
 contract for multi-agent work.
 
 ## Contact

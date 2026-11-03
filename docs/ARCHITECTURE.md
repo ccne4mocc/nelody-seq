@@ -41,8 +41,8 @@ MelodyParams + host tempo ---> editor-side MIDI export
 
 ### Why this split
 
-The nrum sequencer reference has a strong seam between pure generation (`src/sequence/`), pure
-visualization geometry (`src/view.rs`), and Slint host glue (`src/editor.rs`). nelody sequencer
+The nrum seq reference has a strong seam between pure generation (`src/sequence/`), pure
+visualization geometry (`src/view.rs`), and Slint host glue (`src/editor.rs`). nelody seq
 preserves that seam and replaces the eight-lane drum event matrix with a single pitch contour
 plus transition state. The melody side also carries `_nMelody_old`'s note-transition machine
 (Fresh / Retrigger / Legato / Tie) and its packed-note history ring.
@@ -66,7 +66,7 @@ generator step. Every generator must consume `variation`, or Generate only rotat
 
 ## Audio/MIDI thread
 
-`NelodySequencer::process()` consumes upstream note events (this is a generator, not a MIDI thru). It
+`NelodySeq::process()` consumes upstream note events (this is a generator, not a MIDI thru). It
 reads host transport, tempo and position; if stopped, it can use the free-run beat cursor.
 Per step boundary it looks the pattern cell up, converts it through `pitch_for` to a MIDI note
 plus detune, and decides what happens to the sounding note:
@@ -220,8 +220,8 @@ variation comes from Generate, Randomize and the knobs.
 - **Project state** is owned by the host: every parameter plus the `#[persist] variation` and
   `lfo1_links`…`lfo4_links` masks travel with the DAW project. Link masks are not host
   parameters, so they are persisted but not automatable.
-- **User-global settings** live in `src/globals.rs` at `$XDG_CONFIG_HOME/nelody-sequencer/settings.json`
-  (or `$HOME/.config/nelody-sequencer/settings.json`, `%APPDATA%` on Windows): theme, editor scale and
+- **User-global settings** live in `src/globals.rs` at `$XDG_CONFIG_HOME/nelody-seq/settings.json`
+  (or `$HOME/.config/nelody-seq/settings.json`, `%APPDATA%` on Windows): theme, editor scale and
   MIDI export folder only. Loaded at editor open, written on a 750 ms debounce and forced on
   editor close.
 - **The MIDI history ring is not persisted**: it is performance state, cleared by a restart.
@@ -294,7 +294,7 @@ variation comes from Generate, Randomize and the knobs.
   (grouped) order and clamps at the ends (`Mode::step_in_display_order`): the list is sorted by
   `ModeGroup::rank()` then host index, so walking the raw host index would jump between groups.
   The open mode list keeps the wheel for its own scrolling. The group labels and order are shared
-  with nrum sequencer; `Fractal` is reserved for the fractal mode wave and renders no header while empty.
+  with nrum seq; `Fractal` is reserved for the fractal mode wave and renders no header while empty.
 - The mode dropdown is grouped by `Mode::group()` and laid out in two columns; `ModeRow` pairs two host indices per row (`left`/`right`) and group headers stay full-width. Sorting and pairing are display-only, so host indices never move.
 - New geometric modes use their natural 2-D view: Hilbert curve grid, Ulam spiral, Hénon
   attractor. The Euclidean necklace stays a ring because the 2-D necklace is the clearest
@@ -310,7 +310,7 @@ variation comes from Generate, Randomize and the knobs.
   (`OptEdit.index >= 0`). The same flag calls
   `SlintWindowHandler::set_prevent_key_event_propagation`, so character keys do not also reach
   the host while a field is focused.
-- Technical logging writes `~/nelody-sequencer.log` from the editor thread only, when `logging` is on.
+- Technical logging writes `~/nelody-seq.log` from the editor thread only, when `logging` is on.
 
 ## Extension points
 

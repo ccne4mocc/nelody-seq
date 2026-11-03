@@ -1,4 +1,4 @@
-//! nelody sequencer: algorithmic melodic MIDI sequence generation, emitted as MIDI.
+//! nelody seq: algorithmic melodic MIDI sequence generation, emitted as MIDI.
 //! The plug-in intentionally has no audio renderer: route it to a mono / legato synth.
 mod editor;
 mod globals;
@@ -976,7 +976,7 @@ fn transition(prev: Option<&Active>, note: u8) -> Transition {
     }
 }
 
-pub struct NelodySequencer {
+pub struct NelodySeq {
     params: Arc<MelodyParams>,
     shared: Arc<Shared>,
     /// Actual snapshot the current pattern was generated from (including modulation).
@@ -1003,7 +1003,7 @@ pub struct NelodySequencer {
     sample_rate: f64,
 }
 
-impl Default for NelodySequencer {
+impl Default for NelodySeq {
     fn default() -> Self {
         Self {
             params: Arc::new(MelodyParams::default()),
@@ -1027,7 +1027,7 @@ impl Default for NelodySequencer {
     }
 }
 
-impl NelodySequencer {
+impl NelodySeq {
     fn send_off(&self, ctx: &mut impl ProcessContext<Self>, timing: u32, a: Active, cents: f32) {
         self.shared.record(false, a.note, 0.0, cents);
         ctx.send_event(NoteEvent::NoteOff { timing, voice_id: None, channel: 0, note: a.note, velocity: 0.0 });
@@ -1061,8 +1061,8 @@ pub mod contact {
     pub const EMAIL: &str = "";
 }
 
-impl Plugin for NelodySequencer {
-    const NAME: &'static str = "nelody sequencer";
+impl Plugin for NelodySeq {
+    const NAME: &'static str = "nelody seq";
     const VENDOR: &'static str = contact::AUTHOR;
     const URL: &'static str = contact::GITHUB;
     const EMAIL: &'static str = contact::EMAIL;
@@ -1326,19 +1326,19 @@ pub(crate) fn next_hit_after(hit: &[bool; MAX_STEPS], idx: usize, steps: usize) 
     (1..=n).map(|d| (idx + d) % n).find(|&j| hit[j])
 }
 
-impl ClapPlugin for NelodySequencer {
-    const CLAP_ID: &'static str = "com.nelody.nelody";
+impl ClapPlugin for NelodySeq {
+    const CLAP_ID: &'static str = "com.nelodyseq.nelodyseq";
     const CLAP_DESCRIPTION: Option<&'static str> = Some("Algorithmic melodic MIDI sequencer with 29 generators and microtonal tunings");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(contact::GITHUB);
     const CLAP_SUPPORT_URL: Option<&'static str> = Some(contact::SUPPORT);
     const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::NoteEffect, ClapFeature::Utility];
 }
-impl Vst3Plugin for NelodySequencer {
-    const VST3_CLASS_ID: [u8; 16] = *b"Nelody\0\0\0\0\0\0\0\0\0\0";
+impl Vst3Plugin for NelodySeq {
+    const VST3_CLASS_ID: [u8; 16] = *b"nelody-seq\0\0\0\0\0\0";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[Vst3SubCategory::Instrument, Vst3SubCategory::Tools];
 }
-nice_export_clap!(NelodySequencer);
-nice_export_vst3!(NelodySequencer);
+nice_export_clap!(NelodySeq);
+nice_export_vst3!(NelodySeq);
 
 #[cfg(test)]
 mod tests {

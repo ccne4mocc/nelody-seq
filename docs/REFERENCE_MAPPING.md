@@ -1,9 +1,9 @@
-# Reference mapping: nrum sequencer + `_nMelody_old` → nelody sequencer
+# Reference mapping: nrum seq + `_nMelody_old` → nelody seq
 
 This map records where every mode, view and machine came from, so follow-up agents can trace a
-row back to its reference instead of guessing. Two references feed nelody sequencer:
+row back to its reference instead of guessing. Two references feed nelody seq:
 
-- **nrum sequencer** (the drum-sequencer ancestor project): the plugin skeleton, UI design,
+- **nrum seq** (the drum-sequencer ancestor project): the plugin skeleton, UI design,
   parameter set, post-transform pipeline and editor/export plumbing. Its percussive lane
   concept was removed.
 - **`_nMelody_old`**: the mono voice machinery that survived — the
@@ -16,27 +16,27 @@ row back to its reference instead of guessing. Two references feed nelody sequen
 The `Mode` enum in `src/modes.rs` is one list for host, generators and views. Acid starts at
 index 14 because the melody modes build the non-acid half of that split.
 
-| Index | nelody sequencer mode | Group | Origin | View in nelody sequencer |
+| Index | nelody seq mode | Group | Origin | View in nelody seq |
 |---:|---|---|---|---|
-| 0 | Euclidean | Rhythm | nrum sequencer Euclidean (per-lane rings) collapsed to one ring + contour walk by 1/φ | Necklace ring, filled hit polygon, playhead hand |
+| 0 | Euclidean | Rhythm | nrum seq Euclidean (per-lane rings) collapsed to one ring + contour walk by 1/φ | Necklace ring, filled hit polygon, playhead hand |
 | 1 | Golomb Ruler | Number Theory | `_nMelody_old` Golomb | Ruler marks with every inter-mark gap as an arc |
 | 2 | Logistic Map | Chaos / Physics | `_nMelody_old` Logistic | Parabola + the orbit points; onsets are top-k peaks, pitch reads a delayed orbit sample |
 | 3 | Eulerian Walk | Geometric | `_nMelody_old` Euler | Directed graph, Hierholzer circuit, rest vertex R |
 | 4 | Arnold Circle Map | Chaos / Physics | `_nMelody_old` CircleMap | Phasor: outer circle, inner θ circle, unwrapped phase spiral |
 | 5 | Mozart Dice | Stochastic | `_nMelody_old` Dice (11-cell bank) | One cell per bar, rolled pitch as bar height; one die spans cells 0,2,…,10 and `density` is transposition jitter |
-| 6 | Tonnetz Walk | Music Theory | nrum sequencer Markov position filled by the melody project's Tonnetz | P/L/R lattice with visited triangles filled, walk line, note-name nodes |
-| 7 | Cellular Automaton | Cellular | nrum sequencer Cellular on one ring | CA space-time rings, selected generation solid, playhead column |
-| 8 | Markov Walk | Stochastic | nrum sequencer Markov over the 7-degree melody graph | Graph over rest + 7 degrees, taken edges drawn; single-octave degree path, slot 0 = tonic |
-| 9 | Oscillator / Phase | Rhythm | nrum sequencer Oscillator re-purposed: the sampled curve IS the pitch contour | Waveform curve + step dots + contour + playhead column; Euclid places the onsets |
-| 10 | L-System Grammar | Rhythm | Both (nrum sequencer wording, `_nMelody_old` A/B contour mapping) | A/B word strip with A=bar/B=dot, contour over it |
-| 11 | Xenakis Sieve | Number Theory | nrum sequencer Sieve with degree-per-residue-class melody | Three residue-class rows with member dots, mask shows which survive |
-| 12 | Fibonacci / Sturmian | Number Theory | nrum sequencer Fibonacci turned melodic | Staircase of floor((i+1)α), onsets marked |
-| 13 | Bernoulli | Stochastic | nrum sequencer Bernoulli | Coin dots: hits on the contour, misses on the baseline |
+| 6 | Tonnetz Walk | Music Theory | nrum seq Markov position filled by the melody project's Tonnetz | P/L/R lattice with visited triangles filled, walk line, note-name nodes |
+| 7 | Cellular Automaton | Cellular | nrum seq Cellular on one ring | CA space-time rings, selected generation solid, playhead column |
+| 8 | Markov Walk | Stochastic | nrum seq Markov over the 7-degree melody graph | Graph over rest + 7 degrees, taken edges drawn; single-octave degree path, slot 0 = tonic |
+| 9 | Oscillator / Phase | Rhythm | nrum seq Oscillator re-purposed: the sampled curve IS the pitch contour | Waveform curve + step dots + contour + playhead column; Euclid places the onsets |
+| 10 | L-System Grammar | Rhythm | Both (nrum seq wording, `_nMelody_old` A/B contour mapping) | A/B word strip with A=bar/B=dot, contour over it |
+| 11 | Xenakis Sieve | Number Theory | nrum seq Sieve with degree-per-residue-class melody | Three residue-class rows with member dots, mask shows which survive |
+| 12 | Fibonacci / Sturmian | Number Theory | nrum seq Fibonacci turned melodic | Staircase of floor((i+1)α), onsets marked |
+| 13 | Bernoulli | Stochastic | nrum seq Bernoulli | Coin dots: hits on the contour, misses on the baseline |
 | 14 | Acid Random | Acid | `_nMelody_old` AcidRandom | Acid piano roll |
 | 15 | Acid Euclid | Acid | `_nMelody_old` AcidEuclid (nesting Euclid for flags) | Acid piano roll |
-| 16 | Acid Markov | Acid | nrum sequencer Markov position filled by the melody project's transition chains | Acid piano roll |
+| 16 | Acid Markov | Acid | nrum seq Markov position filled by the melody project's transition chains | Acid piano roll |
 | 17 | Acid Motif | Acid | `_nMelody_old` AcidMotif (mutating repeats) | Acid piano roll |
-| 18 | Acid Shift Register | Acid |Both lineage: nrum sequencer L-System slot, `_nMelody_old` register distillation | Acid piano roll (register fields as rows) |
+| 18 | Acid Shift Register | Acid |Both lineage: nrum seq L-System slot, `_nMelody_old` register distillation | Acid piano roll (register fields as rows) |
 | 19 | Thue-Morse | Number Theory | New wave: automatic sequence | Binary word strip + Nørgård infinity-series contour; onsets spread evenly over the 1s, `phase`/seed/variation slide the window |
 | 20 | Rudin-Shapiro | Number Theory | New wave: automatic sequence | Binary word strip + index contour; onsets spread evenly over the 1s, `phase`/seed/variation slide the window |
 | 21 | Brownian Walk | Stochastic | New wave: reflected random walk | Walk path + onset dots; Gaussian step σ = 0.01 + 0.2·density, `phase` = start position (no drift) |
@@ -48,11 +48,11 @@ index 14 because the melody modes build the non-acid half of that split.
 | 27 | Hilbert Curve | Geometric | New wave: space-filling curve | 2-D Hilbert order grid/path |
 | 28 | Ulam Spiral Primes | Number Theory | New wave: prime spiral | 2-D Ulam spiral with prime/hit marks; starts at integer `1 + round(64·phase) + round(64·seed) + 5·variation` |
 
-Everything else in nelody sequencer's UI is either the nrum sequencer design untouched (header, generate/
+Everything else in nelody seq's UI is either the nrum seq design untouched (header, generate/
 randomize buttons, clock row, settings slide-in, credits, scope chips, 860×675 fixed window)
 or the melody-specific replacements of the two drum-only slots:
 
-| nrum sequencer slot | nelody sequencer replacement |
+| nrum seq slot | nelody seq replacement |
 |---|---|
 | 8 drum-lane enable chips | Tuning row: Root NumBox, Scale chip, Octaves NumBox, NTS bend chip |
 | Velocity/Lane rows and the step matrix | Acid slider row (modes 14+: Slide, Accent, Octave jump) |

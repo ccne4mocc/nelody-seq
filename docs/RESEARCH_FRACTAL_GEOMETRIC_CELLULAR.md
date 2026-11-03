@@ -1,7 +1,7 @@
 # Research: Fractal, Geometric / Sacred-Geometry and Cellular Generation
 
 Status: **research only — nothing in this document is implemented.** This is a shared reference
-for proofreading before the next mode wave. The companion document in nrum sequencer
+for proofreading before the next mode wave. The companion document in nrum seq
 (`_nDrums/docs/RESEARCH_FRACTAL_GEOMETRIC_CELLULAR.md`) carries the same algorithm review with
 percussive/8-lane mappings.
 
@@ -12,7 +12,7 @@ The existing mode list already covers four relevant families:
 - **Fractal / self-similar:** chaotic maps (logistic, circle map, tent, Hénon), Hilbert curve,
   Ulam spiral, and automatic sequences (Thue–Morse, Rudin–Shapiro).
 - **Geometric:** Eulerian graph, Hilbert grid, Ulam spiral, plus the rhythmic geometry inherited
-  from nrum sequencer (Euclidean ring, phyllotaxis in the reference design).
+  from nrum seq (Euclidean ring, phyllotaxis in the reference design).
 - **Cellular:** one elementary 1-D Wolfram automaton with 16 generations and a ring boundary.
 - **Stochastic / physics:** Mozart dice, Markov, Bernoulli, Brownian, Lévy.
 
@@ -33,13 +33,13 @@ Any new mode must respect the project invariants:
 7. Polyphonic ideas (chords from several live cells) are out of scope for this mono voice; each
    step selects at most one pitch.
 
-nelody sequencer already has `GenParams::mode_data: [f32; 4]`, so a candidate may carry one or two extra
+nelody seq already has `GenParams::mode_data: [f32; 4]`, so a candidate may carry one or two extra
 values. Prefer reusing `pulses`, `density`, `phase`, `seed`, `ca_rule`, `symmetry` and `osc_rate`
-where possible so the nrum sequencer and nelody sequencer implementations stay comparable.
+where possible so the nrum seq and nelody seq implementations stay comparable.
 
 ## 2. Shared grouping taxonomy
 
-The presentation groups are shared with nrum sequencer:
+The presentation groups are shared with nrum seq:
 
 `Rhythm`, `Stochastic`, `Chaos / Physics`, `Fractal`, `Cellular`, `Geometric`,
 `Number Theory`, `Music Theory`, `Acid`.
@@ -73,7 +73,7 @@ map naturally to pitch degree, octave and accent.
 
 ### 3.2 Candidates
 
-| Candidate | Mechanic | nelody sequencer mapping | Cost | Recommendation |
+| Candidate | Mechanic | nelody seq mapping | Cost | Recommendation |
 |---|---|---|---|---|
 | **Mandelbrot / Julia** | `z ← z² + c`, escape at `|z| > 2` | Escape time → `u`/degree; basin/quadrant → `slots`; boundary → onset | `steps × 64` complex iterations | **Wave 1** |
 | **Newton basins** | `z ← z − p(z)/p'(z)`, `p(z)=z^d−1` | Root index → degree; convergence time → accent; basin boundary → onset | `steps × 32` | **Wave 2** |
@@ -238,12 +238,12 @@ Candidates already present or adjacent:
 - Eulerian graph walk — present.
 - Hilbert curve and Ulam spiral — present.
 - Euclidean necklace and Fibonacci/Sturmian staircase — present.
-- Phyllotaxis is present in the nrum sequencer lineage but not in nelody sequencer; a melodic rosette could be
+- Phyllotaxis is present in the nrum seq lineage but not in nelody seq; a melodic rosette could be
   added later.
 
 ### 4.2 Candidates
 
-| Candidate | Mechanic | nelody sequencer mapping | Cost | Recommendation |
+| Candidate | Mechanic | nelody seq mapping | Cost | Recommendation |
 |---|---|---|---|---|
 | **Spirograph / Lissajous** | `x=cos(a t+δ)`, `y=sin(b t)` | y → pitch; extrema/crossings → onset; speed → accent | `steps` trig evaluations | **Wave 1** |
 | **Platonic-solid walk** | Traverse vertices/edges/faces of a Platonic solid | Projected vertex → degree; edge/face → interval | `steps` table lookups | **Wave 2** |
@@ -342,7 +342,7 @@ intersections occur at 60° and 120°.
 - Radius/angle → pitch.
 - View: circles plus highlighted intersection nodes.
 
-This overlaps the nrum sequencer phyllotaxis rosette visually. It is probably better as an alternate view
+This overlaps the nrum seq phyllotaxis rosette visually. It is probably better as an alternate view
 or a palette variant than as a separate mode, unless the traversal rule is clearly different.
 
 ## 5. Cellular generation
@@ -362,7 +362,7 @@ This is a solid base. The missing families are 2-D, ant-like and multi-state aut
 
 ### 5.2 Candidates
 
-| Candidate | Mechanic | nelody sequencer mapping | Cost | Recommendation |
+| Candidate | Mechanic | nelody seq mapping | Cost | Recommendation |
 |---|---|---|---|---|
 | **Life-like 2-D CA** | `B/S` rules on a torus | Live cell → pitch; neighbours → accent | `steps × grid²` | **Wave 1** |
 | **Langton's Ant** | Turn/flip/move on a torus | x/y → pitch; turn → contour | `steps` moves | **Wave 2** |
@@ -465,7 +465,7 @@ preset UI.
 
 ## 6. Cross-project mapping summary
 
-| Candidate | nrum sequencer (8 lanes) | nelody sequencer (mono voice) |
+| Candidate | nrum seq (8 lanes) | nelody seq (mono voice) |
 |---|---|---|
 | Mandelbrot / Julia | Escape band → lane; smooth escape → accent | Escape time → `u`; basin/quadrant → `slots`; boundary → onset |
 | Newton | Root index → lane; iterations → accent | Root index → degree; convergence → accent |
@@ -481,7 +481,7 @@ preset UI.
 | Langton Ant | Direction → lane; flip → onset | x/y → pitch; turn → contour |
 | Cyclic CA | State → lane; front → onset | State → degree; front → onset |
 
-nelody sequencer has `mode_data: [f32; 4]` for extra knobs; nrum sequencer does not. Prefer reusing existing
+nelody seq has `mode_data: [f32; 4]` for extra knobs; nrum seq does not. Prefer reusing existing
 parameters in both so the two implementations stay comparable.
 
 ## 7. Recommended waves
