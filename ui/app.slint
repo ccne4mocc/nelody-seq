@@ -734,7 +734,7 @@ component LfoCell inherits Rectangle {
         Rectangle {
             width: 34px; height: 28px; background: transparent;
             Text {
-                width: parent.width; height: parent.height;
+                x: 3px; width: parent.width - 3px; height: parent.height;
                 text: "LFO \{root.index}";
                 color: root.enabled ? root.accent : Theme.text-muted;
                 opacity: root.enabled ? 1.0 : 0.65;
@@ -987,7 +987,6 @@ export component AppWindow inherits Window {
     in property <bool> scope-feel: true;
     in property <string> settings-path: "";
     in property <string> credit-author: "";
-    in property <string> credit-website: "";
     in property <string> credit-github: "";
     in property <string> credit-support: "";
     in property <string> credit-email: "";
@@ -1304,7 +1303,8 @@ export component AppWindow inherits Window {
             height: 300px; spacing: 10px;
             ModePanel { nodes: root.view-nodes; edges: root.view-edges; fills: root.view-fills; solid: root.view-solid; lines: root.view-lines; hand: root.view-hand; }
             VerticalLayout {
-                spacing: 3px; alignment: start;
+                vertical-stretch: 1;
+                spacing: 3px; alignment: stretch;
                 Rectangle {
                     height: 30px; border-radius: 4px;
                     background: mode-menu-touch.has-hover ? Theme.control-hover : Theme.control;
@@ -1374,28 +1374,31 @@ export component AppWindow inherits Window {
                     OptSlider { horizontal-stretch: 1; opt: root.opts[17]; index: 17; mod-target: 16; changed(v) => { root.set-opt(17, v); } }
                 }
                 // Tuning follows the acid row inside the parameter column, above the MIDI history.
-                Rectangle { height: 6px; }
+                // The stretch spacer keeps the tuning block against the history card.
+                Rectangle { vertical-stretch: 1; }
                 Text {
                     height: 12px; text: "TUNING"; color: Theme.text-muted;
                     font-size: 10px; vertical-alignment: center;
                 }
-                // Root, Scale, Octave and NTS share one equal-width row (25% each).
+                // Root, Scale, Octave and NTS share one equal-width row; EDO joins it only for
+                // Equal (EDO), so a five-control tuning block still fits the fixed 300px column.
                 HorizontalLayout {
                     height: 28px; spacing: 5px;
                     tuning-root := NumBox { horizontal-stretch: 1; height: 28px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; mod-target: 17; changed(v) => { root.set-opt(18, v); } }
                     // The chip shows the current scale and opens a dropdown under itself.
                     scale-chip := TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name + "  ▾"; centered: true; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
+                    // EDO applies to Equal (EDO) only. It sits beside the scale chip and collapses
+                    // to zero width when inactive, so `text-focused` can still see its editor.
+                    edo-row := NumBox {
+                        visible: root.edo-active;
+                        horizontal-stretch: 1; min-width: 0px;
+                        max-width: root.edo-active ? 1000px : 0px;
+                        height: 28px; label: "EDO"; value: root.edo;
+                        minimum: 1; maximum: 72; step: 1; mod-target: 20;
+                        changed(v) => { root.set-opt(21, v); }
+                    }
                     tuning-oct := NumBox { horizontal-stretch: 1; height: 28px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; mod-target: 18; changed(v) => { root.set-opt(19, v); } }
                     TuningChip { horizontal-stretch: 1; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
-                }
-                // EDO only applies to Equal (EDO); keep it on its own compact row, but instantiated
-                // so `text-focused` can still see its editor.
-                HorizontalLayout {
-                    height: root.edo-active ? 28px : 0px;
-                    visible: root.edo-active;
-                    spacing: 5px;
-                    edo-row := NumBox { horizontal-stretch: 1; height: 28px; label: "EDO"; value: root.edo; minimum: 1; maximum: 72; step: 1; mod-target: 20; changed(v) => { root.set-opt(21, v); } }
-                    Rectangle { horizontal-stretch: 3; }
                 }
             }
         }
@@ -1548,7 +1551,7 @@ export component AppWindow inherits Window {
             }
         }
         HorizontalLayout {
-            height: 27px; spacing: 5px;
+            height: 27px; padding-top: 2px; spacing: 5px;
             HorizontalLayout {
                 spacing: 0px;
                 OptSlider { width: 168px; opt: root.opts[12]; index: 12; mod-target: 13; changed(v) => { root.set-opt(12, v); } }
@@ -1826,7 +1829,6 @@ export component AppWindow inherits Window {
                 spacing: 0px;
                 Text { text: "CREDITS / CONTACT"; color: Theme.text-muted; font-size: 9px; }
                 Text { text: "\{root.credit-author}  ·  nelody seq"; color: Theme.text; font-size: 10px; }
-                TextInput { read-only: true; text: root.credit-website; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }
                 TextInput { read-only: true; text: root.credit-github; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }
                 TextInput { read-only: true; text: root.credit-support; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }
                 TextInput { read-only: true; text: root.credit-email; color: Theme.text-muted; font-size: 9px; height: 20px; vertical-alignment: center; }

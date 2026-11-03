@@ -910,6 +910,12 @@ fn regeneration_cycle_at(step_index: i64, loop_length: f64, every: i64, last: Op
     if cycle > 0 && cycle.rem_euclid(every) == 0 && last != Some(cycle) { Some(cycle) } else { None }
 }
 
+/// Automatic regeneration/randomization interval. A base of 0 is a hard off: LFO modulation may
+/// vary an interval that is already enabled, but it cannot switch the feature on.
+fn automatic_interval(base: i32, modulated: i32) -> i64 {
+    if base <= 0 { 0 } else { modulated.max(0) as i64 }
+}
+
 /// Grid cell for step `k` in a loop of `length` steps; fractional lengths wrap mid-cell.
 fn step_index(k: i64, length: f64) -> i64 {
     if length >= 1.0 && length.fract() == 0.0 { k.rem_euclid(length as i64) } else { (k as f64).rem_euclid(length).floor() as i64 }
@@ -1034,7 +1040,6 @@ impl NelodySeq {
 pub mod contact {
     pub const AUTHOR: &str = "ccne4mocc / feN";
     pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-    pub const WEBSITE: &str = "https://ndrums.feneutral.com";
     pub const GITHUB: &str = "https://github.com/ccne4mocc";
     pub const SUPPORT: &str = "";
     pub const EMAIL: &str = "";
@@ -1167,8 +1172,9 @@ impl Plugin for NelodySeq {
         let s1 = end * spb;
         let mut k = resume_cursor(self.next_step, transport_jump, start, end, spb);
         let schedule_start = p.schedule_at(clock_start);
-        let every = schedule_start.regenerate_every.max(0) as i64;
-        let randomize_every = schedule_start.randomize_after.max(0) as i64;
+        let every = automatic_interval(p.regenerate_every.value(), schedule_start.regenerate_every);
+        let randomize_every =
+            automatic_interval(p.randomize_after_lengths.value(), schedule_start.randomize_after);
         if self.last_mod_cycle.is_none() {
             self.last_mod_cycle = Some((k as f64 / self.loop_length).floor() as i64);
         }
@@ -1484,6 +1490,27 @@ mod tests {
         assert_eq!(peak.density, base.density);
         assert_eq!(peak.pulses, base.pulses);
         assert_eq!(peak.mode_data, base.mode_data);
+    }
+
+    #[test]
+    fn zero_automatic_intervals_stay_off_under_modulation() {
+        assert_eq!(automatic_interval(0, 128), 0);
+        assert_eq!(automatic_interval(0, -5), 0);
+        assert_eq!(automatic_interval(2, 8), 8);
+        assert_eq!(automatic_interval(2, -8), 0);
+    }
+
+    #[test]
+    fn regeneration_cycle_respects_interval_and_last_cycle() {
+        assert_eq!(regeneration_cycle_at(0, 16.0, 1, None), None);
+        assert_eq!(regeneration_cycle_at(16, 16.0, 1, None), Some(1));
+        assert_eq!(regeneration_cycle_at(32, 16.0, 1, Some(1)), Some(2));
+        assert_eq!(regeneration_cycle_at(16, 16.0, 1, Some(1)), None);
+        assert_eq!(regeneration_cycle_at(32, 16.0, 2, None), Some(2));
+        assert_eq!(regeneration_cycle_at(48, 16.0, 2, None), None);
+        assert_eq!(regeneration_cycle_at(16, 16.0, 0, None), None);
+        assert_eq!(regeneration_cycle_at(16, 0.0, 1, None), None);
+        assert_eq!(regeneration_cycle_at(16, f64::NAN, 1, None), None);
     }
 
     #[test]

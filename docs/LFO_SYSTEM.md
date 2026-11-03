@@ -39,7 +39,7 @@ scales, so migrating those targets keeps their feel.
 | Steps, Pulses, Rotate, Density, Seed, Osc phase, Osc rate, CA rule, Probability, Slide, Accent, Octave jump, Max steps | Once per loop, then `sequence::generate()` runs from `gen_params_at()` |
 | Swing | Per note, at the nominal step beat |
 | Gate, Velocity | Per note, at the resolved onset |
-| Regenerate after, Randomize after | Per block |
+| Regenerate after, Randomize after | Per block; base 0 is a hard off, modulation only varies an enabled interval |
 | Root PC, Octaves, Root MIDI, EDO, Root cents | Per note, through `pitch_for_values()` |
 | History bars | Editor tick only; it changes the history window, not playback |
 

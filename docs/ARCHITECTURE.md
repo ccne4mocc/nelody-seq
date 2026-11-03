@@ -103,6 +103,8 @@ Regenerate-after-N-lengths swaps the pattern inside the callback by regenerating
 snapshot the next block will compare against (it bumps `variation` first); a jittered seed there
 made `last_key` disagree with the parameters and regenerated a second time on the next block,
 discarding the new line mid-loop. Randomize-after-N-lengths only queues an atomic request.
+Both triggers read their host parameter as a hard gate: when the base is 0 they stay off, and LFO
+modulation can only vary an interval that is already enabled.
 
 Four runtime LFOs are evaluated from a host-beat clock. Hz LFOs (0.01–10 Hz) use `beat × 60 / BPM`;
 beat-synced LFOs use `beat / rate`. Swing is sampled at the nominal step beat (its onset depends
