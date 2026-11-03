@@ -16,7 +16,6 @@ source of requirements. Nothing here is scheduled.
 
 ## Views
 
-- Per-note colour in the acid piano roll (requires extending `ViewNode`).
 - An overlay of the current pattern on top of the history roll.
 
 ## Randomize

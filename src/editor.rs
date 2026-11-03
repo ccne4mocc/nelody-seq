@@ -472,6 +472,8 @@ fn push_view(ui: &AppWindow, v: &View) {
     ui.set_view_edges(SharedString::from(v.edges.as_str()));
     ui.set_view_fills(SharedString::from(v.fills.as_str()));
     ui.set_view_solid(SharedString::from(v.solid.as_str()));
+    ui.set_view_slid(SharedString::from(v.slid.as_str()));
+    ui.set_view_jumped(SharedString::from(v.jumped.as_str()));
     ui.set_view_lines(SharedString::from(v.lines.as_str()));
     ui.set_view_hand(SharedString::from(v.hand.as_str()));
 }

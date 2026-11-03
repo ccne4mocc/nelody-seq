@@ -862,6 +862,9 @@ component ModePanel inherits Rectangle {
     in property <string> edges: "M0 0";
     in property <string> fills: "M0 0";
     in property <string> solid: "M0 0";
+    // Acid tone classes: slid notes and octave-jumped notes get their own colour.
+    in property <string> slid: "M0 0";
+    in property <string> jumped: "M0 0";
     in property <string> lines: "M0 0";
     in property <string> hand: "M0 0";
     // view.rs builds every panel in a 210-unit space; paths scale through the viewbox and node
@@ -873,6 +876,8 @@ component ModePanel inherits Rectangle {
     Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.edges; fill: transparent; stroke: Theme.border; stroke-width: 1px; }
     Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.fills; fill: Theme.c2.with-alpha(0.35); }
     Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.solid; fill: Theme.c1.with-alpha(0.85); }
+    Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.slid; fill: Theme.c3.with-alpha(0.85); }
+    Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.jumped; fill: Theme.hi.with-alpha(0.85); }
     Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.lines; fill: transparent; stroke: Theme.c3; stroke-width: 1.4px; }
     Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.hand; fill: transparent; stroke: Theme.hi; stroke-width: 2px; }
     for n in root.nodes: Rectangle {
@@ -1052,6 +1057,8 @@ export component AppWindow inherits Window {
     in property <string> view-edges: "M0 0";
     in property <string> view-fills: "M0 0";
     in property <string> view-solid: "M0 0";
+    in property <string> view-slid: "M0 0";
+    in property <string> view-jumped: "M0 0";
     in property <string> view-lines: "M0 0";
     in property <string> view-hand: "M0 0";
     in property <string> mode-math: "";
@@ -1302,7 +1309,7 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             // 300px fits the description and live math line without squeezing the sliders.
             height: 300px; spacing: 10px;
-            ModePanel { nodes: root.view-nodes; edges: root.view-edges; fills: root.view-fills; solid: root.view-solid; lines: root.view-lines; hand: root.view-hand; }
+            ModePanel { nodes: root.view-nodes; edges: root.view-edges; fills: root.view-fills; solid: root.view-solid; slid: root.view-slid; jumped: root.view-jumped; lines: root.view-lines; hand: root.view-hand; }
             VerticalLayout {
                 vertical-stretch: 1;
                 spacing: 3px; alignment: stretch;

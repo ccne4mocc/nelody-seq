@@ -238,11 +238,13 @@ variation comes from Generate, Randomize and the knobs.
 - `ViewNode` is a panel coordinate in a 210×210 viewbox; the ModePanel renders it at 300px via
   `px-per-unit`. Keep new geometry in the 210-unit space; do not pre-scale.
 - The editor layout is fixed at 860×675 and the window never resizes.
-- The mode panel has five path slots: `edges` (framing), `fills` (translucent polygons), 
-  `solid` (strong polygons), `lines` (contours) and `hand` (playhead). Acid piano-roll notes
-  are solid when accented and fills otherwise; the L-system word strip and dice bars use the
-  same slots. A drawing needing per-lane colour would require changing `ViewNode`; not worth
-  it until it is.
+- The mode panel has seven path slots: `edges` (framing), `fills` (translucent polygons),
+  `solid` (strong polygons), `slid` and `jumped` (acid tone classes), `lines` (contours) and
+  `hand` (playhead). Acid piano-roll notes are routed by one precedence rule — octave jump,
+  then slide, then accent, then plain — so a note belongs to exactly one filled path and one
+  colour can never repaint the others; the L-system word strip and dice bars use `fills` and
+  `solid`. Continuous per-note colour would need a `ViewNode` field and a node-based note
+  renderer; the fixed palette covers the tone classes without that.
 - Panel geometry never re-derives a generator formula. `view::build` reads `Pattern`
   (`orbit`, `orbit_next`, `theta`, `lsym`, `ca`, `circuit`, `tri`, `roll`, `sieve_cls`,
   `map_param`, `osc`, `slots`) or exported helpers (`logistic_r` as a fallback, `circle_coupling`,

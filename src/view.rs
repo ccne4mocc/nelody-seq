@@ -29,7 +29,17 @@ pub struct View {
     pub fills: String,
     pub lines: String,
     pub solid: String,
+    /// Acid piano-roll tone classes: slid notes and octave-jumped notes have their own colour.
+    pub slid: String,
+    pub jumped: String,
     pub hand: String,
+}
+
+impl View {
+    /// Every path slot, for the empty-path sentinel and the tests that sweep them.
+    pub fn slots(&mut self) -> [&mut String; 7] {
+        [&mut self.edges, &mut self.fills, &mut self.lines, &mut self.solid, &mut self.slid, &mut self.jumped, &mut self.hand]
+    }
 }
 
 fn polar(r: f32, turns: f32) -> (f32, f32) {
@@ -173,8 +183,8 @@ fn playhead_column(v: &mut View, n: usize, cur: i32) {
     poly(&mut v.hand, &[(x, 6.0), (x + w, 6.0), (x + w, P - 6.0), (x, P - 6.0)]);
 }
 
-/// Acid piano roll: a column per step and a row per pitch; accented notes are solid and slides
-/// connect to the note they glide into.
+/// Acid piano roll: a column per step and a row per pitch. Tone classes get their own path so one
+/// note's colour never repaints the rest: octave jump > slide > accent > plain.
 fn acid_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     let (x0, x1, y0, y1) = (6.0f32, P - 6.0, 12.0f32, P - 12.0);
     let sw = (x1 - x0) / n as f32;
@@ -202,7 +212,15 @@ fn acid_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     }
     for i in (0..n).filter(|&i| pat.hit[i]) {
         let (xa, xb, y) = (x_of(i) + 0.8, x_of(i) + sw - 0.8, y_of(pv(i)));
-        let dst = if pat.acc[i] >= 0.9 { &mut v.solid } else { &mut v.fills };
+        let dst = if pat.oct[i] != 0 {
+            &mut v.jumped
+        } else if pat.slide[i] {
+            &mut v.slid
+        } else if pat.acc[i] >= 0.9 {
+            &mut v.solid
+        } else {
+            &mut v.fills
+        };
         poly(dst, &[(xa, y - 4.0), (xb, y - 4.0), (xb, y + 4.0), (xa, y + 4.0)]);
         if pat.slide[i] {
             mv(&mut v.lines, xb, y);
@@ -741,7 +759,7 @@ pub fn build(kind: Mode, pat: &crate::sequence::Pattern, steps: usize, cur: i32,
         Mode::HilbertCurve => hilbert_view(&mut v, pat, n, cur),
         Mode::UlamPrimes => ulam_view(&mut v, pat, n, cur),
     }
-    for s in [&mut v.edges, &mut v.fills, &mut v.lines, &mut v.solid, &mut v.hand] {
+    for s in v.slots() {
         if s.is_empty() {
             s.push_str("M0 0 ");
         }
@@ -762,8 +780,8 @@ mod tests {
                     let g = GenParams { kind, steps, pulses, rotate: 3, seed: 0.3, variation: 2, ..GenParams::default() };
                     let pat = generate(&g);
                     for cur in [-1, 0, steps as i32 - 1, 99] {
-                        let v = build(kind, &pat, steps, cur, 0, 0);
-                        for s in [&v.edges, &v.fills, &v.lines, &v.solid, &v.hand] {
+                        let mut v = build(kind, &pat, steps, cur, 0, 0);
+                        for s in v.slots() {
                             assert!(!s.contains("NaN") && !s.contains("inf"), "{kind:?} steps {steps}");
                             assert!(s.starts_with('M'), "{kind:?} empty path");
                         }
@@ -796,12 +814,37 @@ mod tests {
     #[test]
     fn acid_accents_are_drawn_solid() {
         for kind in [Mode::AcidRandom, Mode::AcidEuclid, Mode::AcidMarkov, Mode::AcidMotif, Mode::AcidShift] {
-            let g = GenParams { kind, steps: 32, pulses: 24, density: 0.8, accent: 1.0, ..GenParams::default() };
+            let g = GenParams { kind, steps: 32, pulses: 24, density: 0.8, accent: 1.0, slide: 0.0, octave: 0.0, ..GenParams::default() };
             let pat = generate(&g);
             let v = build(kind, &pat, 32, -1, 0, 0);
             assert!(count(&v.solid) > 0, "{kind:?}: accent 100% drew no solid note");
-            let none = build(kind, &generate(&GenParams { accent: 0.0, ..g }), 32, -1, 0, 0);
+            let plain = generate(&GenParams { accent: 0.0, ..g });
+            let none = build(kind, &plain, 32, -1, 0, 0);
             assert_eq!(count(&none.solid), 0, "{kind:?}: accent 0% still drew solid notes");
+            assert!(count(&none.fills) > 0, "{kind:?}: plain notes lost their fill");
+            // Unused tone classes must stay empty so they cannot paint over the others.
+            assert_eq!(count(&none.slid), 0, "{kind:?}: slide 0% drew slid notes");
+            assert_eq!(count(&none.jumped), 0, "{kind:?}: octave 0% drew jumped notes");
+        }
+    }
+
+    #[test]
+    fn acid_tone_classes_are_mutually_exclusive() {
+        // One knob saturating at a time: each note lands in exactly one tone class.
+        for (slide, octave, slot) in [(1.0f32, 0.0f32, 4usize), (0.0, 1.0, 5), (0.0, 0.0, 3)] {
+            let g = GenParams {
+                kind: Mode::AcidEuclid, steps: 32, pulses: 24, density: 0.8,
+                accent: 1.0, slide, octave, ..GenParams::default()
+            };
+            let mut v = build(g.kind, &generate(&g), 32, -1, 0, 0);
+            let paths: Vec<usize> = v.slots()[..6].iter().map(|s| count(s)).collect();
+            // slots order: edges, fills, lines, solid, slid, jumped
+            assert!(paths[slot] > 0, "slide {slide} octave {octave}: class {slot} is empty");
+            for (k, &n) in paths.iter().enumerate() {
+                if k != slot && (k == 3 || k == 4 || k == 5) {
+                    assert_eq!(n, 0, "slide {slide} octave {octave}: class {k} also drew notes");
+                }
+            }
         }
     }
 
@@ -872,8 +915,8 @@ mod tests {
         let pat = generate(&g);
         let v = build(g.kind, &pat, 16, 3, 0, 0);
         assert!(v.nodes.is_empty());
-        let notes_drawn = v.solid.trim() != "M0 0" || v.fills.trim() != "M0 0";
-        assert!(notes_drawn, "accented notes are solid or plain notes fill");
+        let notes_drawn = v.solid.trim() != "M0 0" || v.fills.trim() != "M0 0" || v.slid.trim() != "M0 0";
+        assert!(notes_drawn, "accented, plain and slid notes all draw note bars");
         assert_ne!(v.lines.trim(), "M0 0", "slides draw connectors");
         assert_ne!(v.hand.trim(), "M0 0", "playhead column");
         let idle = build(g.kind, &pat, 16, -1, 0, 0);
