@@ -4,7 +4,9 @@
 
 ![nelody seq demo](assets/nelody-seq.gif)
 
-So... first of all, yes its partially less and partially heavier created with LLM assistance.
+So... first of all: **AI-assisted, human-tested, maintained and used.** The code was written with
+heavy LLM assistance, but every release is reviewed, built and smoke-tested in real hosts by a
+human who uses the plugins in actual productions.
 
 nelody seq is the melodic sibling of [nrum seq](https://github.com/ccne4mocc): the same
 architecture and editor layout, but with one mono, 303-style voice and a right-to-left piano roll
@@ -130,7 +132,7 @@ loading, parameter rescans after state load, and tolerant VST3 activation before
 
 ## Compatibility
 
-Version 1.3.1 uses the host identity `com.nelodyseq.nelodyseq` (CLAP) and `nelody-seq` (VST3 class
+Version 1.0.0 uses the host identity `com.nelodyseq.nelodyseq` (CLAP) and `nelody-seq` (VST3 class
 ID). Sessions created with the old `com.nelody.nelody` / `Nelody` IDs must replace the plug-in
 instance.
 

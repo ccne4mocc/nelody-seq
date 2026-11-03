@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0 — Initial release
+
+First release under the v1.0.0 version line. It includes all work previously tagged
+v1.2.0–v1.3.1; those tags and releases were withdrawn. The entries below are kept for
+provenance.
+
 ## 1.3.1 — Documentation cleanup
 
 ### Changed

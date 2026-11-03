@@ -26,6 +26,6 @@ research.
 | [`RESEARCH_FRACTAL_GEOMETRIC_CELLULAR.md`](RESEARCH_FRACTAL_GEOMETRIC_CELLULAR.md) | Future fractal, geometric and cellular candidates |
 | [`WISHLIST.md`](WISHLIST.md) | Unordered ideas; not a roadmap |
 
-The superseded `MODES_RESEARCH.md` implementation plan was removed in 1.3.1; its shipped behaviour
+The superseded `MODES_RESEARCH.md` implementation plan was removed in 1.0.0; its shipped behaviour
 is documented in `REFERENCE_MAPPING.md` and `ARCHITECTURE.md`. Historical detail lives in Git
 history.
