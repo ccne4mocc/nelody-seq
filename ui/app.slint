@@ -1422,12 +1422,12 @@ export component AppWindow inherits Window {
                 width: 26px; height: 56px; border-radius: 4px;
                 background: root.invert-on ? Theme.c2.with-alpha(0.45) : Theme.control.with-alpha(0.9);
                 border-width: 1px; border-color: Theme.border;
-                Text {
-                    x: (parent.width - parent.height) / 2; y: (parent.height - parent.width) / 2;
-                    width: parent.height; height: parent.width;
-                    transform-rotation: -90deg;
-                    text: "INVERT"; color: Theme.text; font-size: 9px;
-                    horizontal-alignment: center; vertical-alignment: center;
+                // Pre-rotated vector label: rotating a Text makes femtovg resample the glyph atlas.
+                Image {
+                    x: 0px; y: 0px; width: parent.width; height: parent.height;
+                    source: @image-url("invert.svg");
+                    image-fit: fill;
+                    colorize: Theme.text;
                 }
                 invert-touch := TouchArea { clicked => { root.toggle-invert(); } }
             }
@@ -1436,12 +1436,11 @@ export component AppWindow inherits Window {
                 width: 26px; height: 56px; border-radius: 4px;
                 background: root.mirror-on ? Theme.c3.with-alpha(0.45) : Theme.control.with-alpha(0.9);
                 border-width: 1px; border-color: Theme.border;
-                Text {
-                    x: (parent.width - parent.height) / 2; y: (parent.height - parent.width) / 2;
-                    width: parent.height; height: parent.width;
-                    transform-rotation: -90deg;
-                    text: "MIRROR"; color: Theme.text; font-size: 9px;
-                    horizontal-alignment: center; vertical-alignment: center;
+                Image {
+                    x: 0px; y: 0px; width: parent.width; height: parent.height;
+                    source: @image-url("mirror.svg");
+                    image-fit: fill;
+                    colorize: Theme.text;
                 }
                 mirror-touch := TouchArea { clicked => { root.toggle-mirror(); } }
             }

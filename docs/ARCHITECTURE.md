@@ -276,7 +276,12 @@ variation comes from Generate, Randomize and the knobs.
   (`1/16t`, `1/16.`, `1/16d`). The enum keeps host-state order; new divisions are appended.
 - The MIDI history panel is three paths (`history-bg`, `history-grid`, `history-notes`) in a
   800×200 viewbox inside a card that stretches from the description to the bottom controls
-  (minimum 190px), driven entirely from `history::build` output.
+  (minimum 190px), driven entirely from `history::build` output. The INVERT/MIRROR side strips
+  use pre-rotated SVG assets (`ui/invert.svg`, `ui/mirror.svg`) drawn through
+  `Image { colorize: Theme.text }`: rotating a `Text` makes femtovg resample rotated glyph-atlas
+  quads, which reads as bold at 9 px, while baking the rotation into the vector asset keeps the
+  label crisp. The assets contain Noto Sans medium outlines rather than SVG text, so they do not
+  depend on the host font.
 - The tuning row chips (Root/Scale/EDO/Oct/NTS) replace the drum-lane chips. The Scale chip
   opens a dropdown list under the row; the mode header opens the same kind of list under
   itself. EDO divisions sit in this row so custom equal divisions stay beside the scale, and
