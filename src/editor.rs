@@ -343,30 +343,35 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
     let mode = Mode::from_index(rng.below(<Mode as Enum>::variants().len()));
     let scale = Tuning::from_index(rng.below(<Tuning as Enum>::variants().len()));
     let ceiling = p.step_ceiling();
-    let cells = 8 + rng.below(ceiling.saturating_sub(7).max(1));
+    let cells = crate::randomize::length(ceiling, &mut rng);
     let steps = cells as f32;
     let mode_after = if scope_enabled(p, scope::MODE) { mode } else { p.mode.value() };
     let cells_after = if scope_enabled(p, scope::LENGTH) { cells } else { p.cell_count().max(1) as usize };
-    let pulses = rng.below(pulse_limit(mode_after, cells_after as i32).max(0) as usize + 1) as i32;
+    let pulses = crate::randomize::pulses(
+        mode_after,
+        cells_after,
+        pulse_limit(mode_after, cells_after as i32).max(1) as usize,
+        &mut rng,
+    ) as i32;
     let rotate = rng.below(cells_after.max(1)) as i32;
-    let density = 0.15 + 0.85 * rng.unit();
+    let density = crate::randomize::pick(crate::randomize::DENSITIES, &mut rng);
     let seed = rng.unit();
     let phase = rng.unit();
     let osc_rate = 0.125 + (8.0 - 0.125) * rng.unit();
     let wave = OscWave::from_index(rng.below(<OscWave as Enum>::variants().len()));
     let ca_rule = rng.below(256) as i32;
     let symmetry = 1 + rng.below(8) as i32;
-    let probability = 0.35 + 0.65 * rng.unit();
-    let velocity = 0.45 + 0.55 * rng.unit();
+    let probability = crate::randomize::pick(crate::randomize::PROBABILITIES, &mut rng);
+    let velocity = crate::randomize::pick(crate::randomize::VELOCITIES, &mut rng);
     let rate = Rate::from_index(rng.below(<Rate as Enum>::variants().len()));
-    let root = rng.below(12) as i32;
-    let octaves = 1 + rng.below(6) as i32;
-    let edo = 1 + rng.below(crate::tuning::MAX_EDO as usize) as i32;
+    let root = crate::randomize::pick(crate::randomize::ROOTS, &mut rng);
+    let octaves = crate::randomize::pick(crate::randomize::OCTAVES, &mut rng);
+    let edo = crate::randomize::pick(crate::randomize::EDOS, &mut rng);
     let root_cents = -50.0 + 100.0 * rng.unit();
     let slide = rng.unit();
     let accent = rng.unit();
     let octave = rng.unit();
-    let swing = 0.45 * rng.unit();
+    let swing = crate::randomize::pick(crate::randomize::SWINGS, &mut rng);
     let nts = rng.unit() >= 0.25;
 
     if scope_enabled(p, scope::MODE) { set(ctx, &p.mode, mode); }

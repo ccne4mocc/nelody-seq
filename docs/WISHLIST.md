@@ -20,5 +20,4 @@ source of requirements. Nothing here is scheduled.
 
 ## Randomize
 
-- Mode-aware constraint presets (for example "Euclidean only, 3 or 5 pulses").
 - Feel-layer microtiming depth (sample-offset semantics must be defined first).

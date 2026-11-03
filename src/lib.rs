@@ -8,6 +8,7 @@ mod keys;
 mod midi_export;
 mod modes;
 mod modulation;
+mod randomize;
 mod sequence;
 mod tuning;
 mod view;

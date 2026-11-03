@@ -106,7 +106,9 @@ in `sequence::tests::acid_knobs_only_add_or_remove_flags`.
   generator step it drew. Slot-based contours (Rudin-Shapiro, Sieve, Eulerian) carry an explicit
   `Pattern.slots` degree, so their pitch stays on scale-degrees instead of contour bins.
 - η-style deterministic randomize draws all groups in a fixed order and skips disabled scope
-  bits, so enabling a group never changes what another group received.
+  bits, so enabling a group never changes what another group received. Values come from
+  mode-aware palettes, so a Euclidean line randomizes to 3, 5 or 7 pulses and every mode stays
+  inside its own `pulse_limit`.
 - Host-visible metadata (credits, waveform names, mode names) is read from the Rust side, so
   the panel cannot drift from the plug-in metadata.
 - All user-facing parameters are host-automatable; nothing musical lives outside the host.
