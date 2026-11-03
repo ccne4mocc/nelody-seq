@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nice-plug-xtask = { git = "https://github.com/AlexCharlton/nice-plug.git", rev = "50fed0ebabc3b880015d2a06e9436e4220b548f6" }
+nice-plug-xtask = { git = "https://github.com/ccne4mocc/nice-plug.git", rev = "65c87588ce2d915f3095b9c077447c23ce4406b0" }

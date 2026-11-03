@@ -16,9 +16,11 @@ crate-type = ["cdylib", "lib"]
 assert_process_allocs = ["nice-plug/assert_process_allocs"]
 
 [dependencies]
-# Pinned to a commit: the nice-plug repo has no stable release for this API line (crates.io
-# 0.4.x is a different, baseview-0.4 based editor API). See docs/ARCHITECTURE.md.
-nice-plug = { git = "https://github.com/AlexCharlton/nice-plug.git", rev = "50fed0ebabc3b880015d2a06e9436e4220b548f6", default-features = false, features = ["vst3"] }
+# Pinned to a fork commit: the upstream API line has no release compatible with the vendored
+# slint-baseview (crates.io 0.4.x uses a different baseview 0.4 editor API). The fork adds the
+# state-rescan/state-size guards and the VST3 pre-setup activation tolerance. See
+# docs/ARCHITECTURE.md and docs/HOST_VERIFICATION.md.
+nice-plug = { git = "https://github.com/ccne4mocc/nice-plug.git", rev = "65c87588ce2d915f3095b9c077447c23ce4406b0", default-features = false, features = ["vst3"] }
 slint-baseview = { path = "vendor/slint-baseview" }
 slint = { version = "=1.16.1", default-features = false, features = ["std", "compat-1-2"] }
 serde = { version = "1.0", features = ["derive"] }
