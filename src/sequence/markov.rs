@@ -18,9 +18,8 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let event_chance = (p.density.clamp(0.0, 1.0) * (0.25 + pulse_ratio * 0.75)).clamp(0.05, 1.0);
     // osc_rate (0.125..8.0) shapes step vs leap preference.
     let prox_exp = proximity_exp(p.osc_rate);
-    // The 7 degrees are scale slots, not positions in the whole contour: at the default two octaves
-    // `(deg + 0.5) / 7` landed exactly on a bin edge and named degrees 1,3,5,..13, i.e. the tonic was
-    // unreachable. The single-octave path (as in the acid modes) makes slot 0 the tonic in any tuning.
+    // The 7 degrees are scale slots, not contour positions; the single-octave path keeps slot 0
+    // on the tonic in any tuning.
     out.acid = true;
     let mut deg = 0usize;
     let mut any = false;

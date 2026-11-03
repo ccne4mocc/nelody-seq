@@ -10,8 +10,7 @@ pub(crate) fn x0(p: &GenParams) -> f64 {
     (0.05 + 0.9 * phase).clamp(0.001, 0.999)
 }
 
-/// The orbit may legitimately come within 1e-3 of 0 or 1 at r close to 4 (about 2% of steps), so only
-/// a true collapse onto the fixed points counts as an escape; the old 0.001 window re-seeded it.
+/// Near r=4 the orbit may come within 1e-3 of 0 or 1; only a true fixed-point collapse escapes.
 const EDGE: f64 = 1e-9;
 
 /// Logistic map: top-k values of the orbit are hits; pitch follows a delayed orbit sample so the

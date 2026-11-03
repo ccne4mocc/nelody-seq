@@ -1,7 +1,6 @@
 use super::{frac, GenParams, Pattern, Rng, PHI_INV};
 
-/// Sturmian slope for a density: `density * 1/phi`, so density 1.0 is exactly the golden slope and
-/// yields the Fibonacci word (the old 0.99 clamp stopped at 0.612 and never produced it).
+/// Sturmian slope for a density: `density * 1/phi`, so density 1.0 yields the Fibonacci word.
 pub(crate) fn alpha(density: f32) -> f64 {
     (density.clamp(0.05, 1.0) as f64 * PHI_INV).clamp(0.05, PHI_INV)
 }

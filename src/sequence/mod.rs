@@ -1,5 +1,4 @@
-//! Deterministic, bounded-work melody generators. Keep these functions pure and audio-thread safe.
-//! Adding a generator should not require touching MIDI scheduling or Slint geometry.
+//! Deterministic, bounded-work melody generators: pure and audio-thread safe.
 
 mod acid_euclid;
 mod acid_markov;
@@ -31,8 +30,7 @@ mod tonnetz;
 mod ulam_primes;
 mod walking_bass;
 
-// The panel draws these algorithms' own curves and cutoffs rather than restating their
-// formulas, so these re-exports exist for `crate::view` alone.
+// Re-exports for `crate::view`, which draws the algorithms' own curves and cutoffs.
 pub(crate) use circle_map::coupling as circle_coupling;
 pub(crate) use brownian::sigma as brownian_sigma;
 pub(crate) use cellular::selected_row as cellular_row;
@@ -50,12 +48,10 @@ pub(crate) use sieve::classes as sieve_classes;
 pub(crate) use tent_map::mu_of as tent_mu;
 pub(crate) use tonnetz::TONNETZ_START;
 
-// The mode enum is the host parameter type, shared with the generators: one list of modes,
-// one order, no mapping table to keep in sync.
+// The mode enum is the shared host parameter type: one list, one order, no mapping table.
 use crate::modes::Mode;
 
-/// Hard capacity for every fixed-size pattern array. The host exposes a smaller, user-selected
-/// `max_steps` ceiling (64 by default); 1024 is the largest value that ceiling can reach.
+/// Hard capacity for every pattern array; the host's `max_steps` ceiling can reach 1024.
 pub const MAX_STEPS: usize = 1024;
 pub const MIN_MAX_STEPS: usize = 64;
 pub const DEFAULT_MAX_STEPS: usize = 1024;
@@ -71,8 +67,7 @@ pub struct GenParams {
     pub kind: Mode,
     /// Number of grid cells the generators fill. Always a whole number.
     pub steps: usize,
-    /// Loop length in steps. Equal to `steps` for whole-step patterns; fractional values
-    /// make the loop wrap part-way through a cell.
+    /// Loop length in steps; fractional values wrap part-way through a cell.
     pub length: f32,
     /// Main pulse/generation control; its exact interpretation is mode dependent.
     pub pulses: usize,
@@ -136,9 +131,8 @@ impl Default for GenParams {
     }
 }
 
-/// One melodic line. `u` is the pitch contour (0..1 across the selected tuning), `semis` is an
-/// absolute semitone offset used by modes that name their own pitch classes, `oct` shifts whole
-/// octaves and `slide` asks the scheduler for a legato glide into the next note.
+/// One melodic line: `u` is the pitch contour, `semis` an absolute offset, `oct` shifts octaves
+/// and `slide` requests a legato glide into the next note.
 #[derive(Clone, Copy, Debug)]
 pub struct Pattern {
     pub steps: usize,
@@ -153,9 +147,8 @@ pub struct Pattern {
     pub absolute: bool,
     /// A 303-style line: `u` spans one octave and `oct` shifts it, instead of the whole range.
     pub acid: bool,
-    /// The line uses explicit scale-degree slots. `slots[i]` selects a degree inside one octave
-    /// (mod the tuning's degrees) and `u` is only the panel contour. Used by the slot-based
-    /// contours (Rudin-Shapiro, Sieve, Eulerian) so slot 0 is always the tonic at any octave count.
+    /// Explicit scale-degree slots: `slots[i]` selects a degree inside one octave, `u` is only
+    /// the panel contour. Slot 0 is the tonic at any octave count.
     pub slotted: bool,
     pub slots: [u8; MAX_STEPS],
     /// Symbolic generator state (Markov degree, Eulerian vertex, …), 0 = rest.
@@ -180,20 +173,17 @@ pub struct Pattern {
     pub sieve_cls: [(usize, usize); 3],
     /// Mozart-dice roll per step.
     pub roll: [u8; MAX_STEPS],
-    /// Steps the finished pattern was rotated by. Display slot `i` holds the generator's step
-    /// `(i + steps - rotation) % steps`; the panel uses this to draw the geometry that produced it.
+    /// Steps the finished pattern was rotated by: display slot `i` holds generator step
+    /// `(i + steps - rotation) % steps`.
     pub rotation: usize,
-    /// The finished line was retrograded (`mirror`), applied after the rotation. Together with
-    /// `rotation` this lets the panel map a display slot back to the generator step.
+    /// The finished line was retrograded after rotation; with `rotation`, maps display to generator step.
     pub mirrored: bool,
-    /// The scalar that shapes the mode's map, as the generator used it: logistic `r`, circle-map
-    /// `K`, Sturmian slope `alpha`. Zero when the mode has none. The view reads this instead of
-    /// re-deriving it from `density`, so a drawn curve cannot drift from the audible one.
+    /// The scalar that shapes the mode's map (logistic `r`, circle-map `K`, Sturmian `alpha`);
+    /// zero when none. The view reads this so a drawn curve cannot drift from the audible one.
     pub map_param: f32,
     /// Oscillator sampling: `(cycles per pattern, phase offset at generator step 0)`.
     pub osc: (f32, f32),
-    /// Logistic successor `f(orbit[i])`, stored per step so the panel never has to pair
-    /// neighbouring slots (rotation and mirror reorder them).
+    /// Logistic successor `f(orbit[i])`, stored per step because rotation and mirror reorder slots.
     pub orbit_next: [f32; MAX_STEPS],
 }
 
@@ -259,8 +249,7 @@ impl Rng {
     }
 }
 
-/// Fractional part in `0..1` for any sign, without `f64::rem_euclid`'s branchy float path on
-/// negative seeds.
+/// Fractional part in `0..1` for any sign.
 #[inline]
 pub(super) fn frac(x: f64) -> f64 {
     let f = x.fract();
@@ -281,13 +270,8 @@ pub(super) fn shuffle<T>(slice: &mut [T], rng: &mut Rng) {
     }
 }
 
-/// Weighted pick from a small fixed bank. `r` is a uniform draw in `0..1`; the weights are
-/// relative (they do not have to sum to one), so slot `i` is chosen with probability
-/// `w[i] / sum(w)`. Zero-weight slots are never chosen.
-///
-/// The draw used to be compared against the *unnormalised* running sum. With the root-heavy
-/// tables below (sums of 2.7..3.7) the first slot or two swallowed the whole `0..1` range, so
-/// Acid Random/Euclid/Motif only ever played 2 scale degrees and Markov / Acid Markov exactly one.
+/// Weighted pick from a fixed bank. `r` is uniform in `0..1`; slot `i` is chosen with probability
+/// `w[i] / sum(w)`, and zero-weight slots are never chosen.
 pub(super) fn pick(w: &[f32], r: f32) -> usize {
     let total: f32 = w.iter().map(|x| x.max(0.0)).sum();
     if !total.is_finite() || total <= 0.0 { return 0; }
@@ -351,8 +335,7 @@ impl AcidLine {
     }
 }
 
-/// Write an `AcidLine` into the shared pattern shape: seven scale slots spread across the
-/// contour, accent 0.95 on the root and 0.76 elsewhere.
+/// Write an `AcidLine` into the shared pattern: seven scale slots, accent 0.95 on the root.
 pub(super) fn acid_commit(out: &mut Pattern, n: usize, line: AcidLine) {
     out.hit[..n].copy_from_slice(&line.hit[..n]);
     out.oct[..n].copy_from_slice(&line.oct[..n]);
@@ -375,15 +358,13 @@ pub(super) fn top_k(scores: &[f32; MAX_STEPS], n: usize, k: usize, hits: &mut [b
     for &(_, i) in &ranked[..k] { hits[i] = true; }
 }
 
-/// Triangle-wave reflection into 0..=1, exact for any displacement. The old `if x < 0 { -x }`
-/// loops (4 or 8 passes) need steps no larger than the range and pin a long jump to the wall.
+/// Triangle-wave reflection into 0..=1, exact for any displacement.
 pub(super) fn fold01(x: f64) -> f64 {
     let m = x.rem_euclid(2.0);
     if m <= 1.0 { m } else { 2.0 - m }
 }
 
-/// Delay used when a mode reads its pitch from the orbit instead of from the same sample that
-/// ranks its onsets. Keeps peaks as rhythm while decorrelating the melody.
+/// Delay for modes that read pitch from a different orbit sample than the one ranking onsets.
 pub(super) fn pitch_delay(n: usize) -> usize {
     if n > 1 { 3.min(n - 1) } else { 0 }
 }
@@ -394,10 +375,8 @@ pub(super) fn normalize01(v: f32, lo: f32, hi: f32) -> f32 {
 }
 
 /// Mark `k` steps, spread evenly over the structural ones first. `primary[i]` flags the steps the
-/// algorithm itself calls onsets (Thue-Morse 1s, primes). Fewer than `k`: take every primary step.
-/// More: pick `k` evenly spaced among them. The old ranking (`top_k` on run length, `cell % 7`, or
-/// `i * 1e-6`) broke ties towards the start of the loop, so the last quarter of a thinned
-/// Thue-Morse or Ulam line stayed empty and surplus onsets piled up at the end. Allocation-free.
+/// algorithm calls onsets. Fewer than `k`: take every primary step. More: pick `k` evenly spaced
+/// among them. Allocation-free.
 pub(super) fn select_spread(primary: &[bool; MAX_STEPS], n: usize, k: usize, hits: &mut [bool; MAX_STEPS]) {
     hits[..n].fill(false);
     let k = k.min(n);
@@ -540,10 +519,8 @@ pub fn generate(p: &GenParams) -> Pattern {
     }
 
     if q.invert {
-        // Generators leave `u == 0.0` on their rests, so a plain flip turned every new note into the
-        // lowest pitch. Give those steps a contour that wanders on from the previous sounding note.
-        // Acid generators fill `u` on every step, so the `u == 0.0` guard leaves their degree slots
-        // alone; Markov opts into the acid pitch path but still leaves rests at 0.
+        // Generators leave `u == 0.0` on rests; give those steps a contour continuing the previous
+        // note. Acid generators fill every step, so their degree slots are untouched.
         let fill = !out.absolute;
         let mut last = (0..steps).rev().find(|&i| out.hit[i]).map(|i| out.u[i] as f64).unwrap_or(0.5);
         for i in 0..steps {
@@ -580,12 +557,9 @@ pub fn generate(p: &GenParams) -> Pattern {
         }
     }
 
-    // Metric accents land after rotation so they stay tied to the beat grid; each mode's own
-    // accent is already rotated above, and the two multiply.
-    // A 303 has no metric dynamics, only the accent flag. Multiplying 0.95 (accent) by the 0.68..1.0
-    // metric weight and the 0.9..1.0 human touch let an accented off-beat note (down to 0.58) play
-    // *softer* than a plain downbeat (0.76), and kept `acc` below the view's solid threshold forever.
-    // For acid lines the metric layer is reduced to a +-1.5% shimmer so flag and velocity agree.
+    // Metric accents land after rotation so they stay tied to the beat grid. A 303 has only the
+    // accent flag, so acid lines reduce the metric layer to a ±1.5% shimmer to keep flag and
+    // velocity agreeing.
     let mode_accents = out.acc;
     accents(&mut out, &q);
     for i in 0..steps {
@@ -600,9 +574,8 @@ mod tests {
     use super::*;
     use std::alloc::{GlobalAlloc, Layout, System};
 
-    // Counting allocator: invariant #1 requires `generate()` to run on the audio thread
-    // without allocating, and reading the code cannot prove that. Thread-local so the
-    // parallel test harness cannot leak its own allocations into the count.
+    // Counting allocator for invariant #1. Thread-local so parallel tests cannot leak allocations
+    // into the count.
     std::thread_local! {
         static ALLOCS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     }
@@ -806,8 +779,7 @@ mod tests {
 
     #[test]
     fn logistic_orbit_is_not_reseeded_near_the_edges_at_r_four() {
-        // Over many loops at r = 4 the old 0.001 window re-seeded ~2% of steps; consecutive orbit
-        // values must now obey the map except for the (astronomically rare) true escape.
+        // Consecutive orbit values must obey the map except for a true escape.
         let mut broken = 0;
         let mut total = 0;
         for variation in 0..64 {
@@ -907,7 +879,7 @@ mod tests {
 
     #[test]
     fn cellular_pitch_spans_more_than_the_old_neighbourhood_code() {
-        // Rule 30 from one seed: old code (3-cell neighbourhood / 7) gave {1,2,3,4}/7 = at most 0.57.
+        // Rule 30 from one seed must reach beyond the old 3-cell / 7 threshold.
         let mut set = std::collections::BTreeSet::new();
         for gen in [3usize, 5, 8, 10, 12, 14] {
             let out = generate(&GenParams { steps: 64, length: 64.0, pulses: gen, density: 1.0, variation: 0, ..base(Mode::Cellular) });
@@ -990,8 +962,7 @@ mod tests {
 
     #[test]
     fn hit_pitches_are_not_clustered_in_map_and_oscillator_modes() {
-        // Onset selection and pitch must be independent observables in these modes; otherwise the
-        // top-k peaks all land on the same high notes (square-wave oscillator used to have span 0).
+        // Onset selection and pitch must be independent, or top-k peaks all land on the same high notes.
         for kind in [Mode::Logistic, Mode::TentMap, Mode::HenonMap, Mode::Oscillator] {
             for density in [0.35f32, 0.65, 1.0] {
                 let mut lo = 1.0f32;
@@ -1042,9 +1013,8 @@ mod tests {
         assert!(!generate(&GenParams { mirror: false, ..g }).mirrored);
     }
 
-    /// Sweep every mode across step counts, densities, variations and the post-transforms. Guards
-    /// the bounded/finite invariant end to end: no panics, no writes past `steps`, every contour and
-    /// accent finite and in range, and every mode still sounds at one step and full density.
+    /// Sweep every mode across step counts, densities, variations and transforms: no panics, no
+    /// writes past `steps`, finite values in range, and every mode sounds at one step and full density.
     #[test]
     fn all_modes_stay_finite_and_bounded_across_the_parameter_sweep() {
         for kind in Mode::all() {

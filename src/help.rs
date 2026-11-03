@@ -1,8 +1,5 @@
-//! Live one-line math for the generator panel.
-//!
-//! The description next to each mode says what it does; this line says *how*, with the current
-//! parameter snapshot substituted in. Derived quantities come from the generators' own helpers so
-//! a displayed value cannot drift from the pattern that is actually playing.
+//! Live one-line math for the generator panel: the current snapshot substituted into the
+//! generators' own helpers, so the display cannot drift from the pattern actually playing.
 
 use crate::modes::Mode;
 use crate::sequence::{

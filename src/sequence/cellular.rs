@@ -7,9 +7,8 @@ fn nbr(row: &[bool; MAX_STEPS], n: usize, j: usize) -> u8 {
     (l << 2) | (c << 1) | r
 }
 
-/// The last four generations of one column read as a 4-bit number (current row = bit 0). The old
-/// 3-cell neighbourhood code can only be 1..4 on a live rule-30 cell, so the melody never left the
-/// bottom 57% of the range; the column code reaches every odd value 1..15 and uses the CA's memory.
+/// The last four generations of one column as a 4-bit number (current row = bit 0), reaching every
+/// odd value 1..15 and using the CA's memory.
 fn column_code(ca: &[[bool; MAX_STEPS]; CA_ROWS], row: usize, j: usize) -> u32 {
     (0..4).fold(0u32, |a, b| a | ((row >= b && ca[row - b][j]) as u32) << b)
 }

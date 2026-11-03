@@ -34,8 +34,7 @@ pub enum Theme {
     #[id = "forest"] #[name = "Forest"] Forest,
 }
 impl Theme {
-    /// Accent1/accent2/accent3/playhead/background1/background2/background3, then the
-    /// surface/control/hover/text/muted/border/cell-off/on-accent UI tokens.
+    /// Accent/playhead/background colours followed by the UI surface/text/border tokens.
     pub(crate) fn colors(self) -> [[u8; 3]; 15] {
         match self {
             Self::Sketchbook => [
@@ -70,8 +69,7 @@ impl Theme {
     }
 }
 
-/// Clock resolution. Existing ids are host state, so new divisions are appended, never
-/// renumbered; `RATE_ORDER` below decides the order the UI walks through.
+/// Clock resolution. Existing ids are host state; append new divisions, never renumber.
 #[derive(Enum, PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Rate {
     #[id = "1_4"] #[name = "1/4"] Quarter,
@@ -90,8 +88,7 @@ pub enum Rate {
     #[id = "1_64_dot"] #[name = "1/64."] SixtyFourthDotted,
 }
 impl Rate {
-    /// Musical display order: base, dotted, triplet for each note value. The enum's own order
-    /// is the host-state order and must not be used for stepping.
+    /// Musical display order; the enum's own order is host state and must not be used for stepping.
     const RATE_ORDER: [Rate; 14] = [
         Rate::Quarter, Rate::QuarterDotted,
         Rate::Eighth, Rate::EighthDotted, Rate::EighthTriplet,
@@ -126,8 +123,7 @@ impl Rate {
         Self::RATE_ORDER[(pos + delta).clamp(0, last) as usize]
     }
 
-    /// Parse a rate typed into the clock field. Accepts the enum's own labels plus common
-    /// aliases: `1/16T`, `1/16t`, `1/16.`, `1/16d`, `1/16dot`.
+    /// Parse a typed rate, accepting enum labels plus `T`/`t`/`.`/`d`/`dot` aliases.
     pub(crate) fn parse(text: &str) -> Option<Rate> {
         let mut s = text.trim().to_ascii_lowercase();
         s.retain(|c| !c.is_whitespace());
@@ -181,8 +177,7 @@ pub enum OscWave {
     #[id = "noise"] #[name = "Noise"] Noise,
 }
 
-/// Runtime LFO target. Only parameters that can be modulated per block without regenerating
-/// the pattern are in this first phase; pattern-shaping targets need a loop-boundary rewrite.
+/// Runtime LFO target. Pattern-shaping targets need a loop-boundary rewrite; the rest are per-block.
 #[derive(Enum, PartialEq, Eq, Clone, Copy, Debug)]
 pub enum LfoTarget {
     #[id = "none"] #[name = "None"] None,
@@ -191,8 +186,7 @@ pub enum LfoTarget {
     #[id = "velocity"] #[name = "Velocity"] Velocity,
 }
 
-/// LFO speed domain. New projects default to Hz; the beat domain remains available for
-/// tempo-locked movement. Existing `lfo*_rate` parameters still carry the beat value.
+/// LFO speed domain: free-running Hz or tempo-locked beats. Existing `lfo*_rate` values carry beats.
 #[derive(Enum, PartialEq, Eq, Clone, Copy, Debug)]
 pub enum LfoRateMode {
     #[id = "hz"] #[name = "Hz"] Hz,
@@ -227,8 +221,7 @@ pub struct MelodyParams {
     #[persist = "variation"]
     pub variation: AtomicU32,
     #[id = "mode"] pub mode: EnumParam<Mode>,
-    /// Pattern length in steps. Whole-number when `round_steps` is on; fractional values
-    /// create a loop that no longer aligns with the step grid.
+    /// Pattern length in steps; fractional values wrap between grid cells.
     #[id = "steps"] pub steps: FloatParam,
     /// User-selected ceiling for `steps`/`pulses`/`rotate`, 64–1024.
     #[id = "max_steps"] pub max_steps: IntParam,
@@ -314,15 +307,12 @@ pub struct MelodyParams {
     #[id = "oct_jump"] pub octave: FloatParam,
     /// Send microtonal tuning offsets as pitch bend.
     #[id = "nts"] pub nts: BoolParam,
-    /// Window length for the piano-roll history, in bars (4/4: four beats per bar). The old
-    /// `history_beats` id meant beats under the same label, so it is retired rather than reused:
-    /// projects saved with the old id reopen at the 4-bar default instead of silently showing a
-    /// window four times too wide.
+    /// Piano-roll history window in 4/4 bars. The old `history_beats` id meant beats, so it is
+    /// retired; projects saved with it reopen at the 4-bar default.
     #[id = "history_bars"] pub history_bars: FloatParam,
 }
 
-/// Format an LFO frequency in Hz. kHz is not offered: the LFO speed field is either Hz or a
-/// beat-synced rate.
+/// Format an LFO frequency in Hz; the speed field is either Hz or a beat-synced rate.
 fn format_hz(value: f32) -> String {
     if !value.is_finite() {
         return "0.00 Hz".to_string();
@@ -462,9 +452,8 @@ impl Default for MelodyParams {
     }
 }
 
-/// Number of note events kept for the piano-roll history. A full 1024-step line emits at most two
-/// events per step (NoteOn + NoteOff, including retriggers and legato), so 4096 events hold a dense
-/// full-length loop with headroom; 256 only covered the default 4-bar window.
+/// Note events kept for the piano-roll history. A full loop emits at most two per step, so 4096
+/// covers a dense 1024-step line with headroom.
 pub const HISTORY_LEN: usize = 4096;
 
 /// Effective feel/scheduling values for one note or block.
@@ -488,8 +477,7 @@ pub(crate) struct PitchValues {
 }
 
 impl MelodyParams {
-    /// Effective ceiling from the host parameter. Host state from an older build can be out of
-    /// range, and the audio thread should not trust either.
+    /// Effective ceiling, clamped against stale host state.
     fn step_ceiling(&self) -> usize {
         self.max_steps.value().clamp(MIN_MAX_STEPS as i32, MAX_STEPS as i32) as usize
     }
@@ -592,8 +580,7 @@ impl MelodyParams {
         }
     }
 
-    /// Legacy single-target values are treated as one link when the new mask is empty. This
-    /// keeps projects saved before drag/drop working without keeping the old selector in the UI.
+    /// Legacy single-target values become one link when the mask is empty, so old projects still load.
     fn legacy_link_mask(&self, slot: usize) -> u64 {
         let target = match slot {
             0 => self.lfo1_target.value(),
@@ -688,8 +675,7 @@ impl MelodyParams {
         }
     }
 
-    /// Base value plus every linked LFO's signal, clamped to the target's range. Integer targets
-    /// are rounded after summing so multiple LFOs combine predictably.
+    /// Base plus every linked LFO signal, clamped to range; integer targets round after summing.
     pub(crate) fn target_value(&self, target: ModTarget, signals: &[f32; LFO_COUNT]) -> f32 {
         let base = self.target_base(target);
         let (min, max) = self.target_range(target);
@@ -703,8 +689,8 @@ impl MelodyParams {
         if target.is_int() { value.round().clamp(min, max) } else { value }
     }
 
-    /// Effective generation snapshot at a clock position. Only pattern-shaping links change the
-    /// generated line; feel/tuning targets are still filled in so previews see one snapshot.
+    /// Effective snapshot at a clock position. Pattern-shaping links change the line; feel/tuning
+    /// targets are filled in so previews see one snapshot.
     pub(crate) fn gen_params_at(&self, clock: LfoClock) -> GenParams {
         let signals = self.lfo_signals(clock);
         let cap = self
@@ -777,8 +763,7 @@ impl MelodyParams {
         }
     }
 
-    /// MIDI note and microtonal detune for one pattern step. The detune is what `nts` sends as
-    /// pitch bend and what the history draws inside the row.
+    /// MIDI note and microtonal detune for one step; `nts` sends the detune as pitch bend.
     pub(crate) fn pitch_for(&self, pat: &Pattern, idx: usize) -> (u8, f32) {
         self.pitch_for_values(pat, idx, &self.pitch_values_base())
     }
@@ -798,9 +783,8 @@ impl MelodyParams {
         } else {
             self.scale.value().pitch(pat.u[idx], octaves, edo, root_cents)
         };
-        // `semis` is already the nearest semitone and `cents` the remainder (-50..=50) that the pitch bend
-        // carries. A second `(cents / 100).round()` here turned an exact +-50c detune into a whole extra
-        // semitone: 24-EDO quarter tones and root_cents = +-50 sounded 100c away from the target.
+        // `semis` is the nearest semitone and `cents` the remainder; rounding cents again would
+        // turn an exact ±50c detune into a whole extra semitone.
         let base = values.midi_root.clamp(0, 120) + values.root.clamp(0, 11) + semis;
         (base.clamp(0, 127) as u8, cents)
     }
@@ -813,8 +797,7 @@ fn cell_count_for(raw: f32, snap: bool, ceiling: usize) -> i32 {
     (if snap { raw.round() } else { raw.ceil() }).clamp(1.0, cap) as i32
 }
 
-/// Longest history window, in 4/4 bars, that the current pattern ceiling can fill. One bar is
-/// four beats, and `Rate::steps_per_beat` says how many grid cells make a beat.
+/// Longest history window in 4/4 bars that the current ceiling can fill.
 pub(crate) fn history_bars_ceiling(max_steps: usize, rate: Rate) -> f32 {
     let steps_per_bar = (rate.steps_per_beat() * 4.0).max(0.001);
     (max_steps as f64 / steps_per_bar).max(1.0) as f32
@@ -824,8 +807,7 @@ pub(crate) fn history_bars_ceiling(max_steps: usize, rate: Rate) -> f32 {
 pub struct Shared {
     pub current_step: AtomicI32,
     pub randomize_request: AtomicU32,
-    /// Bumped whenever Generate or regenerate-after-N actually swaps the pattern. The editor
-    /// turns each bump into one background pulse.
+    /// Bumped whenever Generate or regenerate-after-N swaps the pattern.
     pub regen_pulse: AtomicU32,
     /// Last host tempo as `f32` bits, for the editor-side MIDI export and history window.
     pub tempo_bits: AtomicU32,
@@ -913,8 +895,7 @@ impl Shared {
         )
     }
 
-    /// Clock at which the current pattern was generated. Preview generation uses this so it
-    /// matches the loop-boundary snapshot the audio thread actually plays.
+    /// Clock at which the pattern was generated; preview uses it to match the loop-boundary snapshot.
     pub(crate) fn pattern_clock(&self) -> LfoClock {
         LfoClock::from_beat(
             f64::from_bits(self.pattern_beat.load(Relaxed)),
@@ -929,14 +910,12 @@ fn regeneration_cycle_at(step_index: i64, loop_length: f64, every: i64, last: Op
     if cycle > 0 && cycle.rem_euclid(every) == 0 && last != Some(cycle) { Some(cycle) } else { None }
 }
 
-/// Grid cell for step `k` in a loop of `length` steps. A whole-number length is the identity
-/// `k.rem_euclid(n)`; a fractional one wraps mid-cell.
+/// Grid cell for step `k` in a loop of `length` steps; fractional lengths wrap mid-cell.
 fn step_index(k: i64, length: f64) -> i64 {
     if length >= 1.0 && length.fract() == 0.0 { k.rem_euclid(length as i64) } else { (k as f64).rem_euclid(length).floor() as i64 }
 }
 
-/// Where the step cursor resumes in this block. A carried cursor is only trusted while it is
-/// plausibly "the next step" for the current block.
+/// Where the step cursor resumes; a carried cursor is trusted only when it is plausibly next.
 fn resume_cursor(carried: Option<i64>, jumped: bool, start: f64, end: f64, spb: f64) -> i64 {
     let lo = (start * spb - 1.0).ceil() as i64;
     let hi = (end * spb + 1.0).ceil() as i64;
@@ -1087,8 +1066,7 @@ impl Plugin for NelodySeq {
         self.shared.set_track_name(context.track_name());
     }
     fn reset(&mut self) {
-        // nice-plug hands `reset` no ProcessContext, so NoteOffs are flushed at the top of the
-        // next `process`; clearing `active` here would leave the note stuck.
+        // `reset` gets no ProcessContext, so NoteOffs flush at the top of the next `process`.
         self.pending_reset = self.active.is_some();
         self.expected_beat = None;
         self.next_step = None;
@@ -1153,9 +1131,8 @@ impl Plugin for NelodySeq {
                 .store(modulation::lfo_phase(p.lfo_spec(slot), clock_start).to_bits(), Relaxed);
         }
 
-        // Base parameters drive change detection. The actual pattern key includes the LFO
-        // snapshot at this beat, so manual edits are immediate while modulation is sampled at
-        // loop boundaries inside the scheduling loop below.
+        // Base parameters drive change detection; the pattern key includes this beat's LFO
+        // snapshot, while pattern-shaping modulation is sampled at loop boundaries below.
         let base_key = p.gen_params();
         if self.last_base_key != Some(base_key) {
             let initial_key = p.gen_params_at(clock_start);
@@ -1197,8 +1174,7 @@ impl Plugin for NelodySeq {
         }
 
         loop {
-            // Swing is sampled at the nominal step beat because the swung onset depends on it.
-            // Gate, velocity and tuning are sampled later at the resolved onset.
+            // Swing is sampled at the nominal step beat; gate, velocity and tuning at the resolved onset.
             let nominal_beat = k as f64 * step_len;
             let nominal_clock = LfoClock::from_beat(nominal_beat, bpm);
             let swing_value = p.schedule_at(nominal_clock).swing;
@@ -1228,8 +1204,7 @@ impl Plugin for NelodySeq {
                     self.last_randomize_cycle = Some(cycle);
                 }
 
-                // Pattern-shaping LFO links are sampled once per loop. Derive the cycle from the
-                // loop length in force at this step so a Steps change cannot skip a boundary.
+                // Sample pattern-shaping LFO links once per loop, using the current loop length.
                 let mod_cycle = (k as f64 / self.loop_length).floor() as i64;
                 let mod_due = p.has_generation_links() && self.last_mod_cycle != Some(mod_cycle);
                 let regen_cycle = regeneration_cycle_at(k, self.loop_length, every, self.last_regen_cycle);
@@ -1239,14 +1214,12 @@ impl Plugin for NelodySeq {
                         self.shared.regen_pulse.fetch_add(1, Relaxed);
                         self.last_regen_cycle = Some(cycle);
                     }
-                    // `variation` is already bumped when regenerate-after-N fired, so this key is
-                    // exactly what the next block's base comparison expects.
+                    // `variation` is already bumped for regenerate-after-N; this is the next block's base key.
                     let next_key = p.gen_params_at(nominal_clock);
                     self.pattern = generate(&next_key);
                     self.loop_length = next_key.length as f64;
                     self.last_key = Some(next_key);
-                    // Regenerate-after-N bumps `variation`, so refresh the base snapshot too or
-                    // the next block would see a false manual change and generate a second time.
+                    // Refresh the base snapshot to avoid a false manual change next block.
                     self.last_base_key = Some(p.gen_params());
                     self.last_mod_cycle = Some((k as f64 / self.loop_length).floor() as i64);
                     self.shared.pattern_beat.store(nominal_beat.to_bits(), Relaxed);
@@ -1587,8 +1560,7 @@ mod tests {
         let params = MelodyParams::default();
         let mut pat = Pattern::default();
         pat.steps = 16;
-        // With the 2-octave default the contour spans 14 minor degrees, so u=(k+0.5)/14 names
-        // scale degree k and degree k repeats itself an octave up at u=(k+7.5)/14.
+        // With the 2-octave default the contour spans 14 minor degrees; degree k repeats an octave up.
         for (k, semis) in [0, 2, 3, 5, 7, 8, 10].into_iter().enumerate() {
             pat.u[k] = (k as f32 + 0.5) / 14.0;
             let (note, cents) = params.pitch_for(&pat, k);
@@ -1637,7 +1609,7 @@ mod tests {
             ..GenParams::default()
         });
         let params = |scale| MelodyParams { scale: EnumParam::new("Scale", scale), ..MelodyParams::default() };
-        // Step 1 is scale degree slot 2: a minor third in Minor, a major third in Major.
+        // Step 1 is degree slot 2: a minor third in Minor, a major third in Major.
         assert_eq!(params(Tuning::Minor).pitch_for(&pat, 1).0, 51);
         assert_eq!(params(Tuning::Major).pitch_for(&pat, 1).0, 52);
         // Just intonation keeps the same semitone but carries its own detune.

@@ -1,13 +1,8 @@
-//! Keys a host steals before the editor sees them, and how to hand them back.
+//! Keys a VST3 host steals before the editor sees them. Some hosts run their shortcut table ahead
+//! of the plug-in window, so Space and Backspace never reach a focused field. nice-plug reports
+//! those presses through `Editor::on_virtual_key_from_host`; claiming one skips the accelerator.
 //!
-//! Some VST3 hosts (REAPER is the usual example) run their own shortcut table ahead of the
-//! plug-in window: Space toggles transport and Backspace deletes media even while a text field
-//! has focus. nice-plug reports those presses through `Editor::on_virtual_key_from_host`; if the
-//! editor claims them the host skips its accelerator. The editor therefore claims a key only
-//! while a Slint text field has focus, and replays it into Slint on the window thread.
-//!
-//! This module is the pure part: which host keys are editing keys, and which Slint key each
-//! one becomes. The CLAP wrapper has no such hook, so this is VST3-only behaviour.
+//! This module is the pure host-key -> Slint-key mapping. The CLAP wrapper has no such hook.
 
 use nice_plug::prelude::{Modifiers, VirtualKeyCode};
 use slint::platform::Key;

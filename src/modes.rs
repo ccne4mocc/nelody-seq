@@ -1,10 +1,8 @@
-//! The 29 generation modes, in one list (24 non-acid + 5 acid).
+//! The 29 generation modes in one list (24 non-acid + 5 acid).
 //!
-//! `Mode` is the host-visible enum: the stable `id` values are what a saved project stores and
-//! the `name` values are what the host shows. The generators and the panels match on the same
-//! variants, so there is one list and one order — no second enum and no index mapping to keep in
-//! sync. `src/sequence/` and `src/view.rs` use the plain data type; only this file names the
-//! plug-in enum machinery.
+//! `Mode` is the host-visible enum: `id` values are stable project state and `name` values are
+//! shown by the host. Generators and panels match the same variants, so there is no second enum
+//! or index mapping.
 
 use nice_plug::prelude::Enum;
 
@@ -41,13 +39,11 @@ pub enum Mode {
     #[id = "ulam_primes"] #[name = "Ulam Spiral Primes"] UlamPrimes,
 }
 
-/// Presentation-only grouping. Never stored in the host state: `Mode` indices stay the stable
-/// project/API contract while the UI can show sections and sort by group.
+/// Presentation-only grouping; `Mode` indices remain the stable project contract.
 ///
-/// Labels and order are shared with nrum seq's `modes::GROUPS`. Keep them identical in both
-/// projects: Rhythm, Stochastic, Chaos / Physics, Fractal, Cellular, Geometric, Number Theory,
-/// Music Theory, Acid. `Fractal` is reserved for the fractal mode wave; an unused group renders
-/// no header.
+/// Labels and order are shared with nrum seq's `modes::GROUPS`: Rhythm, Stochastic, Chaos /
+/// Physics, Fractal, Cellular, Geometric, Number Theory, Music Theory, Acid. An empty group
+/// renders no header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeGroup {
     Rhythm,
@@ -140,9 +136,7 @@ impl Mode {
         }
     }
 
-    /// The order the mode list is drawn in: grouped by `group().rank()`, then host index. The mode
-    /// header wheel must step through this order, not the raw host index, or one notch from a
-    /// mode lands on a different group far away in the list.
+    /// Drawn order: grouped by `group().rank()`, then host index. The header wheel steps this order.
     pub fn display_order() -> Vec<Mode> {
         let mut modes: Vec<Mode> = (0..<Mode as Enum>::variants().len()).map(Mode::from_index).collect();
         modes.sort_by_key(|m| (m.group().rank(), m.to_index()));
@@ -156,8 +150,7 @@ impl Mode {
         order[(pos + delta).clamp(0, order.len() as i32 - 1) as usize]
     }
 
-    /// Every mode, for tests that sweep all of them. Production dispatch matches on the variant,
-    /// so this stays compiled out of the audio path.
+    /// Every mode, for test sweeps; production dispatch matches on the variant.
     #[cfg(test)]
     pub fn all() -> impl Iterator<Item = Mode> {
         (0..<Mode as Enum>::variants().len()).map(Mode::from_index)

@@ -25,11 +25,8 @@ fn shortest(d: i32) -> i32 {
     (d + 6).rem_euclid(12) - 6
 }
 
-/// Parsimonious voice leading: voices that are common tones of the new triad stay put and each
-/// remaining voice moves to the free pitch class by the shortest way. For P, L and R exactly one
-/// voice moves, by 1, 1 and 2 semitones. (The old code re-sorted pitch classes into 0..11 on every
-/// chord, so the lowest voice leapt by up to 11 semitones on an L move and the mean motion per chord
-/// was 2.2 semitones against the neo-Riemannian minimum of 1.3.)
+/// Parsimonious voice leading: common tones stay put and each remaining voice moves by the
+/// shortest path. For P, L and R exactly one voice moves, by 1, 1 and 2 semitones.
 fn lead(old: [i32; 3], pcs: [i32; 3]) -> [i32; 3] {
     let mut out = old;
     let mut taken = [false; 3];

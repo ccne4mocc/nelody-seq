@@ -6,12 +6,8 @@ pub(crate) fn mu_of(density: f32) -> f64 {
 }
 
 /// Tent map x' = mu * min(x, 1 - x); the orbit is the contour and the highest samples are hits.
-/// Pitch reads a delayed orbit sample, so the top peaks do not all land on the highest notes.
-///
-/// Three fixes against the first version: it started at `phase + 0.01·seed` (0.013 by default) with
-/// no transient, so every loop opened on an exponential ramp 0.01, 0.02, 0.05 ... (at density 0.3 the
-/// whole bar was that ramp); `variation` was ignored, so Generate only rotated the same line; and
-/// the pitch used the raw orbit, which lives in [mu(1 - mu/2), mu/2] and is a thin band for small mu.
+/// Start after a transient, and read pitch from a delayed orbit sample so peaks do not all become
+/// the highest notes.
 pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut out = Pattern { steps: p.steps, ..Pattern::default() };
     let n = p.steps.max(1);

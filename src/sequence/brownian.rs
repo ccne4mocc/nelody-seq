@@ -1,7 +1,6 @@
 use super::{fold01, frac, top_k, GenParams, Pattern, Rng, MAX_STEPS};
 
-/// Gaussian increment with unit variance: Irwin-Hall sum of four uniforms. (The old sum of two was
-/// triangular, kurtosis 2.4 against 3.0, and its spread did not match the `σ` the panel prints.)
+/// Gaussian increment with unit variance: Irwin-Hall sum of four uniforms.
 fn gaussian(rng: &mut Rng) -> f64 {
     let s = rng.unit() as f64 + rng.unit() as f64 + rng.unit() as f64 + rng.unit() as f64;
     (s - 2.0) * 3.0f64.sqrt()
@@ -13,8 +12,7 @@ pub(crate) fn sigma(density: f32) -> f32 {
 }
 
 /// Reflected Brownian walk; the biggest steps become onsets and the walk is the contour.
-/// `phase` is the starting position (0 = the middle). It used to set a drift of (phase - 0.5)·0.06,
-/// which at the default phase 0 pulled the walk to the floor: 26% of notes in the lowest decile.
+/// `phase` is the starting position (0 = the middle), not a drift.
 pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut out = Pattern { steps: p.steps, ..Pattern::default() };
     let n = p.steps.max(1);

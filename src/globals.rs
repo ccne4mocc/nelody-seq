@@ -1,9 +1,5 @@
-//! User-global settings, stored outside the DAW project.
-//!
-//! nice-plug already persists every parameter plus `#[persist]` fields with the host's
-//! project, so this file only holds preferences that should follow the user across every
-//! project: the colour theme, the host scale factor and the MIDI export folder.
-//! Everything musical stays in the project state.
+//! User-global settings stored outside the DAW project: theme, host scale and MIDI export folder.
+//! nice-plug persists musical parameters and `#[persist]` fields with the project itself.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

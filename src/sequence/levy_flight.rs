@@ -10,16 +10,15 @@ pub(crate) fn step_min(density: f32) -> f32 {
     0.02 + 0.06 * density.clamp(0.0, 1.0)
 }
 
-/// One Lévy step length: Pareto, `s_min · U^(-1/α)`, so P(S > s) = (s_min / s)^α. Capped at 8 ranges
-/// (four folds) to keep f32 precision. The old `U^(1/tail)` lies in 0..1: it is bounded, bunched
-/// near the maximum for large `tail`, and the spread of its steps was *smaller* than Brownian's.
+/// One Lévy step length: Pareto, `s_min · U^(-1/α)`, so P(S > s) = (s_min / s)^α. Capped at 8
+/// ranges (four folds) to keep f32 precision.
 pub(crate) fn step_len(u: f32, density: f32) -> f32 {
     let alpha = tail_alpha(density) as f64;
     ((step_min(density) as f64) * (u.max(1e-6) as f64).powf(-1.0 / alpha)).min(8.0) as f32
 }
 
 /// Heavy-tailed walk: most steps are small, occasional jumps dominate; jumps become onsets.
-/// `phase` is the starting position (0 = the middle); the old drift term is gone.
+/// `phase` is the starting position (0 = the middle).
 pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut out = Pattern { steps: p.steps, ..Pattern::default() };
     let n = p.steps.max(1);

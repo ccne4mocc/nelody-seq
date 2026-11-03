@@ -14,10 +14,7 @@ pub fn pack(ts_ms: u64, note: u8, vel: u8, on: bool) -> u64 {
     pack_detuned(ts_ms, note, vel, on, 0.0)
 }
 
-/// Packs one event into a single atomic word.
-///
-/// `cents` is the microtonal offset in cents, stored as a signed byte biased by 128 so it
-/// round-trips through the bits below the timestamp.
+/// Packs one event into a single atomic word. `cents` is stored as a signed byte biased by 128.
 pub fn pack_detuned(ts_ms: u64, note: u8, vel: u8, on: bool, cents: f32) -> u64 {
     let detune = ((cents.round() as i64 + DETUNE_BIAS as i64).clamp(0, 255)) as u64;
     (ts_ms << TS_SHIFT) | VALID | (detune << 17) | ((on as u64) << 15) | ((vel as u64) << 7) | (note as u64 & NOTE_MASK)
@@ -70,9 +67,7 @@ fn rect(s: &mut String, x0: f32, y0: f32, x1: f32, y1: f32) {
 /// `events` may be unsorted / contain stale entries; `now_ms` is the right edge of the view.
 pub fn build(events: &mut Vec<Ev>, now_ms: u64, window_ms: u64, w: f32, h: f32) -> Roll {
     let t_min = now_ms as i64 - window_ms as i64;
-    // Stable sort by time only. The ring is already in emission order, so an On that precedes
-    // its Off at the same millisecond must keep that order. Sorting Off first (the MIDI-file
-    // rule) pairs such a note backwards and leaves a phantom note across the window.
+    // Stable sort by time only: at the same millisecond an On must stay before its Off.
     events.sort_by_key(|e| e.t_ms);
     let mut segs: Vec<Seg> = Vec::new();
     let mut open: [Option<(i64, f32)>; 128] = [None; 128];
@@ -87,8 +82,7 @@ pub fn build(events: &mut Vec<Ev>, now_ms: u64, window_ms: u64, w: f32, h: f32) 
         } else if let Some((s, c)) = open[n].take() {
             segs.push(Seg { start: s, end: t, note: n as u8, cents: c });
         }
-        // An Off with no matching On is a ring-wrap/stale event. Skipping it is essential:
-        // synthesising a start at `t_min` drew a note across the whole history panel.
+        // An Off with no matching On is a ring-wrap/stale event; skip it.
     }
     for (n, o) in open.iter().enumerate() {
         if let Some((s, c)) = o {
@@ -97,7 +91,7 @@ pub fn build(events: &mut Vec<Ev>, now_ms: u64, window_ms: u64, w: f32, h: f32) 
     }
     segs.retain(|s| s.end >= t_min && s.start <= now_ms as i64 + 50);
 
-    // octave-aligned, stable pitch range (at least two octaves)
+    // octave-aligned pitch range
     let (mut lo, mut hi) = (48, 72);
     if !segs.is_empty() {
         let mn = segs.iter().map(|s| s.note as i32).min().unwrap();
@@ -200,8 +194,7 @@ mod tests {
 
     #[test]
     fn stray_note_off_does_not_stretch_back_to_the_window_edge() {
-        // A ring wrapped between a note's On and Off leaves an Off with no matching On.
-        // Drawing it from `t_min` is what produced full-width phantom notes.
+        // A wrapped ring can leave an Off with no matching On.
         let mut evs = vec![Ev { t_ms: 3_000, note: 60, vel: 0, on: false, cents: 0.0 }];
         let r = build(&mut evs, 5_000, 6_000, 600.0, 96.0);
         assert_eq!(r.notes.trim(), "M0 0");
@@ -209,8 +202,7 @@ mod tests {
 
     #[test]
     fn same_millisecond_on_and_off_pair_as_a_short_note() {
-        // Short notes at fast rates can land On and Off in the same millisecond. Sorting Off
-        // before On at equal times orphaned the Off and left the On open to `now_ms`.
+        // Short notes can land On and Off in the same millisecond; keep On first.
         let mut evs = vec![
             Ev { t_ms: 4_000, note: 60, vel: 90, on: true, cents: 0.0 },
             Ev { t_ms: 4_000, note: 60, vel: 0, on: false, cents: 0.0 },

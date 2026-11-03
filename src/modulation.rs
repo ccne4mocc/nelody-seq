@@ -1,8 +1,5 @@
-//! LFO signal model and modulation target metadata.
-//!
-//! This module is deliberately Slint-free and allocation-free. `process()` uses the same
-//! functions the editor uses for previews and the matrix, so a drawn value cannot drift from
-//! the value the scheduler applies.
+//! LFO signal model and target metadata. Slint-free and allocation-free; `process()` and the
+//! editor preview share these functions, so drawn values cannot drift from the scheduler.
 
 use crate::{LfoPolarity, LfoRateMode, OscWave};
 use nice_plug::prelude::Enum;
@@ -10,14 +7,12 @@ use nice_plug::prelude::Enum;
 /// Number of runtime LFOs. The UI lays them out in a 2x2 rack.
 pub const LFO_COUNT: usize = 4;
 
-/// Highest free-running LFO frequency. The speed field is Hz-only; kHz is deliberately not
-/// offered because the scheduler samples LFOs per event, not at audio rate.
+/// Highest free-running LFO frequency; the scheduler samples LFOs per event, not at audio rate.
 pub const LFO_MAX_HZ: f32 = 10.0;
 
 /// A user-editable numeric parameter that an LFO may modulate.
 ///
-/// The order is a persisted-link contract: append new targets, never renumber existing ones.
-/// `lfo*_links` stores one bit per target at `1 << index`.
+/// Persisted-link contract: append new targets, never renumber; `lfo*_links` uses one bit per index.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ModTarget {
     Steps,
@@ -82,8 +77,7 @@ impl ModTarget {
         Self::ALL.get(index).copied()
     }
 
-    /// Stable, human-readable matrix label. Keep these names independent of the mode-specific
-    /// slider labels (`Pulses` may read "Dice per bar" in the strip).
+    /// Stable matrix label, independent of mode-specific slider labels.
     pub fn label(self) -> &'static str {
         match self {
             ModTarget::Steps => "Steps",
@@ -113,8 +107,7 @@ impl ModTarget {
         }
     }
 
-    /// Targets that change `sequence::generate()` output and therefore need a loop-boundary
-    /// regeneration. Velocity, feel and tuning targets are sampled later.
+    /// Targets that change `generate()` output and need loop-boundary regeneration.
     pub fn affects_generation(self) -> bool {
         matches!(
             self,
@@ -170,8 +163,7 @@ pub fn target_in_mask(mask: u64, target: ModTarget) -> bool {
     mask & target_bit(target) != 0
 }
 
-/// Transport position in both the beat domain (beat-synced LFOs, swing, note timing) and the
-/// seconds domain (Hz LFOs). Built from the host beat so transport jumps stay coherent.
+/// Transport position in beats (beat-synced LFOs, swing, timing) and seconds (Hz LFOs).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LfoClock {
     pub beat: f64,
@@ -186,8 +178,7 @@ impl LfoClock {
     }
 }
 
-/// Everything one LFO needs to evaluate its phase. `Copy` so the audio thread can build it
-/// without allocation.
+/// Everything one LFO needs to evaluate its phase; `Copy` for allocation-free audio use.
 #[derive(Clone, Copy, Debug)]
 pub struct LfoSpec {
     pub enabled: bool,
@@ -251,8 +242,7 @@ pub fn lfo_signal(spec: LfoSpec, clock: LfoClock) -> f32 {
     (depth * shaped).clamp(-1.0, 1.0)
 }
 
-/// Fold a summed modulation offset into a parameter range. Half the range is the full-depth
-/// span, which matches the old Swing/Gate/Velocity scales.
+/// Fold a summed modulation offset into a parameter range; half the range is full depth.
 pub fn fold(base: f32, offset: f32, min: f32, max: f32) -> f32 {
     let (lo, hi) = if min <= max { (min, max) } else { (max, min) };
     if !base.is_finite() {

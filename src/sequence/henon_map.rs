@@ -5,13 +5,9 @@ pub(crate) fn a_of(density: f32) -> f64 {
     1.0 + density.clamp(0.0, 1.0) as f64 * 0.4
 }
 
-/// Hénon attractor; x is the 2-D panel's horizontal axis, y is the pitch (and the panel's vertical
-/// axis), and the move size ranks onsets. Onset and pitch therefore use independent observables.
-///
-/// The first version started at x = 1.8·phase - 0.9, y = 1.8·seed - 0.9. The map's basin is small
-/// (|y| above about 0.4 escapes), so 13% of (phase, seed) starts diverged, hit the ±2 clamp and then
-/// played one note forever. Start near the origin instead, discard a transient, and make `variation`
-/// matter. x is scaled by the real attractor extent (about ±1.3) rather than ±2, which used only 64%.
+/// Hénon attractor; x is the panel's horizontal axis, y is the pitch, and the move size ranks
+/// onsets, so onset and pitch are independent. Start near the origin, discard a transient and
+/// scale x by the real attractor extent (±1.3) to stay inside the basin.
 pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut out = Pattern { steps: p.steps, ..Pattern::default() };
     let n = p.steps.max(1);

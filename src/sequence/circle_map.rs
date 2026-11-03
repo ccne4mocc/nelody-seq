@@ -19,8 +19,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut any = false;
     for i in 0..n {
         let next = th + omega - k / TAU * (TAU * th).sin();
-        // 1e-9 slack: at K = 0 the accumulated rotation lands within rounding error of an integer
-        // and used to miss a wrap, giving `pulses - 1` onsets (10 of 306 tested combinations).
+        // 1e-9 slack so rotation rounding at K = 0 cannot miss a wrap.
         let wraps = (next + 1e-9).floor();
         let fired = wraps >= 1.0;
         th = (next - wraps).max(0.0);

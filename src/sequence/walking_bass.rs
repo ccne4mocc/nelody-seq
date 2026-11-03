@@ -2,8 +2,7 @@ use super::{GenParams, Pattern, Rng};
 
 const CHORD: [i8; 4] = [0, 4, 7, 10];
 
-/// Chord-tone index walking up and back down (ping-pong), so a line never wraps from the 7th to
-/// the root with a 10-semitone leap (the old cyclic index did, and so did its approach note).
+/// Chord-tone index walking up and back down (ping-pong), so a line never leaps from the 7th to the root.
 fn walk_index(j: usize, size: usize) -> usize {
     if size <= 1 { return 0; }
     let cycle = 2 * size - 2;
@@ -11,12 +10,8 @@ fn walk_index(j: usize, size: usize) -> usize {
     if k < size { k } else { cycle - k }
 }
 
-/// Walking bass: chord tones on the strong steps (every second step), and on the weak step before
-/// each one a chromatic approach from a semitone below / above / either, with probability density.
-///
-/// The first version set `hit = (i % 4 == 0)`, so no weak step ever sounded: all approach notes were
-/// computed and then silenced, and with 4 tones only the root and fifth (steps 0 and 4 of an 8-step
-/// bar) were ever heard.
+/// Walking bass: chord tones on strong steps and a chromatic approach on the weak step before
+/// each, from below, above or either, with probability density.
 pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut out = Pattern { steps: p.steps, absolute: true, ..Pattern::default() };
     let n = p.steps.max(1);

@@ -19,9 +19,8 @@ pub(crate) fn ruler_order(pulses: usize) -> usize {
     pulses.clamp(2, 12)
 }
 
-/// Largest order `<= ruler_order(pulses)` whose ruler fits into `n` steps (length + 1 <= n).
-/// A ruler squeezed into fewer steps than its length cannot keep its marks apart, which is what
-/// used to merge marks and repeat intervals at the common 16- and 32-step loop lengths.
+/// Largest order `<= ruler_order(pulses)` whose ruler fits into `n` steps (length + 1 <= n);
+/// a squeezed ruler would merge marks and repeat intervals.
 pub(crate) fn effective_order(pulses: usize, n: usize) -> usize {
     let mut o = ruler_order(pulses);
     while o > 2 && RULERS[o - 2][o - 1] as usize + 1 > n {

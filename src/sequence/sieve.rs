@@ -47,8 +47,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         let c0 = class_contains(i, cls[0]);
         let c1 = terms >= 2 && class_contains(i, cls[1]);
         let deg = ((i / cls[0].0.max(1)) + if c1 { 3 } else { 0 }) % 7;
-        // Explicit slot: the old `frac(phase + (deg + 0.5) / 7)` contour put every slot on a bin
-        // edge above one octave, so the tonic disappeared. Slot 0 stays the tonic in any tuning.
+        // Explicit slot keeps slot 0 on the tonic in any tuning.
         let slot = ((deg + shift) % 7) as u8;
         out.slots[i] = slot;
         out.u[i] = (slot as f32 + 0.5) / 7.0;

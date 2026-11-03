@@ -1,5 +1,4 @@
-//! Pure tuning math: scale tables in cents, degree -> (MIDI note, detune cents). No allocation,
-//! no global state. The `Tuning` enum is a host parameter, so it carries nice-plug's `Enum` derive.
+//! Pure tuning math: scale tables in cents and degree -> (MIDI note, detune cents).
 
 use nice_plug::prelude::Enum;
 
@@ -48,8 +47,7 @@ pub enum Tuning {
 }
 
 impl Tuning {
-    /// Pitch classes of one octave, in cents above the root, ascending from 0.
-    /// `Edo` has no table; its step size comes from the `edo` parameter instead.
+    /// Pitch classes of one octave in cents; `Edo` has no table, its step comes from `edo`.
     pub fn cents(self) -> &'static [f32] {
         match self {
             Tuning::Major => &[0.0, 200.0, 400.0, 500.0, 700.0, 900.0, 1100.0],
@@ -64,11 +62,9 @@ impl Tuning {
             Tuning::Pythagorean => &[0.0, 90.22, 203.91, 294.13, 407.82, 498.04, 588.27, 701.96, 792.18, 905.87, 996.09, 1109.78],
             // 3/2 narrowed by a quarter syntonic comma (81/80), which gives a 5/4 major third.
             Tuning::Meantone => &[0.0, 117.11, 193.16, 310.26, 386.31, 503.42, 620.53, 696.58, 813.69, 889.74, 1006.84, 1082.89],
-            // Harmonics 8..15 over the fundamental 8: 8/8 9/8 10/8 11/8 12/8 13/8 14/8 15/8. The table
-            // used to start at 9/8 and end on 1200c, so the tonic itself was missing from every octave
-            // (and acid slot 0, the root-biased one, sounded the 9/8 above it).
+            // Harmonics 8..15 over the fundamental 8: 8/8 9/8 10/8 11/8 12/8 13/8 14/8 15/8.
             Tuning::Harmonic => &[0.0, 203.91, 386.31, 551.32, 701.96, 840.53, 968.83, 1088.27],
-            // Near-even pentatonic, ~240c per tone.
+            // Near-even pentatonic.
             Tuning::Slendro => &[0.0, 240.0, 480.0, 720.0, 960.0],
             Tuning::Edo => &[],
         }
@@ -88,7 +84,7 @@ impl Tuning {
         match self {
             Tuning::Edo => {
                 let e = edo.clamp(1, MAX_EDO) as usize;
-                // The octave term was missing: with `octaves` > 1 every upper octave replayed the first.
+                // Include the octave term so upper octaves do not replay the first.
                 (deg % e) as f32 * 1200.0 / e as f32 + 1200.0 * (deg / e) as f32
             }
             _ => {
@@ -98,8 +94,7 @@ impl Tuning {
         }
     }
 
-    /// Quantise the pitch contour `u` (0..1) to a semitone offset from the root note plus the
-    /// detune in cents that did not fit on that note. Detune is in -50..=50.
+    /// Quantise `u` (0..1) to a semitone offset plus detune in cents (-50..=50).
     pub fn pitch(self, u: f32, octaves: u32, edo: u32, root_cents: f32) -> (i32, f32) {
         let span = self.degrees(octaves, edo).max(1);
         let deg = ((u.clamp(0.0, 1.0) * span as f32) as usize).min(span - 1);
@@ -108,9 +103,8 @@ impl Tuning {
         (semis as i32, cents - semis * 100.0)
     }
 
-    /// Like `pitch`, but `slot` names a scale degree inside one octave: slot 0 is always the tonic
-    /// and `oct` shifts the whole degree by octaves. The slot-based generators use this so their
-    /// contour cannot fall between degree bins at two or more octaves.
+    /// Like `pitch`, but `slot` names a degree inside one octave: slot 0 is always the tonic and
+    /// `oct` shifts whole octaves.
     pub fn pitch_slot(self, slot: usize, oct: i32, edo: u32, root_cents: f32) -> (i32, f32) {
         let span = self.degrees(1, edo).max(1);
         let cents = self.degree_cents(slot % span, edo) + 1200.0 * oct as f32 + root_cents;
@@ -118,8 +112,7 @@ impl Tuning {
         (semis as i32, cents - semis * 100.0)
     }
 
-    /// Like `pitch`, but `u` (0..1) picks a degree inside ONE octave and `oct` then shifts it by whole
-    /// octaves. The acid generators use this so a line keeps its shape in any tuning.
+    /// Like `pitch`, but `u` picks a degree inside one octave and `oct` shifts whole octaves.
     pub fn pitch_in_octave(self, u: f32, oct: i32, edo: u32, root_cents: f32) -> (i32, f32) {
         let span = self.degrees(1, edo).max(1);
         let slot = ((u.clamp(0.0, 1.0) * span as f32) as usize).min(span - 1);

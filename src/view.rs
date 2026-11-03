@@ -1,5 +1,4 @@
-//! Pure GUI geometry for the per-mode views. No Slint types, so every panel is unit-tested.
-//! All coordinates are in a 210x210 panel; path strings use SVG path syntax.
+//! Pure GUI geometry for the per-mode views, in a 210x210 panel; path strings use SVG syntax.
 
 use crate::modes::Mode;
 use crate::sequence::{
@@ -117,9 +116,8 @@ fn line(s: &mut String, a: (f32, f32), b: (f32, f32)) {
     ln(s, b.0, b.1);
 }
 
-/// Thumbnail paths for the oscillator picker, one per waveform in the same order as
-/// `OscWave`. The icon viewbox is 100x40; every path is a sampled copy of the generator's own
-/// `oscillator_value`, so a button can never advertise a shape the mode does not play.
+/// Thumbnail paths for the oscillator picker, one per `OscWave` in order. Each path samples the
+/// generator's own `oscillator_value`, so a button cannot advertise a shape the mode does not play.
 pub fn wave_icon_paths() -> Vec<String> {
     (0..oscillator_wave_count)
         .map(|wave| {
@@ -142,16 +140,15 @@ fn x_of(i: usize, n: usize) -> f32 {
     10.0 + (P - 20.0) * i as f32 / n.max(1) as f32
 }
 
-/// Generator step that produced display slot `i`: the inverse of the rotation followed by the mirror
-/// that `sequence::generate` applies. Views that redraw generator geometry (residue classes,
-/// oscillator phase) must index through this or they drift away from the notes once the pattern is
-/// rotated, mirrored or regenerated (a new variation rotates by one step).
+/// Generator step that produced display slot `i`: the inverse of the rotation and mirror applied
+/// by `sequence::generate`. Views that redraw generator geometry must index through this or they
+/// drift from the notes after rotation, mirroring or a new variation.
 fn src_index(pat: &Pattern, i: usize, n: usize) -> usize {
     let j = if pat.mirrored { n - 1 - i } else { i };
     (j + n - pat.rotation % n) % n
 }
 
-/// Draw the pitch contour through sounding steps (shared by the strip-style panels).
+/// Draw the pitch contour through sounding steps.
 fn contour(v: &mut View, pat: &Pattern, n: usize) {
     let mut started = false;
     for i in 0..n {
@@ -176,8 +173,8 @@ fn playhead_column(v: &mut View, n: usize, cur: i32) {
     poly(&mut v.hand, &[(x, 6.0), (x + w, 6.0), (x + w, P - 6.0), (x, P - 6.0)]);
 }
 
-/// Acid piano roll: a column per step, a row per pitch (octave flag + scale slot). Accented notes
-/// are solid, plain ones translucent; a slide is a line from the note to the note it glides into.
+/// Acid piano roll: a column per step and a row per pitch; accented notes are solid and slides
+/// connect to the note they glide into.
 fn acid_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     let (x0, x1, y0, y1) = (6.0f32, P - 6.0, 12.0f32, P - 12.0);
     let sw = (x1 - x0) / n as f32;
@@ -257,8 +254,7 @@ fn markov_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
 /// Oscillator panel: the exact waveform the generator sampled, plus the chosen onsets.
 fn oscillator_view(v: &mut View, pat: &Pattern, n: usize, cur: i32, wave: usize) {
     let wave = wave % oscillator_wave_count;
-    // The exact curve the generator sampled: display slot `c` (continuous) came from generator step
-    // `g`, whose phase is `g / n * cycles + phase0`. Same y scale as the dots, so they sit on it.
+    // The generator's exact curve: display slot `c` maps to generator step `g`. Same y scale as the dots.
     let (cycles, phase0) = pat.osc;
     let mut prev: Option<f32> = None;
     let dense = 240usize;
@@ -339,8 +335,8 @@ fn sieve_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     playhead_column(v, n, cur);
 }
 
-/// Fibonacci / Sturmian panel: the staircase of floor((i+1)α) (running onset count) against the
-/// straight line of slope α it hugs, with the onsets marked on the steps.
+/// Fibonacci / Sturmian panel: the staircase of floor((i+1)α) against the line of slope α, with
+/// onsets marked on the steps.
 fn fibonacci_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     let total = (0..n).filter(|&i| pat.hit[i]).count();
     let top = (total as f32).max(pat.map_param * n as f32).max(1.0);
@@ -357,7 +353,7 @@ fn fibonacci_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
         }
     }
     ln(&mut v.edges, x_of(n, n), yc(count));
-    // characteristic line: the same rise spread evenly over the loop
+
     line(&mut v.lines, (x_of(0, n), yc(0.0)), (x_of(n, n), yc(total as f32)));
     playhead_column(v, n, cur);
 }
@@ -377,8 +373,8 @@ fn bernoulli_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     playhead_column(v, n, cur);
 }
 
-/// Golomb panel: the ruler marks along a line with an arc over every pair of marks, its height
-/// proportional to the interval it spans. In a Golomb ruler no two arcs have the same width.
+/// Golomb panel: ruler marks with an arc over every pair, its height proportional to the interval.
+/// In a Golomb ruler no two arcs have the same width.
 fn golomb_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     let y = P * 0.5;
     line(&mut v.edges, (8.0, y), (P - 8.0, y));
@@ -388,7 +384,7 @@ fn golomb_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
         line(&mut v.edges, (x, y - 10.0), (x, y + 10.0));
         v.nodes.push(Node { x, y, r: 5.0, on: true, cur: cur == i as i32, label: String::new() });
     }
-    // all pairs for a real ruler (<= 12 marks, 66 arcs); neighbours only for dense inverted lines
+
     let all_pairs = marks.len() <= 12;
     for (a, &i) in marks.iter().enumerate() {
         let last = if all_pairs { marks.len() } else { (a + 2).min(marks.len()) };
@@ -423,12 +419,12 @@ fn dice_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
 
 /// Logistic panel: the map's parabola and the orbit points the generator actually visited.
 fn logistic_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
-    // r comes from the pattern (the generator's own value); it used to be logistic_r(0.65) always.
+    // r comes from the generator's own pattern snapshot.
     let r = if pat.map_param > 0.0 { pat.map_param } else { logistic_r(0.65) as f32 };
     let (bx, by, w, hgt) = (18.0, P - 63.0, P - 36.0, P - 85.0);
     mv(&mut v.edges, bx, by); ln(&mut v.edges, bx + w, by);
     mv(&mut v.edges, bx, by); ln(&mut v.edges, bx, by - hgt);
-    // the diagonal x_{n+1} = x_n the cobweb steps refer to
+    // the diagonal x_{n+1} = x_n used by the cobweb
     line(&mut v.edges, (bx, by), (bx + w, by - hgt));
     for s in 0..=48 {
         let x = s as f32 / 48.0;
@@ -438,7 +434,7 @@ fn logistic_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
         if s == 0 { mv(&mut v.edges, px, py); } else { ln(&mut v.edges, px, py); }
     }
     for i in 0..n {
-        // (x_n, x_{n+1}) from the stored successor: on the parabola for any rotation or mirror.
+        // (x_n, x_{n+1}) from the stored successor, on the parabola for any rotation or mirror.
         let (x, y) = (pat.orbit[i], pat.orbit_next[i]);
         let (px, py) = (bx + x * w, by - y * hgt);
         let on = pat.hit[i];
@@ -450,7 +446,7 @@ fn logistic_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
         }
         v.nodes.push(Node { x: px, y: py, r: if on { 4.0 } else { 2.0 }, on, cur: cur == i as i32, label: String::new() });
     }
-    // slim orbit trace in the lower half
+
     for i in 0..n {
         let ox = 12.0 + (i as f32 + 0.5) / n as f32 * (P - 24.0);
         let oy = P - 12.0 - pat.orbit[i] * 32.0;
@@ -811,14 +807,14 @@ mod tests {
 
     #[test]
     fn sieve_rows_follow_rotation_and_mirror() {
-        // every drawn onset must sit on one of the residue rows, however the line was rotated
+        // every onset must sit on a residue row, however the line was rotated
         for (rotate, mirror, variation) in [(0usize, false, 0u32), (3, false, 0), (0, true, 0), (5, true, 4), (0, false, 7)] {
             let g = GenParams { kind: Mode::Sieve, steps: 32, pulses: 2, density: 1.0, rotate, mirror, variation, ..GenParams::default() };
             let pat = generate(&g);
             let v = build(Mode::Sieve, &pat, 32, -1, 0, 0);
             let on_row = v.solid.matches('M').count();
             let hits = (0..32).filter(|&i| pat.hit[i]).count();
-            // solid squares are class members that are also hits (one per class row they appear in)
+
             assert!(on_row >= hits, "rotate {rotate} mirror {mirror} var {variation}: {on_row} solid cells for {hits} onsets");
         }
     }
@@ -833,7 +829,7 @@ mod tests {
                 assert!((r as f64 - crate::sequence::logistic_r(density)).abs() < 1e-6);
                 let v = build(Mode::Logistic, &pat, 32, -1, 0, 0);
                 assert!(!v.nodes.is_empty());
-                // same box as `logistic_view`: x in [bx, bx + w], y in [by - hgt, by]
+
                 let (bx, by, w, hgt) = (18.0, P - 63.0, P - 36.0, P - 85.0);
                 for n in &v.nodes {
                     let x = (n.x - bx) / w;
@@ -850,7 +846,7 @@ mod tests {
             let g = GenParams { kind: Mode::Oscillator, steps: 16, pulses: 16, density: 1.0, osc_rate: rate, phase, rotate, mirror, osc_wave: 0, ..GenParams::default() };
             let pat = generate(&g);
             let v = build(Mode::Oscillator, &pat, 16, -1, 0, 0);
-            // rebuild the polyline and test each dot against the nearest curve sample
+
             let pts: Vec<(f32, f32)> = v.edges.split('M').flat_map(|seg| seg.split('L')).filter_map(|t| {
                 let mut it = t.split_whitespace().map(|x| x.parse::<f32>());
                 Some((it.next()?.ok()?, it.next()?.ok()?))

@@ -1,8 +1,5 @@
-//! Slint GUI adapter: the reference project's separation between pure geometry and UI glue.
-//!
-//! Everything here runs on the editor thread. `process()` never sees Slint and never waits on
-//! the cache mutex; the editor polls atomics and regenerates only when a parameter snapshot
-//! actually changed.
+//! Slint GUI adapter between pure geometry and UI glue. Everything here runs on the editor
+//! thread; `process()` never sees Slint and the editor regenerates only when a snapshot changes.
 use crate::globals;
 use crate::history;
 use crate::keys;
@@ -67,9 +64,7 @@ fn mode_entries() -> Vec<ModeEntry> {
     entries
 }
 
-/// Pair the grouped entries into two-column rows: a header row stays full-width and each group's
-/// modes fill left/right slots. This mirrors the nrum seq mode picker while keeping the
-/// nelody seq's 300px dropdown width.
+/// Pair grouped entries into two-column rows: headers stay full-width, modes fill left/right slots.
 fn mode_rows() -> Vec<ModeRow> {
     let entries = mode_entries();
     let mut rows = Vec::new();
@@ -139,8 +134,7 @@ struct SlintEditorHandle {
 unsafe impl Send for SlintEditorHandle {}
 impl Drop for SlintEditorHandle {
     fn drop(&mut self) {
-        // Closing is the last chance to persist. Read live state here rather than a snapshot
-        // taken at spawn, which would revert every change made during the session.
+        // Closing is the last chance to persist; read live state, not a spawn-time snapshot.
         globals::save_now(&global_settings(
             &self.params,
             f32::from_bits(self.scale.load(Relaxed)),
@@ -263,8 +257,7 @@ fn lfo_polarity_param(p: &MelodyParams, slot: i32) -> &EnumParam<LfoPolarity> {
 /// Slider and spin-box paths share this so clamping stays identical.
 fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
     let snap = p.round_steps.value();
-    // The ceiling is a host parameter, but host echo is asynchronous. Use the value being set
-    // for the same tick so dependent steps/pulses/rotate limits cannot lag one edit behind.
+    // Host echo is asynchronous; use the value being set so dependent limits cannot lag a tick.
     if key == 14 {
         let cap = (value.round() as i32).clamp(MIN_MAX_STEPS as i32, MAX_STEPS as i32);
         set(c, &p.max_steps, cap);
@@ -345,8 +338,7 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
     let variation = p.variation.fetch_add(1, Relaxed).wrapping_add(nonce);
     let mut rng = Rng::new(p.seed.value(), variation, 0xA1_60_D2_0A_5EED);
 
-    // Draw the whole set in a fixed order, then apply only the enabled groups: enabling a
-    // group never changes what another group received.
+    // Draw the whole set in fixed order, then apply only enabled groups.
     let mode = Mode::from_index(rng.below(<Mode as Enum>::variants().len()));
     let scale = Tuning::from_index(rng.below(<Tuning as Enum>::variants().len()));
     let ceiling = p.step_ceiling();
@@ -389,8 +381,7 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
         set(ctx, &p.octaves, octaves);
         set(ctx, &p.edo, edo);
         set(ctx, &p.root_cents, root_cents);
-        // NTS changes the sound class (it gates every microtonal bend), so it belongs with tuning,
-        // not with the velocity/swing feel group.
+        // NTS gates every microtonal bend, so it belongs with tuning, not the feel group.
         set(ctx, &p.nts, nts);
     }
     if scope_enabled(p, scope::CLOCK) {
@@ -463,8 +454,7 @@ fn open_folder(path: &Path) {
 }
 
 fn push_view(ui: &AppWindow, v: &View) {
-    // Update rows in place when the count is unchanged: replacing the model resets the
-    // repeater, and a reset element does not tween.
+    // Update rows in place when the count is unchanged; replacing the model breaks tweening.
     let model = ui.get_view_nodes();
     if model.row_count() == v.nodes.len() {
         for (i, n) in v.nodes.iter().enumerate() {
@@ -491,8 +481,7 @@ fn history_window_ms(bars: f32, bpm: f32) -> u64 {
     ((bars.clamp(1.0, MAX_STEPS as f32) * BEATS_PER_BAR * 60_000.0 / bpm).round() as u64).max(250)
 }
 
-/// Push the right-to-left rolling history. The window is in milliseconds, derived from the host
-/// tempo and the user's bar count, so the same setting looks the same at any BPM.
+/// Push the right-to-left history, with the window in milliseconds derived from tempo and bar count.
 fn push_history(
     ui: &AppWindow,
     shared: &Shared,
@@ -532,8 +521,7 @@ fn lfo_source_label(p: &MelodyParams, slot: usize) -> String {
     }
 }
 
-/// One row per LFO/target link. Read-only in this phase; the matrix is built on the editor
-/// thread only while it is open.
+/// One row per LFO/target link; the matrix is built on the editor thread while open.
 fn matrix_rows(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<ModRow> {
     let signals = p.lfo_signals(clock);
     let mut rows = Vec::new();
@@ -607,8 +595,7 @@ fn target_views(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<Mod
                     LfoRateMode::Hz => format!("{:.2}Hz", spec.freq_hz),
                     LfoRateMode::Beats => format!("{:.1}b", spec.rate_beats),
                 };
-                // The half-range span is the full-depth modulation amount, so signal × 0.5 is
-                // the signed share of the target's full range.
+                // Half the range is full depth, so signal × 0.5 is the signed share.
                 let percent = signals[slot] * 50.0;
                 parts.push(format!(
                     "LFO{} {speed} {}{:.0}%",
@@ -1086,8 +1073,7 @@ impl Editor for SlintEditor {
                 let rows = matrix_rows(p, live_clock);
                 let model = ui.get_mod_rows();
                 if model.row_count() == rows.len() {
-                    // Update in place. Replacing the model every frame recreates the repeater
-                    // elements and interrupts a click on the row's delete button.
+                    // Update in place; rebuilding every frame interrupts clicks on the delete button.
                     for (i, row) in rows.iter().enumerate() {
                         if model.row_data(i).as_ref() != Some(row) {
                             model.set_row_data(i, row.clone());
@@ -1102,7 +1088,6 @@ impl Editor for SlintEditor {
             ui.set_mirror_on(p.mirror.value());
             ui.set_logging_on(p.logging.value());
             ui.set_generate_on(p.generate.value());
-            // Melody / tuning row.
             let scale_index = p.scale.value().to_index();
             ui.set_tuning_name(SharedString::from(<Tuning as Enum>::variants()[scale_index]));
             ui.set_scale_index(scale_index as i32);

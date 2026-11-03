@@ -31,8 +31,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut len = 1usize;
     let family = ((p.seed.clamp(0.0, 0.999_999) * 4.0) as usize + p.variation as usize) % 4;
 
-    // Fibonacci growth needs 16 rewrites to reach 1024 symbols; 12 stopped at 377 and the word
-    // then repeated (`symbols[i % len]`) for every longer loop. Still bounded: 16 passes over <= CAP.
+    // Fibonacci growth needs 16 rewrites to reach 1024 symbols; still bounded by CAP.
     for _ in 0..16 {
         if len >= n { break; }
         let mut next = [A; CAP];
@@ -59,9 +58,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
 
     let thr = threshold(p);
     let mut local = Rng::new(p.seed, p.variation, 0x1A57_0000);
-    // The contour is the running sum of the symbol steps, folded back into 0..1 (a reflected walk),
-    // so A really rises and B really falls. The old `frac(..)` wrapped, turning every overshoot into
-    // a leap across the whole range (13 of 31 steps jumped by more than half of it).
+    // The contour is a reflected walk: A rises and B falls without wrapping across the whole range.
     let mut walk = frac(p.seed as f64 + p.phase as f64);
     let mut any = false;
     for i in 0..n {

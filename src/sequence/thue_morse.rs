@@ -29,7 +29,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     for i in 0..n {
         let b = bit(i + offset);
         primary[i] = b == 1;
-        // the old contour was `run % 7`; runs are 1 or 2 long, so it had only two pitches
+        // a run-length contour gives only two pitches; the infinity series uses the whole range
         out.u[i] = ((infinity(i + offset) + 5) as f32 / 10.0).clamp(0.0, 1.0);
         out.orbit[i] = b as f32;
         out.state[i] = b;

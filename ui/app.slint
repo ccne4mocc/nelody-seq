@@ -37,15 +37,13 @@ export struct ModTargetView {
     count: int,
 }
 
-// One numeric-entry session shared by every generator option strip. A global avoids wiring a
-// read-back callback for each OptSlider while still allowing only one inline editor at a time.
+// One numeric-entry session shared by every option strip, so only one inline editor is open.
 export global OptEdit {
     in-out property <int> index: -1;
     in-out property <string> draft: "";
 }
 
-// Slint 1.16 keeps DragArea/DropArea out of the public element set, so the modulation drag uses
-// absolute pointer coordinates and a small target registry instead.
+// Slint 1.16 has no public DragArea/DropArea, so modulation drags use pointer coordinates and a registry.
 export global ModDrag {
     in-out property <int> lfo: 0;
     in-out property <length> x: 0px;
@@ -117,8 +115,7 @@ component Selector inherits Rectangle {
     }
 }
 
-// Collapsed waveform picker: shows the current shape, opens the full selectable icon list.
-// The popup itself is owned by AppWindow so it can overlay neighbouring controls.
+// Collapsed waveform picker: shows the current shape and opens the icon list owned by AppWindow.
 component WavePicker inherits Rectangle {
     in property <[string]> paths;
     in property <[string]> names;
@@ -262,9 +259,7 @@ component OptSlider inherits Rectangle {
         background: @linear-gradient(90deg, Theme.c1 0%, Theme.c2 52%, Theme.c3 100%);
         opacity: 0.3;
     }
-    // Second, thinner bar: base → current modulated value. It moves with the LFO clock and
-    // makes both direction and amount visible without changing the host value.
-    // Low-opacity band = maximum travel implied by the linked LFO depths.
+    // Second, thinner bar: base → current modulated value, with a band for the linked LFO depth.
     if root.modview.linked: Rectangle {
         x: parent.width * root.mod-band-low;
         y: parent.height - 5px;
@@ -273,7 +268,7 @@ component OptSlider inherits Rectangle {
         background: Theme.c3;
         opacity: 0.20;
     }
-    // Bright bar = base → current animated value.
+
     if root.modview.linked: Rectangle {
         x: parent.width * Math.min(root.mod-base01, root.mod-value01);
         y: parent.height - 4px;
@@ -306,9 +301,8 @@ component OptSlider inherits Rectangle {
             }
         }
         moved => { if (!root.editing && ta.pressed) { root.changed(root.opt.min + Math.clamp(ta.mouse-x / ta.width, 0, 1) * (root.opt.max - root.opt.min)); } }
-        // Double-click turns the strip into a numeric field. Wheel editing is active only while
-        // this control is hovered; snap to the parameter's step grid first, then move exactly
-        // one step per wheel notch. While the editor is open the strip must leave both alone.
+        // Double-click turns the strip into a field. Wheel editing snaps to the step grid and moves
+        // one step per notch; while the editor is open the strip leaves both alone.
         double-clicked => {
             if (!root.editing && root.index >= 0) { root.begin-entry(); }
         }
@@ -321,8 +315,7 @@ component OptSlider inherits Rectangle {
             }
         }
     }
-    // Always declared so focus() has a live element; only the option owning OptEdit.index is
-    // visible. Clicking elsewhere drops focus and commits, Enter commits, Escape reverts.
+    // Always declared so focus() has a live element; Enter commits, Escape reverts, blur commits.
     editor := Rectangle {
         visible: root.editing;
         x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
@@ -363,15 +356,13 @@ component OptSlider inherits Rectangle {
         border-radius: 4px; border-width: 2px; border-color: Theme.c2;
         background: transparent;
     }
-    // Registration is timer-driven rather than `changed absolute-position`-driven: reading a
-    // layout property from its own change handler made Slint 1.16 report a property recursion.
+    // Timer-driven registration avoids Slint 1.16 property recursion in the position handler.
     Timer {
         interval: 30ms;
         running: root.mod-target >= 0 && !root.mod-registered;
         triggered => { root.mod-registered = true; root.report-mod(); }
     }
-    // Periodic refresh keeps the newest visible rectangle ahead of stale hidden controls after
-    // mode changes reflow the parameter column.
+    // Refresh periodically so hidden controls cannot outrank visible ones after a reflow.
     Timer {
         interval: 250ms;
         running: root.mod-target >= 0;
@@ -392,9 +383,8 @@ component OptSlider inherits Rectangle {
         triggered => { ModHover.target = -1; }
     }
 }
-// Click-to-edit numeric field. The TextInput only exists while editing, so the wheel and the
-// +/- buttons keep working after a typed value is committed, and the display always follows
-// the host parameter instead of a stale TextInput binding.
+// Click-to-edit numeric field. The TextInput exists only while editing, so the display always
+// follows the host parameter rather than a stale binding.
 component NumBox inherits Rectangle {
     in property <string> label;
     in property <float> value: 0;
@@ -426,8 +416,7 @@ component NumBox inherits Rectangle {
     border-radius: 4px;
     background: Theme.control; border-width: 1px; border-color: Theme.border;
     horizontal-stretch: 1;
-    // True while the numeric editor is open; the root reads it so Rust can decide whether a
-    // key the host tried to keep is meant for typing.
+    // True while the numeric editor is open, so Rust can keep host shortcuts out of typing.
     out property <bool> editing: root.edit-open;
     property <bool> edit-open: false;
     property <bool> focus-pending: false;
@@ -437,8 +426,7 @@ component NumBox inherits Rectangle {
         return Math.clamp(v, root.minimum, root.maximum);
     }
     function nudge(dir: float) {
-        // A button can be pressed while the editor still holds the typed draft; use it as the
-        // base so the nudge applies on top of what was typed, not the previous host value.
+        // Use the typed draft as the nudge base while the editor is open.
         let base = root.draft.is-float() ? root.draft.to-float() : root.value;
         root.edit-open = false;
         root.changed(root.clamp-value(base + dir * root.step));
@@ -501,8 +489,7 @@ component NumBox inherits Rectangle {
         Text { text: "+"; color: Theme.text; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
         up-touch := TouchArea { clicked => { root.nudge(1); } }
     }
-    // Click the value to type; wheel anywhere outside the two buttons to nudge. The editor is
-    // declared on top while it is open and only covers the text part, so +/- stay clickable.
+    // Click the value to type; wheel outside the buttons to nudge. +/- stay clickable.
     tap := TouchArea {
         x: 0px; y: 0px; width: parent.width - 34px; height: parent.height;
         clicked => { if (!root.edit-open) { root.begin-edit(); } }
@@ -556,8 +543,7 @@ component NumBox inherits Rectangle {
         border-radius: 4px; border-width: 2px; border-color: Theme.c2;
         background: transparent;
     }
-    // Timer-driven registration avoids a Slint 1.16 property-recursion panic caused by reading
-    // a layout property from its own change handler.
+    // Timer-driven registration avoids a Slint 1.16 property-recursion panic.
     Timer {
         interval: 30ms;
         running: root.mod-target >= 0 && !root.mod-registered;
@@ -584,8 +570,7 @@ component NumBox inherits Rectangle {
     }
 }
 
-// One clock-rate field: the current division reads like a generator option strip, the wheel
-// steps it, and a double-click opens an inline text field that accepts the rate name.
+// One clock-rate field: wheel steps it, double-click opens a text field for a rate name.
 component RateField inherits Rectangle {
     in property <string> label: "RATE";
     in property <string> value;
@@ -606,8 +591,7 @@ component RateField inherits Rectangle {
     function begin-entry() {
         root.draft = root.value;
         root.edit-open = true;
-        // Same deferred focus as the generator strips: the field must be laid out before it
-        // can take keyboard focus.
+
         root.focus-pending = true;
     }
     Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.label; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
@@ -684,8 +668,7 @@ component RateField inherits Rectangle {
     }
 }
 
-// One LFO in the 2x2 rack. The drag handle is the modulation point; dropping it on a numeric
-// control links that LFO to the target.
+// One LFO in the 2x2 rack; its drag handle links the LFO to a numeric control.
 component LfoCell inherits Rectangle {
     in property <int> index: 1;
     in property <bool> enabled: true;
@@ -719,7 +702,7 @@ component LfoCell inherits Rectangle {
 
     height: 28px;
     HorizontalLayout {
-        // 2px keeps the 30x28 drag points inside the 822px rack width.
+        // 2px keeps the 28x26 drag points inside the 822px rack width.
         spacing: 2px;
         alignment: center;
         Rectangle {
@@ -730,8 +713,7 @@ component LfoCell inherits Rectangle {
                 Text { text: "\{root.index}"; color: Theme.on-accent; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
                 handle-touch := TouchArea {
                     pointer-event(e) => {
-                        // Slint reports move events with button = Other, so the move branch must not
-                        // be gated on the left button. Only down/up carry the real button.
+                        // Slint reports move events with button = Other; do not gate moves on the left button.
                         if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
                             ModDrag.lfo = root.index;
                             ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
@@ -803,8 +785,7 @@ component LfoCell inherits Rectangle {
     }
 }
 
-// Mode picker with group headers in two columns. Header rows are full-width; host indices stay in
-// ModeRow.left/right so pairing two entries never changes what the host sees.
+// Grouped two-column mode picker. Headers are full-width; host indices stay in ModeRow.left/right.
 component ModeDropdown inherits Rectangle {
     in property <[ModeRow]> rows;
     in property <[string]> names;
@@ -850,8 +831,7 @@ component ModeDropdown inherits Rectangle {
     }
 }
 
-// A compact dropdown list shared by the Scale and Rate fields. It is an in-window overlay
-// rather than a side panel so the editor underneath keeps its full width.
+// Compact dropdown list shared by Scale and Rate, overlaid so the editor keeps its full width.
 component DropdownList inherits Rectangle {
     in property <[string]> options;
     in property <int> current;
@@ -884,8 +864,8 @@ component ModePanel inherits Rectangle {
     in property <string> solid: "M0 0";
     in property <string> lines: "M0 0";
     in property <string> hand: "M0 0";
-    // view.rs builds every panel in a 210-unit space. The paths scale through the viewbox;
-    // the node rectangles are scaled by hand so dots and labels grow with the box.
+    // view.rs builds every panel in a 210-unit space; paths scale through the viewbox and node
+    // rectangles are scaled by hand so dots and labels grow with the box.
     property <float> px-per-unit: 1.4285714;   // 300px square drawing / 210-unit geometry
     property <length> draw-offset-x: 30px;      // letterbox the square drawing in the wider card
     width: 360px; height: 300px;
@@ -896,8 +876,7 @@ component ModePanel inherits Rectangle {
     Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.lines; fill: transparent; stroke: Theme.c3; stroke-width: 1.4px; }
     Path { x: root.draw-offset-x; y: 0px; width: 300px; height: 300px; viewbox-x: 0; viewbox-y: 0; viewbox-width: 210; viewbox-height: 210; commands: root.hand; fill: transparent; stroke: Theme.hi; stroke-width: 2px; }
     for n in root.nodes: Rectangle {
-        // Pebble-box positions change every step; the tween reads as motion. Other panels'
-        // nodes are static, so the animation never shows there.
+        // Pebble-box positions change every step; static panels never show the tween.
         animate x, y { duration: 120ms; }
         x: root.draw-offset-x + (n.x - n.r) * root.px-per-unit; y: (n.y - n.r) * root.px-per-unit;
         width: n.r * 2 * root.px-per-unit; height: n.r * 2 * root.px-per-unit;
@@ -910,8 +889,7 @@ component ModePanel inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "nelody seq";
-    // Fixed layout size: the window never resizes (a live resize glitched the GL surface),
-    // so the host cannot be fought over it.
+    // Fixed layout size: the window never resizes, so the host cannot fight over it.
     in property <length> base-width: 860px;
     in property <length> base-height: 675px;
     preferred-width: root.base-width; preferred-height: root.base-height;
@@ -920,9 +898,8 @@ export component AppWindow inherits Window {
     in property <float> steps: 16;
     in property <float> max-steps: 1024;
     in property <bool> round-steps: true;
-    // The grid cells the generator will fill, mirroring `cell_count_for`: snap rounds, free
-    // length takes the ceiling. Header and bounds read this so they cannot disagree with the
-    // matrix when the host leaves a fractional value stored while snapping is on.
+    // Grid cells the generator will fill, mirroring `cell_count_for`: snap rounds, free length
+    // takes the ceiling. Header and bounds read this so they cannot disagree with the matrix.
     property <int> cells: root.round-steps ? Math.round(root.steps) : Math.ceil(root.steps);
     in-out property <int> current-step: 0;
     // One-shot background pulse when Generate or regenerate-after-N swaps the pattern.
@@ -1024,8 +1001,7 @@ export component AppWindow inherits Window {
     in property <[ModeRow]> mode-rows;
     in property <string> app-version: "";
     in-out property <bool> mode-menu-open: false;
-    // Dropdown anchors. The window layout is fixed at 860x675, so the two menus hang directly
-    // under the mode header and the Scale chip instead of sliding in from a window edge.
+    // Dropdown anchors; the fixed layout hangs both menus directly under their controls.
     in property <length> mode-menu-x: 384px;
     in property <length> mode-menu-y: 86px;
     in-out property <bool> rate-menu-open: false;
@@ -1110,8 +1086,8 @@ export component AppWindow inherits Window {
     callback set-midi-folder(string);
     callback export-midi();
 
-    // Only expose mode-specific controls the selected mode actually uses, and label them with
-    // what they mean in that mode. `GenParams` still carries every field; this is presentation.
+    // Expose only the controls the selected mode uses, labelled for that mode; `GenParams` still
+    // carries every field.
     pure function shows-param(mode: int, key: int) -> bool {
         if (key == 5) { // osc phase: only modes that actually consume it
             if (mode >= 19 && mode <= 27) { return true; }
@@ -1238,8 +1214,7 @@ export component AppWindow inherits Window {
         "Samples a Hilbert space-filling curve of order Pulses. The curve is the contour and the left-hand panel draws the 2-D path; Phase rotates it by quarter turns.",
         "Walks the Ulam square spiral and marks cells whose 1-based index is prime; the centre always sounds. Density thins the prime hits and the panel draws the spiral."
     ];
-    // `text` is what the strip shows (with %/°/c), `number` is the same value in display units,
-    // and `scale` converts typed display units back to the parameter's own units.
+    // `text` is the strip label, `number` the display value, `scale` converts back to parameter units.
     property <[Opt]> opts: [
         { label: "Steps", min: 1, max: Math.min(root.max-steps, root.steps-max(root.mode)), value: Math.min(root.steps, Math.min(root.max-steps, root.steps-max(root.mode))), text: root.round-steps ? "\{Math.round(Math.min(root.steps, root.steps-max(root.mode)))}" : "\{Math.round(Math.min(root.steps, root.steps-max(root.mode)) * 1000) / 1000}", step: root.round-steps ? 1 : 0.01, number: root.round-steps ? "\{Math.round(Math.min(root.steps, root.steps-max(root.mode)))}" : "\{Math.round(Math.min(root.steps, root.steps-max(root.mode)) * 1000) / 1000}", scale: 1 },
         { label: root.pulse-label(root.mode), min: 0, max: root.pulses-max(root.mode), value: Math.min(root.pulses, root.pulses-max(root.mode)), text: "\{Math.round(Math.min(root.pulses, root.pulses-max(root.mode)))}", step: 1, number: "\{Math.round(Math.min(root.pulses, root.pulses-max(root.mode)))}", scale: 1 },
@@ -1268,13 +1243,11 @@ export component AppWindow inherits Window {
         { label: "History bars", min: 1, max: root.history-max-bars, value: root.history-bars, text: "\{Math.round(root.history-bars)}", step: 1, number: "\{Math.round(root.history-bars)}", scale: 1 }
     ];
 
-    // Everything lives inside one fixed 860x675 coordinate space. The window never resizes;
-    // the matrix scrolls fixed-width cells instead of shrinking them, so nothing reflows.
+    // One fixed 860x675 coordinate space; the matrix scrolls fixed-width cells, so nothing reflows.
     Rectangle {
         width: root.base-width; height: root.base-height;
 
-        // Faint graph paper belongs to the Sketch palette; the other themes keep the flat
-        // gradient. It sits below the layout so only the gaps between cards show it.
+        // Faint graph paper for Sketch; it sits below the layout so only gaps between cards show it.
         Rectangle {
             visible: root.theme-index == 0;
             for i in 38: Rectangle { y: (i + 1) * 20px; height: 1px; background: Theme.border.with-alpha(0.16); }
@@ -1327,8 +1300,7 @@ export component AppWindow inherits Window {
             Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TouchArea { clicked => { root.tuning-open = false; root.rate-menu-open = false; root.settings-open = !root.settings-open; if (root.settings-open) { root.matrix-open = false; } } } }
         }
         HorizontalLayout {
-            // 300px leaves room for the two- or three-sentence description plus the live math
-            // line without squeezing the option sliders.
+            // 300px fits the description and live math line without squeezing the sliders.
             height: 300px; spacing: 10px;
             ModePanel { nodes: root.view-nodes; edges: root.view-edges; fills: root.view-fills; solid: root.view-solid; lines: root.view-lines; hand: root.view-hand; }
             VerticalLayout {
@@ -1344,8 +1316,7 @@ export component AppWindow inherits Window {
                     }
                     mode-menu-touch := TouchArea {
                         clicked => { root.tuning-open = false; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = !root.mode-menu-open; }
-                        // Hover the current mode and scroll to step through the mode list without
-                        // opening it. The list itself keeps the wheel for scrolling.
+                        // Hovering the mode header and scrolling steps the list; the open list scrolls.
                         scroll-event(e) => {
                             if (e.delta-y != 0px) {
                                 root.step-mode(e.delta-y > 0px ? 1 : -1);
@@ -1402,8 +1373,7 @@ export component AppWindow inherits Window {
                     OptSlider { horizontal-stretch: 1; opt: root.opts[16]; index: 16; mod-target: 15; changed(v) => { root.set-opt(16, v); } }
                     OptSlider { horizontal-stretch: 1; opt: root.opts[17]; index: 17; mod-target: 16; changed(v) => { root.set-opt(17, v); } }
                 }
-                // Tuning follows the acid row, still inside the parameter column so the MIDI
-                // history can sit directly under the presentation field.
+                // Tuning follows the acid row inside the parameter column, above the MIDI history.
                 Rectangle { height: 6px; }
                 Text {
                     height: 12px; text: "TUNING"; color: Theme.text-muted;
@@ -1413,15 +1383,13 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     height: 28px; spacing: 5px;
                     tuning-root := NumBox { horizontal-stretch: 1; height: 28px; label: "ROOT"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; mod-target: 17; changed(v) => { root.set-opt(18, v); } }
-                    // The scale list lives in a dropdown under this chip; the chip only shows the
-                    // current scale and opens the list.
+                    // The chip shows the current scale and opens a dropdown under itself.
                     scale-chip := TuningChip { horizontal-stretch: 1; label: "SCALE"; value: root.tuning-name + "  ▾"; centered: true; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
                     tuning-oct := NumBox { horizontal-stretch: 1; height: 28px; label: "OCT"; value: root.octaves; minimum: 1; maximum: 6; step: 1; mod-target: 18; changed(v) => { root.set-opt(19, v); } }
                     TuningChip { horizontal-stretch: 1; label: "NTS"; value: root.nts-on ? "BEND" : "OFF"; active: root.nts-on; cycled => { root.toggle-nts(); } }
                 }
-                // EDO is only relevant for the Equal (EDO) scale; keep it on its own compact
-                // row rather than breaking the four equal-width tuning columns. The row stays
-                // instantiated so `text-focused` can still see its editor.
+                // EDO only applies to Equal (EDO); keep it on its own compact row, but instantiated
+                // so `text-focused` can still see its editor.
                 HorizontalLayout {
                     height: root.edo-active ? 28px : 0px;
                     visible: root.edo-active;
@@ -1445,8 +1413,7 @@ export component AppWindow inherits Window {
                 border-width: 1px; border-color: Theme.border;
                 Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MIDI HISTORY  ·  flows right to left  ·  \{root.history-range}  ·  note height = pitch, bright = accent"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide; }
             }
-            // Invert and mirror are pattern transforms. They sit vertically centred against the
-            // history card's right border so they read as a side control strip.
+            // Invert and mirror sit vertically centred against the history card as a side strip.
             Rectangle {
                 x: parent.width - 30px; y: (parent.height - 116px) / 2;
                 width: 26px; height: 56px; border-radius: 4px;
@@ -1476,8 +1443,7 @@ export component AppWindow inherits Window {
                 mirror-touch := TouchArea { clicked => { root.toggle-mirror(); } }
             }
         }
-        // Four runtime LFOs in a 2x2 rack. The colored point on each cell is the drag handle:
-        // drop it on a numeric control to link that LFO to the target.
+        // Four runtime LFOs in a 2x2 rack; drop a colored point on a numeric control to link it.
         Rectangle {
             height: 88px; border-radius: 4px;
             background: Theme.surface; border-width: 1px; border-color: Theme.border;
@@ -1601,8 +1567,7 @@ export component AppWindow inherits Window {
                 }
             }
             OptSlider { width: 240px; opt: root.opts[10]; index: 10; mod-target: 12; changed(v) => { root.set-opt(10, v); } }
-            // Export lives with the history it exports, in the bottom-right corner of the
-            // main view. Settings keeps only the destination folder.
+            // Export lives with the history it exports; Settings keeps only the destination folder.
             Text { horizontal-stretch: 1; height: 24px; text: root.export-status; color: Theme.text-muted; font-size: 9px; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
             Rectangle {
                 width: 100px; height: 24px; border-radius: 4px;
@@ -1622,8 +1587,7 @@ export component AppWindow inherits Window {
         Text { text: "\{ModDrag.lfo}"; color: Theme.on-accent; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
     }
 
-    // Mode and Scale are dropdowns. A transparent catcher closes whichever list is open on
-    // the next click, and each list overlays the editor instead of taking a side panel.
+    // Mode and Scale dropdowns; a transparent catcher closes the open list on the next click.
     if root.mode-menu-open || root.tuning-open || root.rate-menu-open || root.wave-menu-target >= 0 || root.scope-menu-open: Rectangle {
         x: 0px; y: 0px; width: root.base-width; height: root.base-height;
         background: #00000010;
@@ -1714,8 +1678,7 @@ export component AppWindow inherits Window {
         }
     }
 
-    // Read-only modulation matrix. Slides up from below the fixed layout; the scrim is tied to
-    // the animated position so it stops swallowing clicks once the panel is parked.
+    // Read-only modulation matrix; the scrim follows the animated position so parked means gone.
     if root.matrix-y < root.base-height: Rectangle {
         x: 0px; y: 0px; width: root.base-width; height: root.base-height;
         background: #00000055;
@@ -1782,13 +1745,9 @@ export component AppWindow inherits Window {
         }
     }
 
-    // parked off-screen when closed, so the closing animation can play too; a bare
-    // `if settings-open` would make it vanish instead of sliding out.
-    // Tied to the animated position, not to the boolean: the scrim stays live while the panel
-    // is still travelling out, and is absent once it is parked, so it cannot swallow clicks
-    // meant for the editor underneath.
-    // Keep the LFO rack outside the settings scrim so a modulation point can still be dragged
-    // onto the Max Steps / History Bars fields while Settings is open.
+    // Parked off-screen when closed so the closing animation can play. Tie the scrim to the
+    // animated position, not the boolean, so it cannot swallow clicks while the panel travels out.
+    // Keep the LFO rack outside the scrim so links can still be dragged onto Settings fields.
     if root.settings-x < root.base-width: Rectangle {
         x: 0px; y: 0px; width: root.base-width; height: root.base-height - 105px;
         background: #00000066;
@@ -1799,8 +1758,7 @@ export component AppWindow inherits Window {
         background: Theme.surface; border-width: 1px; border-color: Theme.border;
         drop-shadow-blur: 16px; drop-shadow-color: #00000055; drop-shadow-offset-y: 4px;
         animate x { duration: 140ms; easing: ease-in-out; }
-        // The panel is taller than the trimmed window on some themes; scroll instead of
-        // clipping the support block.
+        // The panel can exceed the trimmed window; scroll instead of clipping the support block.
         ScrollView {
             width: parent.width; height: parent.height;
             vertical-scrollbar-policy: as-needed;
@@ -1817,8 +1775,7 @@ export component AppWindow inherits Window {
             Text { text: "CONFIG FILE"; color: Theme.text-muted; font-size: 9px; }
             Text { text: root.settings-path; color: Theme.text-muted; font-size: 8px; wrap: word-wrap; }
             Text { text: "STEP SPACING"; color: Theme.text-muted; font-size: 9px; }
-            // Turning rounding off lets the loop wrap between grid cells, so the pattern
-            // drifts against the step grid instead of landing on it.
+            // Turning rounding off lets the loop wrap between grid cells and drift against the grid.
             Rectangle {
                 height: 26px; border-radius: 4px;
                 background: root.round-steps ? Theme.c1.with-alpha(0.8) : (round-touch.has-hover ? Theme.control-hover : Theme.control);
@@ -1836,8 +1793,7 @@ export component AppWindow inherits Window {
             }
             Text { text: "PATTERN LIMIT"; color: Theme.text-muted; font-size: 9px; }
             max-steps-box := NumBox { label: "Max steps"; value: root.max-steps; minimum: 64; maximum: 1024; step: 1; mod-target: 22; changed(v) => { root.set-opt(14, v); } }
-            // The Pattern arrays are allocated for 1024 steps up front, so changing the ceiling
-            // never requires a host or plug-in restart.
+            // Pattern arrays are allocated for 1024 steps up front, so ceiling changes need no restart.
             Text { text: "Max steps applies immediately; no restart is needed."; color: Theme.text-muted; font-size: 9px; }
             Text { text: "TUNING"; color: Theme.text-muted; font-size: 9px; }
             midi-root-box := NumBox { label: "Root MIDI note"; value: root.midi-root; minimum: 0; maximum: 120; step: 1; mod-target: 19; changed(v) => { root.set-opt(20, v); } }
@@ -1865,8 +1821,7 @@ export component AppWindow inherits Window {
             }
             // Push the contact block to the bottom of the panel; the controls stay top-aligned.
             Rectangle { vertical-stretch: 1; }
-            // Credit rows are flush: the outer layout keeps the gap above the block, while
-            // this nested layout removes the inter-row spacing inside it.
+            // Credit rows are flush; this nested layout removes the inter-row spacing.
             VerticalLayout {
                 spacing: 0px;
                 Text { text: "CREDITS / CONTACT"; color: Theme.text-muted; font-size: 9px; }
@@ -1882,8 +1837,7 @@ export component AppWindow inherits Window {
     }
     }
 
-    // Linked-LFO tooltip below the hovered parameter. It is a plain rectangle (no TouchArea),
-    // so it never steals the click/drag that sets the parameter underneath.
+    // Linked-LFO tooltip below the hovered parameter; no TouchArea, so it never steals the drag.
     if ModHover.target >= 0 && ModView.view(ModHover.target).linked && !root.matrix-open && ModDrag.lfo == 0: Rectangle {
         x: Math.max(6px, Math.min(ModHover.x, root.base-width - 326px));
         y: Math.min(ModHover.y + 2px, root.base-height - 26px);

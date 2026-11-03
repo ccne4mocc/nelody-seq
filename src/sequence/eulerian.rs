@@ -19,7 +19,7 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         ne += 1;
     }
     for _ in 0..1 + rng.below(2) {
-        // A cycle can not be longer than the vertex set: len 4 on 3 vertices used to name vertex 3.
+        // A cycle cannot be longer than the vertex set.
         let len = (1 + rng.below(4)).min(nv);
         let mut pv = [0u8, 1, 2, 3, 4, 5, 6, 7];
         shuffle(&mut pv[..nv], &mut rng);
