@@ -244,7 +244,8 @@ variation comes from Generate, Randomize and the knobs.
 - **User-global settings** live in `src/globals.rs` at `$XDG_CONFIG_HOME/nelody-seq/settings.json`
   (or `$HOME/.config/nelody-seq/settings.json`, `%APPDATA%` on Windows): theme, editor scale and
   MIDI export folder only. Loaded at editor open, written on a 750 ms debounce and forced on
-  editor close.
+  editor close. The fresh default palette is **Forest**; a stored global theme or the project's
+  `theme` parameter overrides it.
 - **The MIDI history ring is not persisted**: it is performance state, cleared by a restart.
 
 ## UI contracts
@@ -300,8 +301,15 @@ variation comes from Generate, Randomize and the knobs.
   driven entirely from `history::build_with_grid` output. Zoom and pan are applied with the
   `viewbox-*` properties, so no geometry is rebuilt. The roll follows the clock automatically;
   entering any edit mode freezes the editor timestamp so notes stay under the pointer, and a
-  stopped clock allows inspection panning. Note layers encode velocity, width encodes gate/length
-  and slide connectors are a separate stroke. The overlay is outline-only so the recorded notes
+  stopped clock allows inspection panning. Both slim scrollbars are draggable; the wheel pans
+  vertically and Alt+wheel (or Shift+wheel) pans horizontally when zoomed in. Entering an edit
+  mode zooms horizontally until a step is at least ~6.5 logical px wide, and the viewport anchors
+  to the newest edge while following/editing. The `−`/`+`/`FIT` controls sit in the left gutter
+  below NOTE/MIRROR/INVERT; the vertical scrollbar owns a 14 px right-hand gutter outside the
+  note-edit hit area. Step and beat grid lines are suppressed once they
+  approach pixel spacing; grid strokes use the theme text colour so they remain visible in every
+  palette. Note layers encode velocity, width encodes gate and slide connectors are a separate
+  stroke. The overlay is outline-only so the recorded notes
   stay readable underneath. `MIRROR` and `INVERT` are ordinary horizontal text buttons stacked
   under `EDIT` in the left gutter, matching the edit button's width and styling. They no longer
   use rotated SVG label assets.

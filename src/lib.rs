@@ -399,7 +399,7 @@ impl Default for MelodyParams {
             ca_rule: IntParam::new("Cellular Automaton Rule", 30, IntRange::Linear { min: 0, max: 255 }),
             symmetry: IntParam::new("Crystallographic Symmetry", 4, IntRange::Linear { min: 1, max: 8 }),
             markov_bias: IntParam::new("Markov Transition Bias", 0, IntRange::Linear { min: 0, max: 255 }),
-            theme: EnumParam::new("Theme", Theme::Neon),
+            theme: EnumParam::new("Theme", Theme::Forest),
             rate: EnumParam::new("Rate", Rate::Sixteenth),
             gate: FloatParam::new("Gate", 0.12, FloatRange::Linear { min: 0.02, max: 1.0 }),
             swing: FloatParam::new("Swing", 0.0, FloatRange::Linear { min: 0.0, max: 0.5 }),
@@ -1614,8 +1614,8 @@ mod tests {
     }
 
     #[test]
-    fn neon_is_the_default_theme() {
-        assert_eq!(MelodyParams::default().theme.value(), Theme::Neon);
+    fn forest_is_the_default_theme() {
+        assert_eq!(MelodyParams::default().theme.value(), Theme::Forest);
         assert_eq!(contact::VERSION, "1.3.0");
     }
 

@@ -26,11 +26,14 @@ pitch slides, legato and accents travel over MIDI channel 1.
   the audio thread and drawn right-to-left, sized in 4/4 bars from the host tempo. It follows the
   clock automatically; EDIT freezes it for confident editing and stops following, while a stopped
   clock allows inspection panning. The simple NOTES mode taps to toggle a hit and drags to resize
-  its length; ADV exposes probability, accent, ratchet, timing and clear modes. Zoom, a
-  step/beat/bar grid and velocity-shaded notes make the roll readable. Note width is length,
-  brightness is velocity/accent, and slides are outlined.
+  its gate; ADV exposes probability, accent, ratchet, timing and clear modes. Wheel pans
+  vertically and Alt+wheel pans horizontally; both slim scrollbars are draggable, and entering
+  edit mode zooms dense step grids until the steps are reachable. Zoom, a step/beat/bar grid and
+  velocity-shaded notes make the roll readable. Note width is gate, brightness is velocity/accent,
+  and slides are outlined.
 - **Clock rates** from 1/4 to 1/64, including dotted and triplet divisions, edited in one
   field that steps with the wheel and accepts a typed rate name.
+- Four colour themes: Forest (default), Sketch (light), Neon, Lava.
 - **Tuning row + acid sliders** where the drum-lane chips were: Root, a Scale chip that opens
   a scale dropdown, EDO divisions (only for Equal EDO), Octaves and an NTS bend chip; the acid
   slider row appears

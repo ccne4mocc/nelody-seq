@@ -1,20 +1,20 @@
 import { ScrollView } from "std-widgets.slint";
 // nelody seq: algorithm-first MIDI melody sequencer. Rust pushes deterministic pattern and view data.
 export global Theme {
-    in-out property <color> c1: #22d3ee;
-    in-out property <color> c2: #a3e635;
-    in-out property <color> c3: #f472b6;
-    in-out property <color> hi: #ffffff;
-    in-out property <color> bg1: #0b1020;
-    in-out property <color> bg2: #111127;
-    in-out property <color> bg3: #160f24;
-    in-out property <color> surface: #11152a;
-    in-out property <color> control: #1c2240;
-    in-out property <color> control-hover: #2b3158;
-    in-out property <color> text: #e5e7eb;
-    in-out property <color> text-muted: #9aa3b5;
-    in-out property <color> border: #343a5c;
-    in-out property <color> cell-off: #1a2038;
+    in-out property <color> c1: #bef264;
+    in-out property <color> c2: #22c55e;
+    in-out property <color> c3: #0d9488;
+    in-out property <color> hi: #fb923c;
+    in-out property <color> bg1: #0d1712;
+    in-out property <color> bg2: #111b15;
+    in-out property <color> bg3: #0e1b19;
+    in-out property <color> surface: #101e17;
+    in-out property <color> control: #1b2c23;
+    in-out property <color> control-hover: #2b4033;
+    in-out property <color> text: #e3ece5;
+    in-out property <color> text-muted: #93a89b;
+    in-out property <color> border: #354b3e;
+    in-out property <color> cell-off: #16261d;
     in-out property <color> on-accent: #0b0f14;
 }
 
@@ -1131,7 +1131,9 @@ export component AppWindow inherits Window {
     // Any text field with keyboard focus. Rust reads this each frame (see `keys.rs`).
     out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || edo-row.editing || midi-root-box.editing || cents-box.editing || bend-box.editing || hist-box.editing || rate-field.editing || OptEdit.index >= 0;
     in-out property <string> export-status: "";
-    in property <int> theme-index: 1;
+    // -1 forces the first update tick to push the real palette (project or global setting)
+    // instead of leaving the Slint defaults visible.
+    in property <int> theme-index: -1;
     in property <[ModeRow]> mode-rows;
     in property <string> app-version: "";
     in-out property <bool> mode-menu-open: false;
@@ -1199,30 +1201,39 @@ export component AppWindow inherits Window {
     in-out property <float> history-pan-x: 0.0;
     in-out property <float> history-pan-y: 0.0;
     in property <bool> history-running: false;
-    in-out property <bool> history-editing: root.edit-mode > 0 || root.history-length-dragging;
-    in-out property <bool> history-length-dragging: false;
+    in-out property <bool> history-editing: root.edit-mode > 0 || root.history-gate-dragging;
+    in-out property <bool> history-gate-dragging: false;
     in-out property <bool> history-pan-drag: false;
     in-out property <int> history-pan-axis: 0;
     in-out property <float> history-pan-start: 0.0;
     in-out property <float> history-pan-y-start: 0.0;
     in-out property <length> history-pan-mouse: 0px;
     in-out property <length> history-pan-mouse-y: 0px;
+    // Scrollbar drag state: axis 1 = horizontal, 2 = vertical.
+    in-out property <int> history-scroll-drag-axis: 0;
+    in-out property <float> history-scroll-drag-start: 0.0;
+    in-out property <length> history-scroll-drag-x: 0px;
+    in-out property <length> history-scroll-drag-y: 0px;
     in-out property <bool> notes-press: false;
     in-out property <bool> notes-dragging: false;
     in-out property <length> notes-start-x: 0px;
     in-out property <float> notes-cx: 0.0;
     in-out property <bool> edit-advanced: false;
-    in-out property <int> snap-index: 1;
+    in-out property <int> gate-snap-index: 1;
+    // Steps in the visible history window, pushed from the host clock rate.
+    in property <float> steps-per-beat: 4.0;
     property <float> history-vb-w: 800.0 / Math.max(1.0, root.history-zoom-x);
     property <float> history-vb-h: 200.0 / Math.max(1.0, root.history-zoom-y);
     // Live clock follows the newest note. A stopped clock and edit mode allow inspection/pans.
-    property <float> history-vb-x: (root.history-running || root.history-editing) ? 0.0 : (800.0 - root.history-vb-w) * root.history-pan-x;
+    property <float> history-vb-x: (root.history-running || root.history-editing) ? (800.0 - root.history-vb-w) : (800.0 - root.history-vb-w) * root.history-pan-x;
     property <float> history-vb-y: (200.0 - root.history-vb-h) * root.history-pan-y;
     changed edit-mode => {
         root.notes-press = false;
         root.notes-dragging = false;
-        root.history-length-dragging = false;
-        if (root.edit-mode == 0) {
+        root.history-gate-dragging = false;
+        if (root.edit-mode > 0) {
+            root.ensure-edit-zoom();
+        } else {
             root.history-pan-x = 0.0;
             root.edit-advanced = false;
         }
@@ -1230,11 +1241,11 @@ export component AppWindow inherits Window {
     changed edit-advanced => {
         if (!root.edit-advanced && root.edit-mode > 1) { root.edit-mode = 1; }
     }
-    pure function snap-unit() -> float {
-        if (root.snap-index == 0) { return 0.0625; }
-        if (root.snap-index == 1) { return 0.125; }
-        if (root.snap-index == 2) { return 0.25; }
-        return 0.5;
+    pure function gate-snap-unit() -> float {
+        if (root.gate-snap-index == 0) { return 0.25; }
+        if (root.gate-snap-index == 1) { return 0.5; }
+        if (root.gate-snap-index == 2) { return 0.75; }
+        return 1.0;
     }
     function zoom-history(factor: float) {
         let cx = (root.history-vb-x + root.history-vb-w * 0.5) / 800.0;
@@ -1254,6 +1265,17 @@ export component AppWindow inherits Window {
         root.history-pan-x = 0.0;
         root.history-pan-y = 0.0;
     }
+    // Entering edit mode zooms in until one step is at least ~6.5 logical px wide, so dense
+    // 1/32 and 1/64 lines are still reachable with the pointer.
+    function ensure-edit-zoom() {
+        let visible-steps = Math.max(1.0, root.history-bars * 4.0 * Math.max(root.steps-per-beat, 0.25));
+        let natural-step = 800.0 / visible-steps;
+        let target = Math.max(1.0, Math.min(8.0, 6.5 / Math.max(natural-step, 0.0001)));
+        if (target > root.history-zoom-x) {
+            root.history-zoom-x = target;
+            root.history-pan-x = 0.0;
+        }
+    }
     in property <[ViewNode]> view-nodes;
     in property <string> view-edges: "M0 0";
     in property <string> view-fills: "M0 0";
@@ -1269,8 +1291,8 @@ export component AppWindow inherits Window {
     callback set-mode(int);
     callback apply-preset(int);
     callback edit-overlay(float, int);
-    /// content x (0..1), snap unit, phase (0 start, 1 move, 2 end)
-    callback edit-length(float, float, int);
+    /// content x (0..1), gate snap unit, phase (0 start, 1 move, 2 end)
+    callback edit-gate(float, float, int);
     callback clear-edits();
     callback undo-edit();
     callback redo-edit();
@@ -1679,11 +1701,11 @@ export component AppWindow inherits Window {
             background: Theme.surface; border-width: 1px; border-color: Theme.border;
             clip: true;
             Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-bg; fill: Theme.cell-off.with-alpha(0.55); }
-            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-bg-bars; fill: Theme.hi.with-alpha(0.035); }
-            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-grid-steps; fill: transparent; stroke: Theme.border.with-alpha(0.35); stroke-width: 0.4px / root.history-zoom-x; }
-            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-grid-beats; fill: transparent; stroke: Theme.border.with-alpha(0.7); stroke-width: 0.6px / root.history-zoom-x; }
-            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-grid-bars; fill: transparent; stroke: Theme.border; stroke-width: 0.9px / root.history-zoom-x; }
-            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-grid; fill: transparent; stroke: Theme.border; stroke-width: 0.6px / root.history-zoom-x; }
+            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-bg-bars; fill: Theme.hi.with-alpha(0.055); }
+            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-grid-steps; fill: transparent; stroke: Theme.text-muted.with-alpha(0.18); stroke-width: 0.5px / root.history-zoom-x; }
+            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-grid-beats; fill: transparent; stroke: Theme.text-muted.with-alpha(0.34); stroke-width: 0.65px / root.history-zoom-x; }
+            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-grid-bars; fill: transparent; stroke: Theme.text-muted.with-alpha(0.62); stroke-width: 0.95px / root.history-zoom-x; }
+            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-grid; fill: transparent; stroke: Theme.text-muted.with-alpha(0.22); stroke-width: 0.6px / root.history-zoom-x; }
             // Velocity layers: width = gate/length, brightness = velocity/accent.
             Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-notes; fill: Theme.c1.with-alpha(0.38); }
             Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-notes-mid; fill: Theme.c1.with-alpha(0.68); }
@@ -1692,9 +1714,11 @@ export component AppWindow inherits Window {
             if root.history-overlay-on: Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-pattern; fill: transparent; stroke: Theme.c3.with-alpha(0.9); stroke-width: 1px / root.history-zoom-x; }
             if root.history-overlay-on: Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-pattern-slides; fill: transparent; stroke: Theme.c2.with-alpha(0.85); stroke-width: 1.2px / root.history-zoom-x; }
             history-touch := TipTouch {
-                x: 58px; y: 0px; width: parent.width - 62px; height: parent.height;
+                // Leave a 14px gutter for the vertical scrollbar: its drag must never compete
+                // with the note editor, especially in NOTES/ADV edit mode.
+                x: 58px; y: 0px; width: parent.width - 76px; height: parent.height;
                 hint: root.edit-mode == 1
-                    ? "Click a step to toggle hit; drag horizontally to set its length"
+                    ? "Click a step to toggle hit; drag horizontally to set its gate"
                     : (root.edit-mode > 1
                         ? "Click a step column to apply the selected attribute"
                         : (root.history-running
@@ -1714,21 +1738,21 @@ export component AppWindow inherits Window {
                             if (Math.abs(history-touch.mouse-x - root.notes-start-x) > 6px) {
                                 if (!root.notes-dragging) {
                                     root.notes-dragging = true;
-                                    root.history-length-dragging = true;
-                                    root.edit-length(cx, root.snap-unit(), 0);
+                                    root.history-gate-dragging = true;
+                                    root.edit-gate(cx, root.gate-snap-unit(), 0);
                                 } else {
-                                    root.edit-length(cx, root.snap-unit(), 1);
+                                    root.edit-gate(cx, root.gate-snap-unit(), 1);
                                 }
                             }
                         } else if ((e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) && root.notes-press) {
                             if (root.notes-dragging) {
-                                root.edit-length(cx, root.snap-unit(), 2);
+                                root.edit-gate(cx, root.gate-snap-unit(), 2);
                             } else {
                                 root.edit-overlay(root.notes-cx, 1);
                             }
                             root.notes-press = false;
                             root.notes-dragging = false;
-                            root.history-length-dragging = false;
+                            root.history-gate-dragging = false;
                         }
                     } else if (root.edit-mode > 1) {
                         if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left && history-touch.mouse-y > 30px) {
@@ -1762,12 +1786,35 @@ export component AppWindow inherits Window {
                     }
                 }
                 scroll-event(e) => {
-                    if (e.delta-x != 0px && root.history-zoom-y > 1.0) {
-                        root.history-pan-y = Math.max(0.0, Math.min(1.0, root.history-pan-y + (e.delta-x > 0px ? 0.04 : -0.04)));
-                        accept
-                    } else if (e.delta-y != 0px && !root.history-running && root.edit-mode == 0) {
-                        root.history-pan-x = Math.max(0.0, Math.min(1.0, root.history-pan-x + (e.delta-y > 0px ? 0.04 : -0.04)));
-                        accept
+                    // Wheel scrolls vertically; Alt (or Shift) turns it into horizontal panning.
+                    // Trackpads that already report delta-x pan horizontally without a modifier.
+                    if ((e.modifiers.alt || e.modifiers.shift) && (e.delta-x != 0px || e.delta-y != 0px)) {
+                        let d = e.delta-x != 0px ? e.delta-x : e.delta-y;
+                        if (root.history-zoom-x > 1.0 && !root.history-running && root.edit-mode == 0) {
+                            root.history-pan-x = Math.max(0.0, Math.min(1.0, root.history-pan-x + (d > 0px ? 0.04 : -0.04)));
+                            accept
+                        } else if (root.history-zoom-y > 1.0) {
+                            // Horizontal panning is locked while editing; Alt+wheel should still
+                            // be useful, so fall back to the vertical viewport.
+                            root.history-pan-y = Math.max(0.0, Math.min(1.0, root.history-pan-y + (d < 0px ? 0.04 : -0.04)));
+                            accept
+                        } else {
+                            reject
+                        }
+                    } else if (e.delta-x != 0px) {
+                        if (root.history-zoom-x > 1.0 && !root.history-running && root.edit-mode == 0) {
+                            root.history-pan-x = Math.max(0.0, Math.min(1.0, root.history-pan-x + (e.delta-x > 0px ? 0.04 : -0.04)));
+                            accept
+                        } else {
+                            reject
+                        }
+                    } else if (e.delta-y != 0px) {
+                        if (root.history-zoom-y > 1.0) {
+                            root.history-pan-y = Math.max(0.0, Math.min(1.0, root.history-pan-y + (e.delta-y < 0px ? 0.04 : -0.04)));
+                            accept
+                        } else {
+                            reject
+                        }
                     } else {
                         reject
                     }
@@ -1780,7 +1827,7 @@ export component AppWindow inherits Window {
                 border-width: 1px; border-color: Theme.border;
                 Text { width: parent.width; height: parent.height; text: "EDIT"; color: edit-open-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
                 edit-open-touch := TipTouch {
-                    hint: "Tap a step to toggle a hit, drag to resize its length; ADV shows probability, accent, ratchet and timing";
+                    hint: "Tap a step to toggle a hit, drag to resize its gate; ADV shows probability, accent, ratchet and timing";
                     clicked => { root.edit-advanced = false; root.edit-mode = 1; }
                 }
             }
@@ -1805,7 +1852,7 @@ export component AppWindow inherits Window {
                     width: 44px; height: 20px; border-radius: 3px;
                     background: root.edit-mode == 1 ? Theme.c1.with-alpha(0.8) : Theme.control.with-alpha(0.92);
                     Text { width: parent.width; height: parent.height; text: "NOTES"; color: root.edit-mode == 1 ? Theme.on-accent : Theme.text; font-size: 8px; horizontal-alignment: center; vertical-alignment: center; }
-                    notes-edit := TipTouch { hint: "Tap to toggle a hit; drag to resize its length"; clicked => { root.edit-mode = root.edit-mode == 1 ? 0 : 1; } }
+                    notes-edit := TipTouch { hint: "Tap to toggle a hit; drag to resize its gate"; clicked => { root.edit-mode = root.edit-mode == 1 ? 0 : 1; } }
                 }
                 Rectangle {
                     width: 30px; height: 20px; border-radius: 3px;
@@ -1846,8 +1893,8 @@ export component AppWindow inherits Window {
                 Rectangle {
                     width: 40px; height: 20px; border-radius: 3px;
                     background: Theme.control.with-alpha(0.92);
-                    Text { width: parent.width; height: parent.height; text: root.snap-index == 0 ? "1/16" : (root.snap-index == 1 ? "1/8" : (root.snap-index == 2 ? "1/4" : "1/2")); color: Theme.text; font-size: 8px; horizontal-alignment: center; vertical-alignment: center; }
-                    snap-edit := TipTouch { hint: "Length snap: click to cycle 1/16, 1/8, 1/4, 1/2 of a step"; clicked => { root.snap-index = Math.mod(root.snap-index + 1, 4); } }
+                    Text { width: parent.width; height: parent.height; text: root.gate-snap-index == 0 ? "1/4" : (root.gate-snap-index == 1 ? "1/2" : (root.gate-snap-index == 2 ? "3/4" : "1")); color: Theme.text; font-size: 8px; horizontal-alignment: center; vertical-alignment: center; }
+                    gate-snap-edit := TipTouch { hint: "Gate snap: click to cycle 1/4, 1/2, 3/4 or 1 step"; clicked => { root.gate-snap-index = Math.mod(root.gate-snap-index + 1, 4); } }
                 }
                 Rectangle {
                     width: 34px; height: 20px; border-radius: 3px;
@@ -1873,11 +1920,11 @@ export component AppWindow inherits Window {
                 x: 60px; y: 8px; width: parent.width - 190px; height: 22px;
                 border-radius: 3px; background: Theme.surface.with-alpha(0.88);
                 border-width: 1px; border-color: Theme.border;
-                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MIDI HISTORY  ·  right → left  ·  \{root.history-range}  ·  width = length · bright = velocity/accent · outline = slide"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide; }
+                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MIDI HISTORY  ·  right → left  ·  \{root.history-range}  ·  width = gate · bright = velocity/accent · outline = slide"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide; }
             }
-            // Zoom / fit / live controls, always available.
+            // Zoom / fit controls sit in the left gutter, below NOTE/MIRROR/INVERT.
             HorizontalLayout {
-                x: parent.width - 84px; y: 6px; height: 20px; spacing: 3px;
+                x: 8px; y: parent.height - 30px; height: 20px; spacing: 3px;
                 Rectangle {
                     width: 22px; height: 20px; border-radius: 3px;
                     background: zoom-out-history.has-hover ? Theme.control-hover : Theme.control.with-alpha(0.92);
@@ -1897,27 +1944,95 @@ export component AppWindow inherits Window {
                     fit-history := TipTouch { hint: "Fit the whole history window"; clicked => { root.fit-history(); } }
                 }
             }
-            // Slim viewport indicators: horizontal at the bottom, vertical on the right.
+            // Slim scrollbars: horizontal at the bottom, vertical on the right. The tracks are
+            // wider than the visible 3px bar so they are easy to grab; drag either thumb or click
+            // a track position to pan the roll.
             Rectangle {
                 visible: root.history-zoom-x > 1.0;
                 x: 58px; y: parent.height - 5px; width: parent.width - 96px; height: 3px; border-radius: 2px;
                 background: Theme.border.with-alpha(0.35);
                 Rectangle {
-                    x: (root.history-running || root.history-editing)
-                        ? parent.width - parent.width / root.history-zoom-x
-                        : (parent.width - parent.width / root.history-zoom-x) * root.history-pan-x;
-                    width: parent.width / root.history-zoom-x; height: parent.height; border-radius: 2px;
+                    property <length> thumb-w: Math.min(parent.width, parent.width / root.history-zoom-x);
+                    property <length> travel: Math.max(0px, parent.width - self.thumb-w);
+                    x: (root.history-running || root.history-editing) ? self.travel : self.travel * root.history-pan-x;
+                    width: self.thumb-w; height: parent.height; border-radius: 2px;
                     background: Theme.c1.with-alpha(0.65);
+                }
+            }
+            hscroll-touch := TouchArea {
+                visible: root.history-zoom-x > 1.0;
+                x: 58px; y: parent.height - 10px; width: parent.width - 96px; height: 12px;
+                scroll-event(e) => {
+                    let d = e.delta-x != 0px ? e.delta-x : e.delta-y;
+                    if (d != 0px && !root.history-running && root.edit-mode == 0) {
+                        root.history-pan-x = Math.max(0.0, Math.min(1.0, root.history-pan-x + (d > 0px ? 0.04 : -0.04)));
+                        accept
+                    } else {
+                        reject
+                    }
+                }
+                pointer-event(e) => {
+                    let track-w = Math.max(1px, hscroll-touch.width);
+                    let thumb-w = Math.min(track-w, track-w / Math.max(1.0, root.history-zoom-x));
+                    let travel = Math.max(1px, track-w - thumb-w);
+                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                        if (!root.history-running && root.edit-mode == 0) {
+                            // Click anywhere on the track to centre the thumb there, then drag.
+                            let target = hscroll-touch.mouse-x - thumb-w * 0.5;
+                            root.history-pan-x = Math.max(0.0, Math.min(1.0, target / travel));
+                            root.history-scroll-drag-axis = 1;
+                            root.history-scroll-drag-start = root.history-pan-x;
+                            root.history-scroll-drag-x = hscroll-touch.mouse-x;
+                        }
+                    } else if (e.kind == PointerEventKind.move && root.history-scroll-drag-axis == 1) {
+                        let dx = hscroll-touch.mouse-x - root.history-scroll-drag-x;
+                        root.history-pan-x = Math.max(0.0, Math.min(1.0, root.history-scroll-drag-start + dx / travel));
+                    } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                        if (root.history-scroll-drag-axis == 1) { root.history-scroll-drag-axis = 0; }
+                    }
                 }
             }
             Rectangle {
                 visible: root.history-zoom-y > 1.0;
-                x: parent.width - 8px; y: 4px; width: 3px; height: parent.height - 40px; border-radius: 2px;
+                x: parent.width - 8px; y: 30px; width: 3px; height: parent.height - 40px; border-radius: 2px;
                 background: Theme.border.with-alpha(0.35);
                 Rectangle {
-                    y: (parent.height - parent.height / root.history-zoom-y) * root.history-pan-y;
-                    height: parent.height / root.history-zoom-y; width: parent.width; border-radius: 2px;
+                    property <length> thumb-h: Math.min(parent.height, parent.height / root.history-zoom-y);
+                    property <length> travel: Math.max(0px, parent.height - self.thumb-h);
+                    y: self.travel * root.history-pan-y;
+                    height: self.thumb-h; width: parent.width; border-radius: 2px;
                     background: Theme.c1.with-alpha(0.65);
+                }
+            }
+            vscroll-touch := TouchArea {
+                visible: root.history-zoom-y > 1.0;
+                x: parent.width - 14px; y: 30px; width: 14px; height: parent.height - 40px;
+                scroll-event(e) => {
+                    let d = e.delta-y != 0px ? e.delta-y : e.delta-x;
+                    if (d != 0px) {
+                        root.history-pan-y = Math.max(0.0, Math.min(1.0, root.history-pan-y + (d < 0px ? 0.04 : -0.04)));
+                        accept
+                    } else {
+                        reject
+                    }
+                }
+                pointer-event(e) => {
+                    let track-h = Math.max(1px, vscroll-touch.height);
+                    let thumb-h = Math.min(track-h, track-h / Math.max(1.0, root.history-zoom-y));
+                    let travel = Math.max(1px, track-h - thumb-h);
+                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                        // Click anywhere on the track to centre the thumb there, then drag.
+                        let target = vscroll-touch.mouse-y - thumb-h * 0.5;
+                        root.history-pan-y = Math.max(0.0, Math.min(1.0, target / travel));
+                        root.history-scroll-drag-axis = 2;
+                        root.history-scroll-drag-start = root.history-pan-y;
+                        root.history-scroll-drag-y = vscroll-touch.mouse-y;
+                    } else if (e.kind == PointerEventKind.move && root.history-scroll-drag-axis == 2) {
+                        let dy = vscroll-touch.mouse-y - root.history-scroll-drag-y;
+                        root.history-pan-y = Math.max(0.0, Math.min(1.0, root.history-scroll-drag-start + dy / travel));
+                    } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                        if (root.history-scroll-drag-axis == 2) { root.history-scroll-drag-axis = 0; }
+                    }
                 }
             }
 
@@ -2070,7 +2185,7 @@ export component AppWindow inherits Window {
                         ? root.edit-status
                         : (root.export-status != ""
                             ? root.export-status
-                            : "width = gate/length · brightness = velocity/accent · outline = slide · tap = hit, drag = length"));
+                            : "width = gate · brightness = velocity/accent · outline = slide · tap = hit, drag = gate"));
                 color: HoverTip.text != "" ? Theme.text : Theme.text-muted;
                 font-size: 9px; vertical-alignment: center; overflow: elide;
             }

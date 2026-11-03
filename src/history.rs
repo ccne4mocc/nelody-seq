@@ -305,13 +305,15 @@ fn time_grid(roll: &mut Roll, now_ms: u64, window_ms: u64, w: f32, h: f32, g: &G
         if !(0.0..=w).contains(&x) { continue; }
         let beat_pos = (k as f64).rem_euclid(spb);
         let bar_pos = (k as f64).rem_euclid(bar_steps);
+        // Drop finer lines as they approach pixel spacing: at 1px they turn the roll into a
+        // solid block. Bars always stay; beats need ~2.5px and steps ~4px to read cleanly.
         if bar_pos.abs() < 1e-9 {
             let _ = write!(roll.grid_bars, "M{x:.1} 0 L{x:.1} {h:.1} ");
         } else if beat_pos.abs() < 1e-9 {
-            if step_px * spb >= 1.0 {
+            if step_px * spb >= 2.5 {
                 let _ = write!(roll.grid_beats, "M{x:.1} 0 L{x:.1} {h:.1} ");
             }
-        } else if step_px >= 1.0 {
+        } else if step_px >= 4.0 {
             let _ = write!(roll.grid_steps, "M{x:.1} 0 L{x:.1} {h:.1} ");
         }
     }
@@ -487,6 +489,15 @@ mod tests {
         assert!(r.grid_beats.matches('M').count() >= 2);
         assert!(!r.grid_steps.contains("NaN"));
         assert!(!r.bg_bars.contains("NaN"));
+    }
+
+    #[test]
+    fn dense_time_grid_drops_step_and_beat_lines() {
+        let grid = GridSpec { step_ms: 1.0, steps_per_beat: 4.0, beats_per_bar: 4.0 };
+        let r = build_with_grid(&mut vec![], 10_000, 10_000, 800.0, 200.0, None, Some(&grid));
+        assert_eq!(r.grid_steps, "M0 0 ");
+        assert_eq!(r.grid_beats, "M0 0 ");
+        assert!(r.grid_bars.matches('M').count() > 1);
     }
 
     #[test]

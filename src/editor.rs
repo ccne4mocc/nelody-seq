@@ -1045,10 +1045,10 @@ impl Editor for SlintEditor {
                 let history = edit_history.clone();
                 // phase: 0 = start, 1 = move, 2 = end. The start point fixes both the edited step
                 // and its onset, so dragging one note never paints neighbouring steps.
-                let length_origin = Arc::new(Mutex::new(None::<(usize, f32)>));
-                ui.on_edit_length(move |x, snap, phase| {
+                let gate_origin = Arc::new(Mutex::new(None::<(usize, f32)>));
+                ui.on_edit_gate(move |x, snap, phase| {
                     if phase == 2 {
-                        if let Ok(mut origin) = length_origin.lock() { *origin = None; }
+                        if let Ok(mut origin) = gate_origin.lock() { *origin = None; }
                         return;
                     }
                     let hold = shared.history_hold_ms.load(Relaxed);
@@ -1065,13 +1065,13 @@ impl Editor for SlintEditor {
                         if let Ok(mut history) = history.lock() {
                             history.record(p.edit_overlay.snapshot());
                         }
-                        if let Ok(mut origin) = length_origin.lock() {
+                        if let Ok(mut origin) = gate_origin.lock() {
                             *origin = Some((step, x - fraction * step_x));
                         }
                         shared.edit_step.store(step as i32, Relaxed);
                         return;
                     }
-                    let origin = length_origin.lock().ok().and_then(|o| *o);
+                    let origin = gate_origin.lock().ok().and_then(|o| *o);
                     let Some((step, onset_x)) = origin else { return; };
                     let unit = snap.clamp(1.0 / 64.0, 1.0);
                     let raw = ((x - onset_x) / step_x).clamp(0.02, 1.0);
@@ -1415,6 +1415,7 @@ impl Editor for SlintEditor {
             ui.set_symmetry(p.symmetry.value() as f32);
             ui.set_markov_bias(p.markov_bias.value() as f32);
             ui.set_rate(p.rate.value().to_index() as i32);
+            ui.set_steps_per_beat(p.rate.value().steps_per_beat() as f32);
             let live_clock = update_shared.lfo_clock();
             let live_signals = p.lfo_signals(live_clock);
             let lfo_running = update_shared.lfo_running.load(Relaxed);
@@ -1596,9 +1597,13 @@ impl Editor for SlintEditor {
             let ui = AppWindow::new()?;
             Ok(ui)
         };
-        log_line("editor spawn: opening parented Slint/baseview window");
+        if self.params.logging.value() {
+            log_line("editor spawn: opening parented Slint/baseview window");
+        }
         let window = SlintWindow::open_parented(&parent, options, factory, setup, update, |_, _| {});
-        log_line("editor spawn: open_parented returned; native initialization may continue asynchronously");
+        if self.params.logging.value() {
+            log_line("editor spawn: open_parented returned");
+        }
         Box::new(SlintEditorHandle {
             window,
             params: self.params.clone(),

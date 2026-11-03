@@ -238,6 +238,7 @@ impl EditStore {
             self.probability[step].store(PROB_AUTO, Relaxed);
             self.ratchet[step].store(RATCHET_AUTO, Relaxed);
             self.offset[step].store(0, Relaxed);
+            self.length[step].store(LENGTH_AUTO, Relaxed);
         }
         self.bump();
     }
@@ -351,6 +352,14 @@ mod tests {
         assert_eq!(view.hit_override(1), HIT_AUTO);
         assert_eq!(view.probability_at(1), None);
         assert_eq!(view.length_at(1), None);
+    }
+
+    #[test]
+    fn clear_all_also_resets_length_overrides() {
+        let store = EditStore::default();
+        store.set_length(2, quantize_length(Some(0.25)));
+        store.clear_all();
+        assert_eq!(store.length_at(2), None);
     }
 
     #[test]
