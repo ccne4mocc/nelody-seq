@@ -303,6 +303,7 @@ fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
         22 => set(c, &p.root_cents, value.clamp(-50.0, 50.0)),
         23 => set(c, &p.history_bars, value.clamp(1.0, p.history_bars_ceiling())),
         24 => set(c, &p.gate, value.clamp(0.02, 1.0)),
+        25 => set(c, &p.bend_range, (value.round() as i32).clamp(1, 24)),
         _ => {},
     }
 }
@@ -1096,6 +1097,7 @@ impl Editor for SlintEditor {
             ui.set_edo(p.edo.value());
             ui.set_edo_active(p.scale.value() == Tuning::Edo);
             ui.set_root_cents(p.root_cents.value());
+            ui.set_bend_range(p.bend_range.value() as f32);
             let history_max = p.history_bars_ceiling();
             let history_bars = p.history_bars.value().min(history_max);
             if p.history_bars.value() > history_max { set(&update_context, &p.history_bars, history_max); }

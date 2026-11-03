@@ -200,7 +200,7 @@ component TuningChip inherits Rectangle {
 
 component OptSlider inherits Rectangle {
     in property <Opt> opt;
-    // Strip index used to address the shared editing session. The caller passes 0..23.
+    // Strip index used to address the shared editing session. The caller passes 0..25.
     in property <int> index: -1;
     // Non-negative values are registered as modulation drop targets.
     in property <int> mod-target: -1;
@@ -994,7 +994,7 @@ export component AppWindow inherits Window {
     // DAW track hosting this instance; empty when the host does not report one.
     in property <string> track-name: "";
     // Any text field with keyboard focus. Rust reads this each frame (see `keys.rs`).
-    out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || edo-row.editing || midi-root-box.editing || cents-box.editing || hist-box.editing || rate-field.editing || OptEdit.index >= 0;
+    out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || edo-row.editing || midi-root-box.editing || cents-box.editing || bend-box.editing || hist-box.editing || rate-field.editing || OptEdit.index >= 0;
     in-out property <string> export-status: "";
     in property <int> theme-index: 1;
     in property <[ModeRow]> mode-rows;
@@ -1035,6 +1035,7 @@ export component AppWindow inherits Window {
     // EDO only changes a scale when the Equal (EDO) table is active.
     in property <bool> edo-active: false;
     in property <float> root-cents: 0;
+    in property <float> bend-range: 2;
     in property <float> history-bars: 4;
     // Longest history window the current Max Steps ceiling can fill, in 4/4 bars.
     in property <float> history-max-bars: 1024;
@@ -1800,6 +1801,9 @@ export component AppWindow inherits Window {
             Text { text: "TUNING"; color: Theme.text-muted; font-size: 9px; }
             midi-root-box := NumBox { label: "Root MIDI note"; value: root.midi-root; minimum: 0; maximum: 120; step: 1; mod-target: 19; changed(v) => { root.set-opt(20, v); } }
             cents-box := NumBox { label: "Root cents"; value: root.root-cents; minimum: -50; maximum: 50; step: 1; mod-target: 21; changed(v) => { root.set-opt(22, v); } }
+            // The synth's full bend range; the plugin also announces it over RPN 0.
+            bend-box := NumBox { label: "Bend range (semitones)"; value: root.bend-range; minimum: 1; maximum: 24; step: 1; changed(v) => { root.set-opt(25, v); } }
+            Text { text: "Sent as RPN 0 so the receiving synth matches; set the same range by hand if it ignores RPN."; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
             hist-box := NumBox { label: "History Length (Bars)"; value: root.history-bars; minimum: 1; maximum: root.history-max-bars; step: 1; mod-target: 23; changed(v) => { root.set-opt(23, v); } }
             Text { text: "TECHNICAL SUPPORT"; color: Theme.text-muted; font-size: 9px; }
             Rectangle {

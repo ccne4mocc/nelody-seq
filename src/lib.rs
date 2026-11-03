@@ -307,6 +307,9 @@ pub struct MelodyParams {
     #[id = "oct_jump"] pub octave: FloatParam,
     /// Send microtonal tuning offsets as pitch bend.
     #[id = "nts"] pub nts: BoolParam,
+    /// Full pitch-bend range the receiving synth is set to, in semitones. Also emitted as RPN 0
+    /// so a synth that honours it matches the plugin without manual setup.
+    #[id = "bend_range"] pub bend_range: IntParam,
     /// Piano-roll history window in 4/4 bars. The old `history_beats` id meant beats, so it is
     /// retired; projects saved with it reopen at the 4-bar default.
     #[id = "history_bars"] pub history_bars: FloatParam,
@@ -443,6 +446,7 @@ impl Default for MelodyParams {
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
             nts: BoolParam::new("Microtonal Pitch Bend (NTS)", true),
+            bend_range: IntParam::new("Pitch Bend Range", 2, IntRange::Linear { min: 1, max: 24 }),
             history_bars: FloatParam::new(
                 "History Length (Bars)",
                 4.0,
@@ -790,6 +794,13 @@ impl MelodyParams {
     }
 }
 
+/// Normalised pitch-bend value for `cents`, where `range_cents` is the synth's full range in each
+/// direction (RPN 0). Detune beyond the range clips instead of wrapping into the next semitone.
+pub(crate) fn bend_value(cents: f32, range_cents: f32) -> f32 {
+    let range = if range_cents.is_finite() && range_cents > 0.0 { range_cents } else { 200.0 };
+    (0.5 + cents / (2.0 * range)).clamp(0.0, 1.0)
+}
+
 /// Grid cells a raw `steps` value covers under the user-selected ceiling.
 fn cell_count_for(raw: f32, snap: bool, ceiling: usize) -> i32 {
     let cap = ceiling.clamp(MIN_MAX_STEPS, MAX_STEPS) as f32;
@@ -975,6 +986,8 @@ pub struct NelodySeq {
     active: Option<Active>,
     /// A non-centre pitch bend is outstanding and must be reset when the voice stops.
     bent: bool,
+    /// Bend range last announced through RPN 0; re-sent when the parameter or the session changes.
+    bend_range_sent: Option<i32>,
     expected_beat: Option<f64>,
     /// Next step index to schedule, carried across blocks so swing cannot drop a step.
     next_step: Option<i64>,
@@ -1000,6 +1013,7 @@ impl Default for NelodySeq {
             last_generate: None,
             active: None,
             bent: false,
+            bend_range_sent: None,
             expected_beat: None,
             next_step: None,
             pending_reset: false,
@@ -1019,9 +1033,26 @@ impl NelodySeq {
     }
 
     fn send_bend(&mut self, ctx: &mut impl ProcessContext<Self>, timing: u32, cents: f32) {
-        let value = (0.5 + cents / 400.0).clamp(0.0, 1.0);
+        let range = self.params.bend_range.value().clamp(1, 24) as f32 * 100.0;
+        let value = bend_value(cents, range);
         self.bent = (value - 0.5).abs() > 1e-4;
         ctx.send_event(NoteEvent::MidiPitchBend { timing, channel: 0, value });
+    }
+
+    /// Emit RPN 0 (pitch-bend sensitivity) so a synth that honours it matches this range, then
+    /// deselect the RPN so later CC data-entry does not keep writing to it.
+    fn send_bend_range(&self, ctx: &mut impl ProcessContext<Self>, timing: u32, semitones: i32) {
+        let v = |raw: u8| f32::from(raw) / 127.0;
+        for (cc, raw) in [
+            (101, 0),
+            (100, 0),
+            (6, semitones.clamp(0, 127) as u8),
+            (38, 0),
+            (101, 127),
+            (100, 127),
+        ] {
+            ctx.send_event(NoteEvent::MidiCC { timing, channel: 0, cc, value: v(raw) });
+        }
     }
 
     fn stop_all(&mut self, ctx: &mut impl ProcessContext<Self>, nts: bool) {
@@ -1073,6 +1104,7 @@ impl Plugin for NelodySeq {
     fn reset(&mut self) {
         // `reset` gets no ProcessContext, so NoteOffs flush at the top of the next `process`.
         self.pending_reset = self.active.is_some();
+        self.bend_range_sent = None;
         self.expected_beat = None;
         self.next_step = None;
         self.free_beat = 0.0;
@@ -1090,6 +1122,12 @@ impl Plugin for NelodySeq {
     fn process(&mut self, buffer: &mut Buffer, _aux: &mut AuxiliaryBuffers, context: &mut impl ProcessContext<Self>) -> ProcessStatus {
         let p = self.params.clone();
         let nts = p.nts.value();
+        let bend_range = p.bend_range.value().clamp(1, 24);
+        if self.bend_range_sent != Some(bend_range) {
+            // Announce the sensitivity before any bend, so the first detuned note is already right.
+            self.send_bend_range(context, 0, bend_range);
+            self.bend_range_sent = Some(bend_range);
+        }
         if !nts && self.bent {
             // NTS switched off while a bend is outstanding: nothing else would ever recentre it.
             self.bent = false;
@@ -1340,7 +1378,7 @@ mod tests {
             "lfo4_rate_mode", "lfo4_freq", "lfo4_rate", "lfo4_depth", "lfo4_phase",
             "lfo4_polarity", "generate", "invert", "mirror", "logging",
             "freerun", "root", "scale", "edo", "root_cents", "midi_root", "octaves", "slide",
-            "accent", "oct_jump", "nts", "history_bars",
+            "accent", "oct_jump", "nts", "bend_range", "history_bars",
         ] {
             assert!(ids.contains(&expected), "missing parameter {expected}");
         }
@@ -1627,6 +1665,21 @@ mod tests {
         abs.semis[0] = 7;
         let (note, cents) = edge.pitch_for(&abs, 0);
         assert_eq!(((note as i32 - 48) as f32 * 100.0 + cents), 750.0);
+    }
+
+    #[test]
+    fn bend_value_follows_the_announced_range_and_clips() {
+        assert!((bend_value(0.0, 200.0) - 0.5).abs() < 1e-6);
+        assert!((bend_value(50.0, 200.0) - 0.625).abs() < 1e-6);
+        assert!((bend_value(-50.0, 200.0) - 0.375).abs() < 1e-6);
+        // A one-semitone range nearly doubles the travel of the same 50 c detune.
+        assert!((bend_value(50.0, 100.0) - 0.75).abs() < 1e-6);
+        // Beyond the announced range the value clips at the ends; it must never wrap.
+        assert_eq!(bend_value(500.0, 100.0), 1.0);
+        assert_eq!(bend_value(-500.0, 100.0), 0.0);
+        // A missing or broken range keeps the historical ±2 semitones.
+        assert!((bend_value(50.0, 0.0) - 0.625).abs() < 1e-6);
+        assert!((bend_value(50.0, f32::NAN) - 0.625).abs() < 1e-6);
     }
 
     #[test]

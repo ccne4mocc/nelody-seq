@@ -22,11 +22,22 @@ pub(crate) struct ExportSettings {
 
 struct Event {
     tick: u32,
-    /// 0 = note off, 1 = note on. Offs sort first so a retrigger cannot cut the new note.
+    /// Same-tick write order: 0 = note off, 1..=6 = the RPN messages in sequence, 7 = pitch bend,
+    /// 8 = note on. A note off therefore cannot cut the incoming note, and the bend sensitivity is
+    /// established before the first bend or note.
     order: u8,
-    note: u8,
-    velocity: u8,
+    data: [u8; 3],
 }
+
+/// Channel-1 pitch-bend sensitivity (RPN 0), paired with the message that closes the RPN.
+const RPN_ZERO: [(u8, u8); 6] = [
+    (101, 0),
+    (100, 0),
+    (6, 0),
+    (38, 0),
+    (101, 127),
+    (100, 127),
+];
 
 /// Encode one generated loop as a format-0 Standard MIDI File.
 pub(crate) fn smf(pattern: &Pattern, p: &MelodyParams, settings: &ExportSettings) -> Vec<u8> {
@@ -45,8 +56,19 @@ pub(crate) fn smf(pattern: &Pattern, p: &MelodyParams, settings: &ExportSettings
     let gate = settings.gate.clamp(0.02, 1.0);
     let swing = settings.swing.clamp(0.0, 0.5) * step_len;
     let to_tick = |beat: f64| (beat * PPQ as f64).round().clamp(0.0, u32::MAX as f64) as u32;
+    let nts = p.nts.value();
+    let bend_range = p.bend_range.value().clamp(1, 24) as f32 * 100.0;
 
     let mut events = Vec::new();
+    if nts {
+        // The file carries the same sensitivity the plugin announces over MIDI, so the notes do
+        // not play back at a different microtonal offset than they sounded. The RPN needs its
+        // four messages in order, so each one gets its own sort key.
+        for (k, (cc, raw)) in RPN_ZERO.iter().copied().enumerate() {
+            let raw = if cc == 6 { p.bend_range.value().clamp(1, 24) as u8 } else { raw };
+            events.push(Event { tick: 0, order: 1 + k as u8, data: [0xB0 | CHANNEL, cc, raw] });
+        }
+    }
     for i in 0..steps {
         if !pattern.hit[i] { continue; }
         let onset = i as f64 * step_len + if i % 2 == 1 { swing } else { 0.0 };
@@ -60,15 +82,27 @@ pub(crate) fn smf(pattern: &Pattern, p: &MelodyParams, settings: &ExportSettings
         };
         let velocity = (p.velocity.value() * pattern.acc[i]).clamp(0.0, 1.0);
         let velocity = (velocity * 127.0).round().clamp(1.0, 127.0) as u8;
-        let note = p.pitch_for(pattern, i).0;
-        events.push(Event { tick: to_tick(onset), order: 1, note, velocity });
-        events.push(Event { tick: to_tick(onset + hold * step_len), order: 0, note, velocity: 0 });
+        let (note, cents) = p.pitch_for(pattern, i);
+        if nts {
+            let bend = (crate::bend_value(cents, bend_range) * 16_383.0).round() as u16;
+            events.push(Event {
+                tick: to_tick(onset),
+                order: 7,
+                data: [0xE0 | CHANNEL, (bend & 0x7F) as u8, (bend >> 7) as u8],
+            });
+        }
+        events.push(Event { tick: to_tick(onset), order: 8, data: [0x90 | CHANNEL, note, velocity] });
+        events.push(Event { tick: to_tick(onset + hold * step_len), order: 0, data: [0x80 | CHANNEL, note, 0] });
+    }
+    let loop_end = to_tick(loop_steps * step_len);
+    if nts {
+        // The loop must not end carrying the last note's bend into the next iteration.
+        events.push(Event { tick: loop_end, order: 7, data: [0xE0 | CHANNEL, 0x00, 0x40] });
     }
     events.sort_unstable_by(|a, b| {
-        a.tick.cmp(&b.tick).then(a.order.cmp(&b.order)).then(a.note.cmp(&b.note))
+        a.tick.cmp(&b.tick).then(a.order.cmp(&b.order)).then(a.data.cmp(&b.data))
     });
 
-    let loop_end = to_tick(loop_steps * step_len);
     let mut track = Vec::new();
     let bpm = if settings.bpm.is_finite() && settings.bpm > 0.0 { settings.bpm } else { 120.0 };
     let us_per_beat = (60_000_000.0 / bpm).round().clamp(1.0, 16_777_215.0) as u32;
@@ -79,8 +113,7 @@ pub(crate) fn smf(pattern: &Pattern, p: &MelodyParams, settings: &ExportSettings
     let mut last_tick = 0;
     for event in &events {
         push_vlq(&mut track, event.tick - last_tick);
-        let status = if event.order == 0 { 0x80 | CHANNEL } else { 0x90 | CHANNEL };
-        track.extend_from_slice(&[status, event.note, event.velocity]);
+        track.extend_from_slice(&event.data);
         last_tick = event.tick;
     }
     let end = loop_end.max(last_tick);
@@ -115,6 +148,7 @@ fn push_vlq(out: &mut Vec<u8>, mut value: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nice_plug::prelude::*;
 
     fn setup(hits: &[usize]) -> (Pattern, MelodyParams, ExportSettings) {
         let mut pattern = Pattern { steps: 4, ..Pattern::default() };
@@ -123,7 +157,10 @@ mod tests {
             pattern.acc[i] = 1.0;
             pattern.u[i] = 0.0;
         }
-        let p = MelodyParams::default();
+        let p = MelodyParams {
+            nts: BoolParam::new("Microtonal Pitch Bend (NTS)", false),
+            ..MelodyParams::default()
+        };
         let settings = ExportSettings { bpm: 120.0, steps_per_beat: 4.0, loop_steps: 4.0, gate: 0.5, swing: 0.0 };
         (pattern, p, settings)
     }
@@ -188,6 +225,91 @@ mod tests {
             }
         }
         out
+    }
+
+    /// Every channel event with both data bytes, for the bend/RPN tests.
+    fn all_events(track: &[u8]) -> Vec<(u32, [u8; 3])> {
+        let mut out = Vec::new();
+        let mut at = 0;
+        let mut tick = 0u32;
+        while at < track.len() {
+            let (delta, used) = read_vlq(&track[at..]);
+            at += used;
+            tick += delta;
+            match track[at] {
+                0xFF => {
+                    at += 2;
+                    let (len, used) = read_vlq(&track[at..]);
+                    at += used + len as usize;
+                }
+                0x80..=0xEF => {
+                    out.push((tick, [track[at], track[at + 1], track[at + 2]]));
+                    at += 3;
+                }
+                other => panic!("unexpected event byte {other:#04x} at {at}"),
+            }
+        }
+        out
+    }
+
+    fn detuned_setup(range: i32, root_cents: f32) -> (Pattern, MelodyParams, ExportSettings) {
+        let (mut pattern, _, settings) = setup(&[0, 1]);
+        pattern.u[0] = 0.0;
+        pattern.u[1] = 0.0;
+        let p = MelodyParams {
+            nts: BoolParam::new("Microtonal Pitch Bend (NTS)", true),
+            bend_range: IntParam::new("Pitch Bend Range", range, IntRange::Linear { min: 1, max: 24 }),
+            root_cents: FloatParam::new("Root Cents", root_cents, FloatRange::Linear { min: -50.0, max: 50.0 }),
+            ..MelodyParams::default()
+        };
+        (pattern, p, settings)
+    }
+
+    #[test]
+    fn nts_announces_its_bend_range_before_any_bend_or_note() {
+        let (pattern, p, settings) = detuned_setup(2, 40.0);
+        let bytes = smf(&pattern, &p, &settings);
+        let events = all_events(&bytes[22..]);
+        // RPN 0: select, semitones = range, cents = 0, then deselect.
+        let rpn: Vec<(u32, [u8; 3])> = events.iter().copied().take(6).collect();
+        assert_eq!(rpn.iter().map(|(_, e)| (e[1], e[2])).collect::<Vec<_>>(), vec![
+            (101, 0), (100, 0), (6, 2), (38, 0), (101, 127), (100, 127)
+        ]);
+        assert!(rpn.iter().all(|(tick, e)| *tick == 0 && e[0] == 0xB0));
+        // The first detuned note is preceded by its own bend at the same tick.
+        let bend = events.iter().find(|(_, e)| e[0] == 0xE0).expect("no pitch bend written");
+        assert_eq!(bend.0, 0);
+        // +40 c over a ±2 st range is 0.6 of the 14-bit span.
+        let value = (u16::from(bend.1[1]) | (u16::from(bend.1[2]) << 7)) as f32 / 16_383.0;
+        assert!((value - 0.6).abs() < 1e-3, "bend value {value}");
+        // The loop ends on a centred bend, after the last note off.
+        let last = events.last().copied().unwrap();
+        assert_eq!(last.1, [0xE0, 0x00, 0x40]);
+        assert_eq!(last.0, 480, "loop end in ticks");
+        let note_off_at = events.iter().rev().find(|(_, e)| e[0] == 0x80).unwrap().0;
+        assert!(note_off_at <= last.0);
+    }
+
+    #[test]
+    fn bend_range_changes_the_exported_bend_depth() {
+        let (pattern, wide, settings) = detuned_setup(2, 40.0);
+        let (_, narrow, _) = detuned_setup(1, 40.0);
+        let value = |p: &MelodyParams| {
+            let bytes = smf(&pattern, p, &settings);
+            let bend = all_events(&bytes[22..]).into_iter().find(|(_, e)| e[0] == 0xE0).unwrap();
+            (u16::from(bend.1[1]) | (u16::from(bend.1[2]) << 7)) as f32 / 16_383.0
+        };
+        let (a, b) = (value(&wide), value(&narrow));
+        assert!((a - 0.6).abs() < 1e-3, "±2 st: {a}");
+        assert!((b - 0.7).abs() < 1e-3, "±1 st: {b}");
+    }
+
+    #[test]
+    fn nts_off_writes_no_bend_or_rpn() {
+        let (pattern, p, settings) = setup(&[0, 1]);
+        let bytes = smf(&pattern, &p, &settings);
+        let events = all_events(&bytes[22..]);
+        assert!(events.iter().all(|(_, e)| e[0] != 0xE0 && e[0] != 0xB0), "unexpected bend/CC");
     }
 
     fn read_vlq(data: &[u8]) -> (u32, usize) {

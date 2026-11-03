@@ -13,7 +13,6 @@ source of requirements. Nothing here is scheduled.
 ## Tuning
 
 - Scala file loading (with the globals-settings handshake noted in ARCHITECTURE.md).
-- Adjustable pitch-bend range (currently a fixed ±2 semitones when `nts` is on).
 
 ## Views
 

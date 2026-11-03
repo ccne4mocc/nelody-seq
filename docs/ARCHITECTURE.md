@@ -84,7 +84,10 @@ note. NoteOff is always emitted before any retrigger at the same timeline positi
 expiry, during stop, on reset, and after a detected transport jump. `nts` gates both the pitch
 bend and whether history stores the detune; `stop_all` resets the bend to centre, and switching
 `nts` off while a bend is outstanding recentres it at the next block instead of leaving the
-whole voice detuned.
+whole voice detuned. `bend_range` sets the full range in semitones; it is announced as RPN 0
+(pitch-bend sensitivity) whenever the parameter changes and after `reset()`, so a synth that
+honours RPN matches without manual setup. Synths that ignore RPN need the same range set by
+hand, and any detune beyond the range clips at the ends rather than wrapping.
 
 `Tuning::pitch`/`pitch_in_octave` return the nearest semitone plus the detune remainder in
 −50..50 cents. `pitch_for` consumes both as-is and must not round the remainder again: doing so
@@ -159,7 +162,9 @@ across the full width.
 `generate()` path as the preview, then flattens one complete loop: mono notes only, accent
 scaled by the global velocity, gate or slide hold, swing. Tempo comes from the last host
 tempo in `Shared::tempo_bits`, falling back to 120 BPM. Note-offs sort before note-ons at the
-same tick, so a retrigger cannot cut the incoming note. The EXPORT MIDI button sits in the
+same tick, so a retrigger cannot cut the incoming note. With `nts` on the file also carries
+`bend_range` as RPN 0 and a 14-bit pitch bend before every note, plus a centred bend at the
+loop end so one iteration cannot leak its detune into the next. The EXPORT MIDI button sits in the
 bottom-right corner of the main window, under the MIDI history; its status line sits beside
 it. Settings keeps only the export folder, stored in user-global settings, created if missing,
 and opened after a successful write. Because CLAP/VST3 expose no project-path API, the
@@ -175,7 +180,7 @@ first-run default is the host process working directory.
 | Mode data bridge | `GenParams::mode_data: [f32; 4]` | Fixed slots for values a future typed `ModeParams` enum would own; currently zero-filled and documented per mode in `REFERENCE_MAPPING.md` |
 | Clock | `rate`, `gate`, `swing`, `freerun` | Beat grid, NoteOff duration, stopped-transport behaviour |
 | LFO | `lfoN_wave`, `lfoN_rate_mode`, `lfoN_freq`, `lfoN_rate`, `lfoN_depth`, `lfoN_phase`, `lfoN_polarity` for N = 1–4; persisted `lfoN_links` masks; legacy `lfo1_target`/`lfo2_target` | Four runtime LFOs. Hz (0.01–10) is the default speed, with beat sync as the alternative. Bipolar spans ±depth; unipolar spans 0..depth. Links are drag/drop targets stored as one 24-bit mask per LFO. Feel/tuning targets are sampled per note; generator targets at loop boundaries. Legacy single-target values are treated as one link while the new mask is empty. Runtime modulation is not written back to host parameters and is not part of MIDI export |
-| Melody / tuning | `root` (pitch class), `scale` (25 tables or EDO), `octaves`, `edo`, `root_cents`, `midi_root`, `nts` | Pitch mapping. The tonic is `midi_root + root` semitones; non-12-TET detune is emitted as pitch bend while `nts` is on. Scale tables are append-only after `edo`: host automation addresses enum indices, so inserting a table retunes existing projects |
+| Melody / tuning | `root` (pitch class), `scale` (25 tables or EDO), `octaves`, `edo`, `root_cents`, `midi_root`, `nts`, `bend_range` | Pitch mapping. The tonic is `midi_root + root` semitones; non-12-TET detune is emitted as pitch bend while `nts` is on. Scale tables are append-only after `edo`: host automation addresses enum indices, so inserting a table retunes existing projects |
 | Acid flags | `slide`, `accent`, `oct_jump` | Per-note probabilities for the five acid modes. They only add or remove flags — never reshuffle the line (tested) |
 | Post-transforms | `invert`, `mirror`, `rotate` | Applied to the finished line: hit inversion, retrograde, circular rotation |
 | History | `history_bars` (host id) | Window width of the always-recording piano-roll history, in 4/4 bars. The old `history_beats` id meant beats under the same label, so it was retired rather than reused: projects saved with it reopen at the 4-bar default instead of a window four times too wide |
