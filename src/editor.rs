@@ -489,20 +489,78 @@ fn history_window_ms(bars: f32, bpm: f32) -> u64 {
     ((bars.clamp(1.0, MAX_STEPS as f32) * BEATS_PER_BAR * 60_000.0 / bpm).round() as u64).max(250)
 }
 
+/// Note bars for the current-loop overlay, built through the same `pitch_for` path as playback.
+fn overlay_notes(p: &MelodyParams, pattern: &Pattern, pitch: &crate::PitchValues) -> Vec<(u8, f32, f32)> {
+    let gate = p.gate.value().clamp(0.02, 1.0);
+    let n = pattern.steps;
+    let nts = p.nts.value();
+    let mut out = Vec::new();
+    for i in 0..n {
+        if !pattern.hit[i] { continue; }
+        let (note, cents) = p.pitch_for_values(pattern, i, pitch);
+        // Same hold rule as playback and export: a slide runs to the next onset, else the gate.
+        let hold = if pattern.slide[i] {
+            crate::next_hit_after(&pattern.hit, i, n)
+                .map(|j| ((j + n - i) % n) as f32 + 0.5)
+                .unwrap_or(gate)
+        } else {
+            gate
+        };
+        out.push((note, if nts { cents } else { 0.0 }, hold));
+    }
+    out
+}
+
+/// Phase-lock the overlay to the beat clock the scheduler stamped, not to a guessed block length.
+fn overlay_clock<'a>(
+    shared: &Shared,
+    p: &MelodyParams,
+    bpm: f32,
+    now_ms: u64,
+    loop_steps: f32,
+    notes: &'a [(u8, f32, f32)],
+) -> Option<history::Overlay<'a>> {
+    if notes.is_empty() || !shared.lfo_running.load(Relaxed) { return None; }
+    let bpm64 = bpm as f64;
+    if !(bpm64.is_finite() && bpm64 > 0.0) { return None; }
+    let spb = p.rate.value().steps_per_beat();
+    let beat = f64::from_bits(shared.last_beat.load(Relaxed));
+    let beat_ms = shared.beat_ms.load(Relaxed) as f64;
+    let now_beat = beat + (now_ms as f64 - beat_ms) * bpm64 / 60_000.0;
+    Some(history::Overlay {
+        notes,
+        step_ms: (60_000.0 / (bpm64 * spb)) as f32,
+        phase_steps: (now_beat * spb) as f32,
+        loop_steps,
+        swing_steps: p.swing.value().clamp(0.0, 0.5),
+    })
+}
+
 /// Push the right-to-left history, with the window in milliseconds derived from tempo and bar count.
 fn push_history(
     ui: &AppWindow,
     shared: &Shared,
+    p: &MelodyParams,
+    pattern: &Pattern,
+    pitch: &crate::PitchValues,
     bpm: f32,
     bars: f32,
+    loop_steps: f32,
 ) {
     let window_ms = history_window_ms(bars, bpm);
     let now_ms = shared.epoch.elapsed().as_millis() as u64;
     let mut events = shared.snapshot();
-    let roll = history::build(&mut events, now_ms, window_ms, HISTORY_W, HISTORY_H);
+    let notes = if p.history_overlay.value() {
+        overlay_notes(p, pattern, pitch)
+    } else {
+        Vec::new()
+    };
+    let overlay = overlay_clock(shared, p, bpm, now_ms, loop_steps, &notes);
+    let roll = history::build(&mut events, now_ms, window_ms, HISTORY_W, HISTORY_H, overlay.as_ref());
     ui.set_history_bg(SharedString::from(roll.bg.as_str()));
     ui.set_history_grid(SharedString::from(roll.grid.as_str()));
     ui.set_history_notes(SharedString::from(roll.notes.as_str()));
+    ui.set_history_pattern(SharedString::from(roll.pattern.as_str()));
     ui.set_history_range(SharedString::from(format!(
         "{} – {}",
         note_label(roll.lo),
@@ -861,6 +919,10 @@ impl Editor for SlintEditor {
                 ui.on_toggle_mirror(move || set(&c, &p.mirror, !p.mirror.value()));
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_toggle_logging(move || set(&c, &p.logging, !p.logging.value()));
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_toggle_history_overlay(move || {
+                    set(&c, &p.history_overlay, !p.history_overlay.value())
+                });
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
@@ -1114,6 +1176,7 @@ impl Editor for SlintEditor {
                 .target_value(ModTarget::HistoryBars, &live_signals)
                 .clamp(1.0, history_max);
             ui.set_nts_on(p.nts.value());
+            ui.set_history_overlay_on(p.history_overlay.value());
             ui.set_slide(p.slide.value());
             ui.set_accent(p.accent.value());
             ui.set_octave(p.octave.value());
@@ -1151,7 +1214,7 @@ impl Editor for SlintEditor {
                 push_view(&ui, &v);
                 c.view_key = Some(view_key);
             }
-            push_history(&ui, &update_shared, update_shared.sample_tempo(), history_bars_effective);
+            push_history(&ui, &update_shared, p, &c.pattern, &preview_pitch, update_shared.sample_tempo(), history_bars_effective, gen_key.length);
         };
         let factory = move || {
             let ui = AppWindow::new()?;

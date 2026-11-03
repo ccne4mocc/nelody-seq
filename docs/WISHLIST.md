@@ -14,10 +14,6 @@ source of requirements. Nothing here is scheduled.
 
 - Scala file loading (with the globals-settings handshake noted in ARCHITECTURE.md).
 
-## Views
-
-- An overlay of the current pattern on top of the history roll.
-
 ## Randomize
 
 - Feel-layer microtiming depth (sample-offset semantics must be defined first).

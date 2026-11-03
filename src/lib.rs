@@ -314,6 +314,8 @@ pub struct MelodyParams {
     /// Piano-roll history window in 4/4 bars. The old `history_beats` id meant beats, so it is
     /// retired; projects saved with it reopen at the 4-bar default.
     #[id = "history_bars"] pub history_bars: FloatParam,
+    /// Draw the current loop over the recorded history roll.
+    #[id = "history_overlay"] pub history_overlay: BoolParam,
 }
 
 /// Format an LFO frequency in Hz; the speed field is either Hz or a beat-synced rate.
@@ -453,6 +455,7 @@ impl Default for MelodyParams {
                 4.0,
                 FloatRange::Linear { min: 1.0, max: MAX_STEPS as f32 },
             ),
+            history_overlay: BoolParam::new("History Pattern Overlay", true),
         }
     }
 }
@@ -825,6 +828,9 @@ pub struct Shared {
     pub tempo_bits: AtomicU32,
     /// Current transport/free-run beat as `f64` bits, for matrix values and the LFO animation.
     pub last_beat: AtomicU64,
+    /// Wall-clock time (`epoch` milliseconds) at which `last_beat` was sampled, so the editor can
+    /// turn a millisecond timestamp into a beat without guessing a block length.
+    pub beat_ms: AtomicU64,
     /// Beat at which the current pattern was generated, for preview parity.
     pub pattern_beat: AtomicU64,
     /// Normalized phase of each LFO at the start of the last processed block.
@@ -852,6 +858,7 @@ impl Default for Shared {
             regen_pulse: AtomicU32::new(0),
             tempo_bits: AtomicU32::new(0),
             last_beat: AtomicU64::new(0),
+            beat_ms: AtomicU64::new(0),
             pattern_beat: AtomicU64::new(0),
             lfo_phase: std::array::from_fn(|_| AtomicU32::new(0)),
             lfo_running: AtomicBool::new(false),
@@ -1169,6 +1176,9 @@ impl Plugin for NelodySeq {
 
         let clock_start = LfoClock::from_beat(start, bpm);
         self.shared.last_beat.store(start.to_bits(), Relaxed);
+        // Stamp the beat with the same wall clock the history ring uses, so the editor can place
+        // the current pattern on the roll without assuming a block length.
+        self.shared.beat_ms.store(self.shared.epoch.elapsed().as_millis() as u64, Relaxed);
         self.shared.lfo_running.store(true, Relaxed);
         for slot in 0..LFO_COUNT {
             self.shared.lfo_phase[slot]
@@ -1379,7 +1389,7 @@ mod tests {
             "lfo4_rate_mode", "lfo4_freq", "lfo4_rate", "lfo4_depth", "lfo4_phase",
             "lfo4_polarity", "generate", "invert", "mirror", "logging",
             "freerun", "root", "scale", "edo", "root_cents", "midi_root", "octaves", "slide",
-            "accent", "oct_jump", "nts", "bend_range", "history_bars",
+            "accent", "oct_jump", "nts", "bend_range", "history_bars", "history_overlay",
         ] {
             assert!(ids.contains(&expected), "missing parameter {expected}");
         }

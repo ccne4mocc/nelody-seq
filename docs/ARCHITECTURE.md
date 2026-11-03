@@ -150,7 +150,15 @@ pattern's own length in bars: `max_steps / (4 × rate.steps_per_beat())`. The ri
 NoteOff, including retriggers and legato), so even the widest window fits with headroom.
 Changing Max Steps or
 the clock rate clamps the history window instead of leaving an impossible value in place. A cent offset shifts the note inside its own
-row, so NTS pitches are visible as microtonal offsets. Pairing keeps the ring's emission order
+row, so NTS pitches are visible as microtonal offsets.
+
+`history_overlay` adds a fourth path: the current loop projected backwards from the playhead, so
+a regeneration, a randomize or a transport jump shows up as a mismatch between the outline and
+the recorded notes. The projection is phase-locked to the audio thread: `process` stores
+`last_beat` together with the `epoch` millisecond it was sampled at (`Shared::beat_ms`), and the
+editor converts "now" into a step position instead of assuming a block length. The ghost uses
+the preview snapshot (`pattern_clock`), so per-note tuning LFO links can make it disagree with
+what actually played; the overlay is hidden while the clock is not advancing. Pairing keeps the ring's emission order
 for events in the same millisecond, and a NoteOff whose NoteOn already fell out of the ring is
 ignored rather than synthesised from the window edge; either mistake drew phantom notes
 across the full width.
@@ -183,7 +191,7 @@ first-run default is the host process working directory.
 | Melody / tuning | `root` (pitch class), `scale` (25 tables or EDO), `octaves`, `edo`, `root_cents`, `midi_root`, `nts`, `bend_range` | Pitch mapping. The tonic is `midi_root + root` semitones; non-12-TET detune is emitted as pitch bend while `nts` is on. Scale tables are append-only after `edo`: host automation addresses enum indices, so inserting a table retunes existing projects |
 | Acid flags | `slide`, `accent`, `oct_jump` | Per-note probabilities for the five acid modes. They only add or remove flags — never reshuffle the line (tested) |
 | Post-transforms | `invert`, `mirror`, `rotate` | Applied to the finished line: hit inversion, retrograde, circular rotation |
-| History | `history_bars` (host id) | Window width of the always-recording piano-roll history, in 4/4 bars. The old `history_beats` id meant beats under the same label, so it was retired rather than reused: projects saved with it reopen at the 4-bar default instead of a window four times too wide |
+| History | `history_bars` (host id), `history_overlay` | Window width of the always-recording piano-roll history, in 4/4 bars, and whether the current loop is outlined over it. The old `history_beats` id meant beats under the same label, so it was retired rather than reused: projects saved with it reopen at the 4-bar default instead of a window four times too wide |
 
 `velocity` multiplies each step's `Pattern.acc` (step accents × acid accent flags), clamped to
 1.0. `expressive quantization` such as per-step velocity drag is intentionally absent:
@@ -281,9 +289,11 @@ variation comes from Generate, Randomize and the knobs.
 - Clock rate is one `RateField`. The wheel walks `Rate::RATE_ORDER` (base, dotted, triplet per
   value); a double-click opens an inline text field that accepts the enum labels or aliases
   (`1/16t`, `1/16.`, `1/16d`). The enum keeps host-state order; new divisions are appended.
-- The MIDI history panel is three paths (`history-bg`, `history-grid`, `history-notes`) in a
-  800×200 viewbox inside a card that stretches from the description to the bottom controls
-  (minimum 190px), driven entirely from `history::build` output. The INVERT/MIRROR side strips
+- The MIDI history panel is four paths (`history-bg`, `history-grid`, `history-notes`,
+  `history-pattern`) in an 800×200 viewbox inside a card that stretches from the description to
+  the bottom controls (preferred 187px so the fixed column sums exactly), driven entirely from
+  `history::build` output; the overlay is outline-only so the recorded notes stay readable
+  underneath. The INVERT/MIRROR side strips
   use pre-rotated SVG assets (`ui/invert.svg`, `ui/mirror.svg`) drawn through
   `Image { colorize: Theme.text }`: rotating a `Text` makes femtovg resample rotated glyph-atlas
   quads, which reads as bold at 9 px, while baking the rotation into the vector asset keeps the

@@ -1052,6 +1052,9 @@ export component AppWindow inherits Window {
     in property <string> history-bg: "M0 0";
     in property <string> history-grid: "M0 0";
     in property <string> history-notes: "M0 0";
+    // Ghost of the current loop, phase-locked to the transport.
+    in property <string> history-pattern: "M0 0";
+    in property <bool> history-overlay-on: true;
     in property <string> history-range: "";
     in property <[ViewNode]> view-nodes;
     in property <string> view-edges: "M0 0";
@@ -1087,6 +1090,7 @@ export component AppWindow inherits Window {
     callback toggle-invert();
     callback toggle-mirror();
     callback toggle-logging();
+    callback toggle-history-overlay();
     callback generate-pressed();
     callback randomize-pressed();
     callback toggle-scope(int);
@@ -1417,6 +1421,8 @@ export component AppWindow inherits Window {
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-bg; fill: Theme.cell-off.with-alpha(0.55); }
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-grid; fill: transparent; stroke: Theme.border; stroke-width: 0.7px; }
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-notes; fill: Theme.c1; }
+            // Outline-only so the recorded notes stay readable underneath.
+            if root.history-overlay-on: Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-pattern; fill: transparent; stroke: Theme.c3.with-alpha(0.9); stroke-width: 1px; }
             history-touch := TouchArea { }
             if history-touch.has-hover: Rectangle {
                 x: 8px; y: 8px; width: parent.width - 148px; height: 22px;
@@ -1812,6 +1818,13 @@ export component AppWindow inherits Window {
             bend-box := NumBox { label: "Bend range (semitones)"; value: root.bend-range; minimum: 1; maximum: 24; step: 1; changed(v) => { root.set-opt(25, v); } }
             Text { text: "Sent as RPN 0 so the receiving synth matches; set the same range by hand if it ignores RPN."; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
             hist-box := NumBox { label: "History Length (Bars)"; value: root.history-bars; minimum: 1; maximum: root.history-max-bars; step: 1; mod-target: 23; changed(v) => { root.set-opt(23, v); } }
+            Rectangle {
+                height: 26px; border-radius: 4px;
+                background: root.history-overlay-on ? Theme.c1.with-alpha(0.8) : (overlay-touch.has-hover ? Theme.control-hover : Theme.control);
+                Text { x: 8px; width: parent.width - 16px; text: root.history-overlay-on ? "PATTERN OVERLAY: ON" : "PATTERN OVERLAY: OFF"; color: root.history-overlay-on ? Theme.on-accent : Theme.text; font-size: 9px; vertical-alignment: center; }
+                overlay-touch := TouchArea { clicked => { root.toggle-history-overlay(); } }
+            }
+            Text { text: "Outlines the current loop over the recorded history, so a regeneration or a transport jump is visible."; color: Theme.text-muted; font-size: 9px; wrap: word-wrap; }
             Text { text: "TECHNICAL SUPPORT"; color: Theme.text-muted; font-size: 9px; }
             Rectangle {
                 height: 26px; border-radius: 4px;
