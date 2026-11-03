@@ -44,6 +44,46 @@ pub enum Tuning {
     #[id = "edo"]
     #[name = "Equal (EDO)"]
     Edo,
+    // Appended after `edo` so the existing host indices (and automation) never move.
+    #[id = "phrygian"]
+    #[name = "Phrygian"]
+    Phrygian,
+    #[id = "lydian"]
+    #[name = "Lydian"]
+    Lydian,
+    #[id = "mixolydian"]
+    #[name = "Mixolydian"]
+    Mixolydian,
+    #[id = "locrian"]
+    #[name = "Locrian"]
+    Locrian,
+    #[id = "harm_minor"]
+    #[name = "Harmonic Minor"]
+    HarmonicMinor,
+    #[id = "mel_minor"]
+    #[name = "Melodic Minor"]
+    MelodicMinor,
+    #[id = "blues"]
+    #[name = "Blues"]
+    Blues,
+    #[id = "whole_tone"]
+    #[name = "Whole Tone"]
+    WholeTone,
+    #[id = "octatonic"]
+    #[name = "Octatonic"]
+    Octatonic,
+    #[id = "ji_minor"]
+    #[name = "Just Minor"]
+    JustMinor,
+    #[id = "ji7"]
+    #[name = "Just 7-limit"]
+    JustSevenLimit,
+    #[id = "werck3"]
+    #[name = "Werckmeister III"]
+    WerckmeisterThree,
+    #[id = "hijaz"]
+    #[name = "Hijaz"]
+    Hijaz,
 }
 
 impl Tuning {
@@ -67,6 +107,25 @@ impl Tuning {
             // Near-even pentatonic.
             Tuning::Slendro => &[0.0, 240.0, 480.0, 720.0, 960.0],
             Tuning::Edo => &[],
+            // 12-TET church modes and the two minor variants.
+            Tuning::Phrygian => &[0.0, 100.0, 300.0, 500.0, 700.0, 800.0, 1000.0],
+            Tuning::Lydian => &[0.0, 200.0, 400.0, 600.0, 700.0, 900.0, 1100.0],
+            Tuning::Mixolydian => &[0.0, 200.0, 400.0, 500.0, 700.0, 900.0, 1000.0],
+            Tuning::Locrian => &[0.0, 100.0, 300.0, 500.0, 600.0, 800.0, 1000.0],
+            Tuning::HarmonicMinor => &[0.0, 200.0, 300.0, 500.0, 700.0, 800.0, 1100.0],
+            Tuning::MelodicMinor => &[0.0, 200.0, 300.0, 500.0, 700.0, 900.0, 1100.0],
+            // Symmetric and hexatonic colour scales.
+            Tuning::Blues => &[0.0, 300.0, 500.0, 600.0, 700.0, 1000.0],
+            Tuning::WholeTone => &[0.0, 200.0, 400.0, 600.0, 800.0, 1000.0],
+            Tuning::Octatonic => &[0.0, 100.0, 300.0, 400.0, 600.0, 700.0, 900.0, 1000.0],
+            // 1/1 9/8 6/5 4/3 3/2 8/5 9/5.
+            Tuning::JustMinor => &[0.0, 203.91, 315.64, 498.04, 701.96, 813.69, 1017.6],
+            // 1/1 9/8 5/4 4/3 3/2 5/3 7/4.
+            Tuning::JustSevenLimit => &[0.0, 203.91, 386.31, 498.04, 701.96, 884.36, 968.83],
+            // Well temperament after Werckmeister's third tuning (good-key centring).
+            Tuning::WerckmeisterThree => &[0.0, 90.22, 192.18, 294.13, 390.22, 498.04, 588.27, 696.09, 792.18, 888.27, 996.09, 1092.18],
+            // Wide second, narrow third; the common 12-TET reading of Hijaz.
+            Tuning::Hijaz => &[0.0, 100.0, 400.0, 500.0, 700.0, 800.0, 1000.0],
         }
     }
 
@@ -133,6 +192,16 @@ mod tests {
             (Tuning::PentMinor, &[0, 3, 5, 7, 10]),
             (Tuning::PentMajor, &[0, 2, 4, 7, 9]),
             (Tuning::Chromatic, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+            (Tuning::Phrygian, &[0, 1, 3, 5, 7, 8, 10]),
+            (Tuning::Lydian, &[0, 2, 4, 6, 7, 9, 11]),
+            (Tuning::Mixolydian, &[0, 2, 4, 5, 7, 9, 10]),
+            (Tuning::Locrian, &[0, 1, 3, 5, 6, 8, 10]),
+            (Tuning::HarmonicMinor, &[0, 2, 3, 5, 7, 8, 11]),
+            (Tuning::MelodicMinor, &[0, 2, 3, 5, 7, 9, 11]),
+            (Tuning::Blues, &[0, 3, 5, 6, 7, 10]),
+            (Tuning::WholeTone, &[0, 2, 4, 6, 8, 10]),
+            (Tuning::Octatonic, &[0, 1, 3, 4, 6, 7, 9, 10]),
+            (Tuning::Hijaz, &[0, 1, 4, 5, 7, 8, 10]),
         ];
         for (t, semis) in semitones {
             assert_eq!(t.degrees(1, 12), semis.len());
@@ -237,11 +306,48 @@ mod tests {
 
     #[test]
     fn every_table_starts_on_the_tonic() {
-        for t in [Tuning::Major, Tuning::Minor, Tuning::Dorian, Tuning::PentMinor, Tuning::PentMajor,
-                  Tuning::Chromatic, Tuning::JustFiveLimit, Tuning::Pythagorean, Tuning::Meantone,
-                  Tuning::Harmonic, Tuning::Slendro] {
-            assert_eq!(t.cents()[0], 0.0, "{t:?} has no tonic");
-            assert!(*t.cents().last().unwrap() < 1200.0, "{t:?} repeats the octave inside the table");
+        for index in 0..<Tuning as Enum>::variants().len() {
+            let t = Tuning::from_index(index);
+            if t == Tuning::Edo {
+                assert!(t.cents().is_empty(), "Edo must not carry a table");
+                continue;
+            }
+            let cents = t.cents();
+            assert!(!cents.is_empty(), "{t:?} has no table");
+            assert_eq!(cents[0], 0.0, "{t:?} has no tonic");
+            assert!(*cents.last().unwrap() < 1200.0, "{t:?} repeats the octave inside the table");
+            assert!(cents.windows(2).all(|w| w[0] < w[1]), "{t:?} table is not ascending");
+        }
+    }
+
+    #[test]
+    fn the_original_scale_indices_never_moved() {
+        // Host automation stores normalised enum values, so new tables are appended rather than
+        // inserted; a moved index silently retunes every existing project.
+        for (index, want) in [
+            Tuning::Major, Tuning::Minor, Tuning::Dorian, Tuning::PentMinor, Tuning::PentMajor,
+            Tuning::Chromatic, Tuning::JustFiveLimit, Tuning::Pythagorean, Tuning::Meantone,
+            Tuning::Harmonic, Tuning::Slendro, Tuning::Edo,
+        ].into_iter().enumerate() {
+            assert_eq!(Tuning::from_index(index), want, "scale index {index}");
+        }
+        assert_eq!(Tuning::Edo.to_index(), 11);
+        assert_eq!(<Tuning as Enum>::variants().len(), 25);
+    }
+
+    #[test]
+    fn every_table_detunes_within_half_a_semitone() {
+        for index in 0..<Tuning as Enum>::variants().len() {
+            let t = Tuning::from_index(index);
+            let span = t.degrees(2, 12);
+            for deg in 0..span {
+                for root_cents in [-50.0f32, 0.0, 50.0] {
+                    let (s, c) = t.pitch((deg as f32 + 0.5) / span as f32, 2, 12, root_cents);
+                    assert!(c.abs() <= 50.0 + 1e-3, "{t:?} deg {deg} rc {root_cents}: detune {c}");
+                    let want = t.degree_cents(deg, 12) + root_cents;
+                    assert!((s as f32 * 100.0 + c - want).abs() < 1e-2, "{t:?} deg {deg} rc {root_cents}");
+                }
+            }
         }
     }
 
