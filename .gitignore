@@ -3,6 +3,7 @@
 *.vst3
 *.log
 *.mid
+.env
 *.tar.gz
 *.zip
 .DS_Store
