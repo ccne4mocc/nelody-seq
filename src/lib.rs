@@ -1116,15 +1116,13 @@ pub mod contact {
     pub const AUTHOR: &str = "ccne4mocc / feN";
     pub const VERSION: &str = env!("CARGO_PKG_VERSION");
     pub const GITHUB: &str = "https://github.com/ccne4mocc";
-    pub const SUPPORT: &str = "";
-    pub const EMAIL: &str = "";
 }
 
 impl Plugin for NelodySeq {
     const NAME: &'static str = "nelody seq";
     const VENDOR: &'static str = contact::AUTHOR;
     const URL: &'static str = contact::GITHUB;
-    const EMAIL: &'static str = contact::EMAIL;
+    const EMAIL: &'static str = "";
     const VERSION: &'static str = contact::VERSION;
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout { main_input_channels: None, main_output_channels: None, ..AudioIOLayout::const_default() }];
     const MIDI_INPUT: MidiConfig = MidiConfig::None;
@@ -1443,7 +1441,7 @@ impl ClapPlugin for NelodySeq {
     const CLAP_ID: &'static str = "com.nelodyseq.nelodyseq";
     const CLAP_DESCRIPTION: Option<&'static str> = Some("Algorithmic melodic MIDI sequencer with 30 generators and microtonal tunings");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(contact::GITHUB);
-    const CLAP_SUPPORT_URL: Option<&'static str> = Some(contact::SUPPORT);
+    const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::NoteEffect, ClapFeature::Utility];
 }
 impl Vst3Plugin for NelodySeq {
@@ -1618,7 +1616,7 @@ mod tests {
     #[test]
     fn neon_is_the_default_theme() {
         assert_eq!(MelodyParams::default().theme.value(), Theme::Neon);
-        assert_eq!(contact::VERSION, "1.2.0");
+        assert_eq!(contact::VERSION, "1.3.0");
     }
 
     #[test]

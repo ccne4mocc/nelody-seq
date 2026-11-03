@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 — Editor, Life mode and release cleanup
 
 ### Added
 
@@ -33,6 +33,12 @@
 - Pinned nice-plug fork now bounds malformed state lengths, rescans parameters after state load,
   and tolerates VST3 activation before `setupProcessing()`.
 
+### Changed
+
+- The plug-in credits and CLAP metadata now expose only the author and GitHub profile. The
+  contact email and Buy Me a Coffee link moved out of the plug-in; the support link lives in the
+  README.
+
 ### Fixed
 
 - The MIDI roll's current-pattern ghost now scrolls with the recorded history from a fresh editor
@@ -43,9 +49,6 @@
   framework's state loading; the suite now runs 33 passed, 0 failed, 11 skipped.
 - Carla VST3 discovery now completes instead of failing at `IComponent::setActive(true)`.
 - Transport-aware scheduler harness, a process allocation guard and a long-run bound test.
-
-### Fixed
-
 - Default ceiling is 256 steps instead of 64. Selecting a mode raises the loop and ceiling to
   that mode's functionality floor when needed.
 - LFO depth 100% now modulates the full parameter range; depth runs 0–200%, and

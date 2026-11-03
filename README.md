@@ -51,7 +51,7 @@ pitch slides, legato and accents travel over MIDI channel 1.
 
 ## Compatibility
 
-Version 1.2.0 uses the new host identity `com.nelodyseq.nelodyseq` (CLAP) and `nelody-seq` (VST3
+Version 1.3.0 uses the new host identity `com.nelodyseq.nelodyseq` (CLAP) and `nelody-seq` (VST3
 class ID). Sessions created with the old `com.nelody.nelody` / `Nelody` IDs must replace the
 plug-in instance.
 
@@ -81,3 +81,7 @@ and VST3 metadata use.
 ## License
 
 GPL-3.0-or-later. Copyright (C) 2026 `ccne4mocc / feN`. See [LICENSE](LICENSE).
+
+## Support
+
+If this project is useful to you, you can buy me a coffee: <https://buymeacoffee.com/awpe6kbwk9>
