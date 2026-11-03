@@ -11,6 +11,10 @@
 - Trimmed the fractal/geometric/cellular research to a future backlog; Life-like CA is marked
   implemented (mode 29).
 - Refreshed host-verification counts and the Windows workflow status.
+- Split CI into tests and a tag-driven `Bundles` workflow that builds Linux/Windows artifacts and
+  attaches them to the matching GitHub release.
+- Replaced the README support text with a Buy Me A Coffee banner and removed the single-project
+  derivation claim.
 
 ## 1.3.0 — Editor, Life mode and release cleanup
 

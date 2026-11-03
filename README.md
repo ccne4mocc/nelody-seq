@@ -98,8 +98,9 @@ instance.
   smoke test.
 - `clap-validator` passes 33 tests with 11 skipped and 0 failures on the pinned `nice-plug` fork.
   `pluginval` has not been run.
-- The Linux bundles build and their shared libraries resolve cleanly. Windows is covered by a
-  manual GitHub workflow but has not been verified on real hardware; macOS is not configured.
+- The Linux bundles build and their shared libraries resolve cleanly. Windows bundles are built
+  by the `Bundles` workflow on `v*` tags or manual dispatch, but have not been verified on real
+  hardware; macOS is not configured.
 - Fixed UI size (860×697).
 - MIDI export writes one loop and uses the plug-in process working directory, not the DAW project
   path.
@@ -144,9 +145,10 @@ vendor/               vendored Slint/baseview adapter
 
 - Author: `ccne4mocc / feN`
 - Copyright (C) 2026 ccne4mocc / feN
-- Built on the nrum seq architecture and the `_nMelody_old` voice machinery.
 - License: **GPL-3.0-or-later** (see [LICENSE](LICENSE)).
 
 ## Support
 
-If this project is useful to you, you can buy me a coffee: <https://buymeacoffee.com/awpe6kbwk9>
+<a href="https://buymeacoffee.com/awpe6kbwk9">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="180">
+</a>

@@ -39,6 +39,6 @@ combination. Everything else is **untested**, even when the plug-in bundles and 
 Run every row in `RELEASE_CHECKLIST.md` and record `pass`, `fail` or `n/a` with a note. Do not
 promote a row to **verified** from a scan alone.
 
-The Windows bundle workflow is manual-only. It cross-compiles MSVC artifacts on GitHub Actions,
-but those artifacts are still unverified; no real Windows or Wine run has been recorded for this
-plug-in. macOS is not configured.
+The `Bundles` workflow builds Linux and Windows artifacts on `v*` tags and can also be dispatched
+manually. The Windows artifacts are still unverified; no real Windows or Wine run has been recorded
+for this plug-in. macOS is not configured.

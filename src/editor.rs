@@ -1738,9 +1738,14 @@ mod tests {
         let ui = AppWindow::new().unwrap();
         let registered = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let registered_in_cb = registered.clone();
-        ui.global::<ModRegistry>().on_register(move |target, visible, _, _, _, _| {
+        let steps_center = Arc::new(Mutex::new(None::<(f32, f32)>));
+        let steps_center_cb = steps_center.clone();
+        ui.global::<ModRegistry>().on_register(move |target, visible, x, y, w, h| {
             if target >= 0 && visible {
                 registered_in_cb.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            if target == ModTarget::Steps.index() as i32 && visible {
+                *steps_center_cb.lock().unwrap() = Some((x + w / 2.0, y + h / 2.0));
             }
         });
         ui.global::<ModDrag>().on_dropped(|_, _, _| {});
@@ -1756,17 +1761,31 @@ mod tests {
         views[ModTarget::Steps.index()].lfo_text = SharedString::from("LFO1 0.5Hz +20%");
         ui.global::<ModView>().set_targets(ModelRc::new(VecModel::from(views)));
         ui.show().unwrap();
-        let _ = window.try_dispatch_event(slint::platform::WindowEvent::PointerMoved {
-            position: slint::LogicalPosition::new(450.0, 178.0),
-        });
         let mut buffer = vec![slint::Rgb8Pixel::new(0, 0, 0); (WIDTH * HEIGHT) as usize];
-        for _ in 0..40 {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut dispatched = false;
+        while Instant::now() < deadline {
             slint::platform::update_timers_and_animations();
             window.draw_if_needed(|renderer| {
                 renderer.render(&mut buffer, WIDTH as usize);
             });
+            if !dispatched {
+                if let Some((x, y)) = *steps_center.lock().unwrap() {
+                    let _ = window.try_dispatch_event(slint::platform::WindowEvent::PointerMoved {
+                        position: slint::LogicalPosition::new(x, y),
+                    });
+                    dispatched = true;
+                }
+            }
+            if dispatched
+                && registered.load(std::sync::atomic::Ordering::Relaxed) > 0
+                && ui.global::<ModHover>().get_target() == ModTarget::Steps.index() as i32
+            {
+                break;
+            }
             std::thread::sleep(Duration::from_millis(15));
         }
+        assert!(dispatched, "the Steps modulation target never registered");
         assert!(
             registered.load(std::sync::atomic::Ordering::Relaxed) > 0,
             "modulation drop targets were never registered"
