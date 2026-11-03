@@ -11,9 +11,13 @@ Hz mode:    phase = (seconds × frequency + phase_offset) mod 1
 Beat mode:  phase = (beat / rate_beats + phase_offset) mod 1
 
 wave = oscillator_value(waveform, phase)      // 0..1
-Bipolar:   signal = depth × (2 × wave − 1)    // −depth..+depth
-Unipolar:  signal = depth × wave              // 0..depth
+Bipolar:          signal = depth × (2 × wave − 1)   // −depth..+depth
+Unipolar:         signal = depth × wave             // 0..depth
+Unipolar neg.:    signal = −depth × wave            // −depth..0
 ```
+
+Depth runs 0–200%. Every waveform reaches both endpoints (the exponential shape is normalized
+so it does not stop short), which keeps the mapped range exact.
 
 Hz LFOs (0.01–10 Hz) use the host beat converted through the current tempo (`beat × 60 / BPM`). Beat-synced
 LFOs divide the host beat by the beat rate. Transport jumps therefore move the LFO phase with the
@@ -25,12 +29,15 @@ phase holds and the picker dot freezes.
 For a target range `[min, max]`:
 
 ```text
-span  = (max − min) / 2
+span  = max − min
 value = clamp(base + Σ(signal_i × span for linked LFOs), min, max)
 ```
 
-Integer targets round after summing. The half-range span matches the old Swing/Gate/Velocity
-scales, so migrating those targets keeps their feel.
+Integer targets round after summing. Depth 100% is one full parameter range, so a bipolar LFO
+reaches both ends from any base; 200% is deliberate overdrive and clips at the ends. Unipolar
+adds only above the base, unipolar negative only below it. Projects saved with the old
+half-range scale sound twice as deep at the same depth value, because 100% now means the whole
+range instead of half of it.
 
 ## Update cadence
 

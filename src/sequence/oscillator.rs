@@ -11,7 +11,12 @@ pub(crate) fn value(wave: usize, phase: f32) -> f32 {
         2 => phase,
         3 => if phase < 0.5 { 1.0 } else { 0.0 },
         4 => if phase < 0.25 { 1.0 } else { 0.0 },
-        5 => (-3.2 * phase as f64).exp() as f32,
+        5 => {
+            // Exponential decay, normalized so the wave spans the full 0..=1 like the others.
+            const K: f32 = 3.2;
+            let tail = (-K).exp();
+            ((-K * phase).exp() - tail) / (1.0 - tail)
+        }
         6 => (std::f64::consts::TAU as f32 * phase).sin().abs(),
         _ => hash01(phase),
     }
@@ -71,6 +76,23 @@ mod tests {
                 let want = crate::sequence::euclidean::requested_hits(pulses, density, steps);
                 assert_eq!(out.hit[..steps].iter().filter(|&&h| h).count(), want, "wave {wave} steps {steps}");
             }
+        }
+    }
+
+    /// LFO depth is a share of the target range, so every deterministic waveform must actually
+    /// reach both endpoints; a wave that stops short would cap a 100% sweep below 100%.
+    #[test]
+    fn deterministic_waves_reach_both_endpoints() {
+        for wave in 0..7 {
+            let mut lo = f32::MAX;
+            let mut hi = f32::MIN;
+            for k in 0..10_000 {
+                let v = value(wave, k as f32 / 10_000.0);
+                lo = lo.min(v);
+                hi = hi.max(v);
+            }
+            assert!(lo <= 1e-4, "wave {wave} bottoms at {lo}");
+            assert!(hi >= 1.0 - 1e-4, "wave {wave} tops at {hi}");
         }
     }
 }

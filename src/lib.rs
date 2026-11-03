@@ -17,7 +17,9 @@ pub use modes::Mode;
 pub use modulation::ModTarget;
 pub use tuning::Tuning;
 
-use modulation::{fold, target_bit, target_in_mask, LfoClock, LfoSpec, LFO_COUNT, LFO_MAX_HZ};
+use modulation::{
+    fold, target_bit, target_in_mask, LfoClock, LfoSpec, LFO_COUNT, LFO_MAX_DEPTH, LFO_MAX_HZ,
+};
 use nice_plug::prelude::*;
 use sequence::{
     generate, GenParams, Pattern, DEFAULT_MAX_STEPS, MAX_STEPS, MIN_MAX_STEPS,
@@ -199,6 +201,8 @@ pub enum LfoRateMode {
 pub enum LfoPolarity {
     #[id = "bipolar"] #[name = "Bipolar"] Bipolar,
     #[id = "unipolar"] #[name = "Unipolar"] Unipolar,
+    /// Downward-only unipolar: the signal spans `-depth..0`.
+    #[id = "unipolar_neg"] #[name = "Unipolar Negative"] UnipolarNegative,
 }
 
 /// Which parameter groups RANDOMIZE is allowed to touch. One host parameter, five bits.
@@ -394,7 +398,7 @@ impl Default for MelodyParams {
             lfo1_rate_mode: EnumParam::new("LFO 1 Rate Mode", LfoRateMode::Hz),
             lfo1_freq: hz_param("LFO 1 Frequency", 0.5),
             lfo1_rate: FloatParam::new("LFO 1 Rate (beats)", 4.0, FloatRange::Linear { min: 0.25, max: 16.0 }),
-            lfo1_depth: FloatParam::new("LFO 1 Depth", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            lfo1_depth: FloatParam::new("LFO 1 Depth", 0.0, FloatRange::Linear { min: 0.0, max: LFO_MAX_DEPTH }),
             lfo1_phase: FloatParam::new("LFO 1 Phase", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
             lfo1_polarity: EnumParam::new("LFO 1 Polarity", LfoPolarity::Bipolar),
             lfo1_target: EnumParam::new("LFO 1 Target", LfoTarget::None),
@@ -404,7 +408,7 @@ impl Default for MelodyParams {
             lfo2_rate_mode: EnumParam::new("LFO 2 Rate Mode", LfoRateMode::Hz),
             lfo2_freq: hz_param("LFO 2 Frequency", 0.25),
             lfo2_rate: FloatParam::new("LFO 2 Rate (beats)", 8.0, FloatRange::Linear { min: 0.25, max: 16.0 }),
-            lfo2_depth: FloatParam::new("LFO 2 Depth", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            lfo2_depth: FloatParam::new("LFO 2 Depth", 0.0, FloatRange::Linear { min: 0.0, max: LFO_MAX_DEPTH }),
             lfo2_phase: FloatParam::new("LFO 2 Phase", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
             lfo2_polarity: EnumParam::new("LFO 2 Polarity", LfoPolarity::Bipolar),
             lfo2_target: EnumParam::new("LFO 2 Target", LfoTarget::None),
@@ -414,7 +418,7 @@ impl Default for MelodyParams {
             lfo3_rate_mode: EnumParam::new("LFO 3 Rate Mode", LfoRateMode::Hz),
             lfo3_freq: hz_param("LFO 3 Frequency", 1.0),
             lfo3_rate: FloatParam::new("LFO 3 Rate (beats)", 2.0, FloatRange::Linear { min: 0.25, max: 16.0 }),
-            lfo3_depth: FloatParam::new("LFO 3 Depth", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            lfo3_depth: FloatParam::new("LFO 3 Depth", 0.0, FloatRange::Linear { min: 0.0, max: LFO_MAX_DEPTH }),
             lfo3_phase: FloatParam::new("LFO 3 Phase", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
             lfo3_polarity: EnumParam::new("LFO 3 Polarity", LfoPolarity::Bipolar),
             lfo3_links: AtomicU64::new(0),
@@ -423,7 +427,7 @@ impl Default for MelodyParams {
             lfo4_rate_mode: EnumParam::new("LFO 4 Rate Mode", LfoRateMode::Hz),
             lfo4_freq: hz_param("LFO 4 Frequency", 2.0),
             lfo4_rate: FloatParam::new("LFO 4 Rate (beats)", 1.0, FloatRange::Linear { min: 0.25, max: 16.0 }),
-            lfo4_depth: FloatParam::new("LFO 4 Depth", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            lfo4_depth: FloatParam::new("LFO 4 Depth", 0.0, FloatRange::Linear { min: 0.0, max: LFO_MAX_DEPTH }),
             lfo4_phase: FloatParam::new("LFO 4 Phase", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
             lfo4_polarity: EnumParam::new("LFO 4 Polarity", LfoPolarity::Bipolar),
             lfo4_links: AtomicU64::new(0),
@@ -1454,8 +1458,8 @@ mod tests {
 
     #[test]
     fn lfo_modulation_clamps_to_the_target_range() {
-        assert!((fold(0.25, 0.5, 0.0, 0.5) - 0.375).abs() < 1e-6);
-        assert!((fold(0.45, 1.0, 0.02, 1.0) - 0.94).abs() < 1e-6);
+        assert!((fold(0.25, 0.5, 0.0, 0.5) - 0.5).abs() < 1e-6);
+        assert_eq!(fold(0.45, 1.0, 0.02, 1.0), 1.0);
         assert_eq!(fold(0.45, -1.0, 0.02, 1.0), 0.02);
     }
 
@@ -1487,7 +1491,7 @@ mod tests {
         };
         let g0 = p.schedule_at(LfoClock { beat: 0.0, seconds: 0.0 }).gate;
         let g1 = p.schedule_at(LfoClock { beat: 0.25, seconds: 0.25 }).gate;
-        assert!((g1 - g0 - 0.245).abs() < 1e-4, "gate {g0} -> {g1}");
+        assert!((g1 - g0 - 0.49).abs() < 1e-4, "gate {g0} -> {g1}");
         // A fast LFO must move inside one sixteenth-note step, not only once per block.
         let fast = MelodyParams {
             lfo1_freq: hz_param("LFO 1 Frequency", 88.0),
@@ -1496,6 +1500,38 @@ mod tests {
         let a = fast.schedule_at(LfoClock { beat: 0.0, seconds: 0.0 }).gate;
         let b = fast.schedule_at(LfoClock { beat: 0.0625, seconds: 0.03125 }).gate;
         assert!((a - b).abs() > 0.2, "adjacent steps: {a} vs {b}");
+    }
+
+    #[test]
+    fn full_depth_sweeps_the_whole_parameter_and_polarity_sets_the_direction() {
+        let base = |polarity| MelodyParams {
+            lfo1_links: AtomicU64::new(target_bit(ModTarget::Swing)),
+            lfo1_wave: EnumParam::new("LFO 1 Wave", OscWave::Sine),
+            lfo1_rate_mode: EnumParam::new("LFO 1 Rate Mode", LfoRateMode::Hz),
+            lfo1_freq: hz_param("LFO 1 Frequency", 1.0),
+            lfo1_depth: FloatParam::new("LFO 1 Depth", 1.0, FloatRange::Linear { min: 0.0, max: LFO_MAX_DEPTH }),
+            lfo1_polarity: EnumParam::new("LFO 1 Polarity", polarity),
+            swing: FloatParam::new("Swing", 0.25, FloatRange::Linear { min: 0.0, max: 0.5 }),
+            ..MelodyParams::default()
+        };
+        let sweep = |p: &MelodyParams| {
+            let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+            // Two beats at 120 BPM is one second, i.e. one full cycle of a 1 Hz LFO.
+            for k in 0..=128 {
+                let v = p.schedule_at(LfoClock::from_beat(k as f64 / 64.0, 120.0)).swing;
+                lo = lo.min(v);
+                hi = hi.max(v);
+            }
+            (lo, hi)
+        };
+        // 100% depth covers Swing's whole 0..0.5 range from a centred base.
+        let (lo, hi) = sweep(&base(LfoPolarity::Bipolar));
+        assert!(lo <= 1e-4 && hi >= 0.5 - 1e-4, "bipolar swept {lo}..{hi}");
+        // Unipolar adds only, unipolar negative subtracts only.
+        let (lo, hi) = sweep(&base(LfoPolarity::Unipolar));
+        assert!((lo - 0.25).abs() <= 0.06 && hi >= 0.5 - 1e-4, "unipolar swept {lo}..{hi}");
+        let (lo, hi) = sweep(&base(LfoPolarity::UnipolarNegative));
+        assert!(lo <= 1e-4 && (hi - 0.25).abs() <= 0.06, "unipolar negative swept {lo}..{hi}");
     }
 
     #[test]

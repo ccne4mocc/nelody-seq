@@ -579,6 +579,7 @@ fn lfo_source_label(p: &MelodyParams, slot: usize) -> String {
     let polarity = match spec.polarity {
         LfoPolarity::Bipolar => "±",
         LfoPolarity::Unipolar => "+",
+        LfoPolarity::UnipolarNegative => "-",
     };
     if spec.enabled {
         format!("LFO {} · {wave} · {speed} · {polarity}", slot + 1)
@@ -648,10 +649,15 @@ fn target_views(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<Mod
                     parts.push(format!("LFO{} off", slot + 1));
                     continue;
                 }
-                let depth = spec.depth.clamp(0.0, 1.0) * 0.5;
-                depth_up += depth;
-                if spec.polarity == LfoPolarity::Bipolar {
-                    depth_down += depth;
+                // Depth is a share of the target range, so 1.0 is one full sweep.
+                let depth = spec.depth.clamp(0.0, crate::modulation::LFO_MAX_DEPTH);
+                match spec.polarity {
+                    LfoPolarity::Bipolar => {
+                        depth_up += depth;
+                        depth_down += depth;
+                    }
+                    LfoPolarity::Unipolar => depth_up += depth,
+                    LfoPolarity::UnipolarNegative => depth_down += depth,
                 }
                 let speed = match spec.rate_mode {
                     LfoRateMode::Hz if spec.freq_hz >= 10.0 => {
@@ -661,8 +667,8 @@ fn target_views(p: &MelodyParams, clock: crate::modulation::LfoClock) -> Vec<Mod
                     LfoRateMode::Hz => format!("{:.2}Hz", spec.freq_hz),
                     LfoRateMode::Beats => format!("{:.1}b", spec.rate_beats),
                 };
-                // Half the range is full depth, so signal × 0.5 is the signed share.
-                let percent = signals[slot] * 50.0;
+                // The signal is already in target ranges, so × 100 is the signed percentage.
+                let percent = signals[slot] * 100.0;
                 parts.push(format!(
                     "LFO{} {speed} {}{:.0}%",
                     slot + 1,
@@ -797,7 +803,7 @@ impl Editor for SlintEditor {
                 });
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_set_lfo_depth(move |slot, value| {
-                    set(&c, lfo_depth_param(&p, slot), value.clamp(0.0, 1.0));
+                    set(&c, lfo_depth_param(&p, slot), value.clamp(0.0, crate::modulation::LFO_MAX_DEPTH));
                 });
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_set_lfo_phase(move |slot, value| {
@@ -1426,6 +1432,33 @@ mod tests {
         assert!(steps.value01 > steps.base01);
         assert!(steps.lfo_text.as_str().contains("LFO1"));
         assert!(!views[ModTarget::Density.index()].linked);
+    }
+
+    #[test]
+    fn target_views_point_the_depth_band_in_the_polarity_direction() {
+        let params = |polarity| MelodyParams {
+            lfo1_links: std::sync::atomic::AtomicU64::new(crate::modulation::target_bit(
+                ModTarget::Steps,
+            )),
+            lfo1_depth: FloatParam::new(
+                "LFO 1 Depth",
+                1.0,
+                FloatRange::Linear { min: 0.0, max: crate::modulation::LFO_MAX_DEPTH },
+            ),
+            lfo1_polarity: EnumParam::new("LFO 1 Polarity", polarity),
+            ..MelodyParams::default()
+        };
+        let band = |polarity| {
+            let views = target_views(&params(polarity), crate::modulation::LfoClock::default());
+            let view = &views[ModTarget::Steps.index()];
+            (view.depth_up, view.depth_down)
+        };
+        let (up, down) = band(LfoPolarity::Bipolar);
+        assert!(up >= 1.0 && down >= 1.0, "bipolar {up}/{down}");
+        let (up, down) = band(LfoPolarity::Unipolar);
+        assert!(up >= 1.0 && down == 0.0, "unipolar {up}/{down}");
+        let (up, down) = band(LfoPolarity::UnipolarNegative);
+        assert!(up == 0.0 && down >= 1.0, "unipolar negative {up}/{down}");
     }
 
     #[test]
