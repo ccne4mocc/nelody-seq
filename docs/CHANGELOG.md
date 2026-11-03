@@ -13,6 +13,7 @@
 - Refreshed host-verification counts and the Windows workflow status.
 - Split CI into tests and a tag-driven `Bundles` workflow that builds Linux/Windows artifacts and
   attaches them to the matching GitHub release.
+- Updated the workflow actions to Node 24-compatible major versions.
 - Replaced the README support text with a Buy Me A Coffee banner and removed the single-project
   derivation claim.
 
