@@ -47,6 +47,8 @@
 - The plug-in credits and CLAP metadata now expose only the author and GitHub profile. The
   contact email and Buy Me a Coffee link moved out of the plug-in; the support link lives in the
   README.
+- README rewritten as a quick-start overview; architecture, verification and research details
+  stay in `docs/`.
 
 ### Fixed
 
