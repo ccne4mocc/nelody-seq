@@ -9,7 +9,7 @@ Host transport + automation
 MelodyParams (host-visible, automatable) ---> GenParams snapshot
                                                 |
                                                 v
-                                      sequence::generate()   (29 modes)
+                           sequence::generate()                        (30 modes)
                                                 |
                                     fixed-size Pattern [1024 steps]
                                                 |
@@ -116,7 +116,7 @@ block-stepped. Pattern-shaping targets (Steps, Pulses, Rotate, Density, Seed, Os
 CA rule, Probability, Slide, Accent, Octave jump, Max steps) are sampled once per loop and go
 through the same `gen_params_at()` snapshot, so the pattern changes at a loop boundary instead
 of every step. The unmodulated `gen_params()` snapshot drives change detection, which keeps
-manual edits immediate and LFO-only movement confined to boundaries. Modulation never writes a
+LFO-only movement confined to boundaries. Modulation never writes a
 host parameter, so it cannot feed back into automation or dirty the project.
 
 ## Modes and the `max_steps` ceiling
@@ -146,9 +146,10 @@ swung onset, so gate length follows the shift.
 
 The bottom panel is a piano roll that scrolls right to left. `Shared::record` packs
 `(timestamp_ms, note, velocity, on/off, cents)` into one atomic word per event; the editor
-snapshots the ring and `history::build` pairs NoteOn/NoteOff into segments, clips them to the
-window, and emits three SVG paths (black-key row shading, C-row grid, note rectangles with
-octave-aligned ranges of at least two octaves). The window is `history_bars × 4 × 60 ms/BPM`
+snapshots the ring and `history::build_with_grid` pairs NoteOn/NoteOff into segments, clips them
+to the window, and emits SVG paths for black-key rows, alternating bars, step/beat/bar and C-row
+grid lines, and three velocity layers of note rectangles with octave-aligned ranges of at least
+two octaves. The window is `history_bars × 4 × 60 ms/BPM`
 (four beats per 4/4 bar), so the same setting reads the same at any tempo. Its ceiling is the
 pattern's own length in bars: `max_steps / (4 × rate.steps_per_beat())`. The ring holds
 `HISTORY_LEN = 4096` events: a full 1024-step line emits at most two events per step (NoteOn +
@@ -172,8 +173,8 @@ across the full width.
 
 `src/midi_export.rs` writes a format-0 Standard MIDI File at 480 PPQ on zero-based channel 0
 (MIDI channel 1). The editor snapshots `MelodyParams` through the same `gen_params()`/
-`generate()` path as the preview, then flattens one complete loop: mono notes only, accent
-scaled by the global velocity, gate or slide hold, swing. Tempo comes from the last host
+`generate()` path as the preview and scheduler, then flattens one complete loop: mono notes
+only, accent, velocity, gate or slide hold and swing. Tempo comes from the last host
 tempo in `Shared::tempo_bits`, falling back to 120 BPM. Note-offs sort before note-ons at the
 same tick, so a retrigger cannot cut the incoming note. With `nts` on the file also carries
 `bend_range` as RPN 0 and a 14-bit pitch bend before every note, plus a centred bend at the
@@ -189,7 +190,7 @@ first-run default is the host process working directory.
 |---|---|---|
 | Pattern | `mode`, `steps` (1–1024), `max_steps` (64–1024), `round_steps`, `pulses`, `rotate`, `density`, `probability`, `velocity`, `regenerate_every`, `seed`, `generate`, `theme` | Pattern family, variation, palette. `steps` is bounded by `max_steps` at generation time; the default ceiling is 256, and changing it applies immediately because the arrays always have room for 1024. Mode selection raises both to the mode's `min_steps` floor when needed |
 | Randomization | `randomize_after_lengths`, `randomize_scope` (eight-bit mask: Mode, Length, Hits, Tuning, Clock, Phase, Acid, Feel) | Manual Randomize applies through the host setter; automatic randomization queues a request every N lengths while the editor is open. Draws come from mode-aware palettes (`src/randomize.rs`) instead of uniform ranges: lengths, the mode's own pulse vocabulary (Euclidean 3/5/7), density/probability/velocity/swing steps and musical root/octave/EDO sets, always clamped to `pulse_limit`. Feel covers velocity, swing and probability; NTS is part of Tuning because turning it off removes every microtonal bend |
-| Algorithm shape | `phase`, `osc_rate`, `osc_wave` (8 waveforms), `ca_rule`, `symmetry` | Mode-specific; hidden in the UI when the selected mode never reads them. Waveform ids/names come from the `OscWave` enum |
+| Algorithm shape | `phase`, `osc_rate`, `osc_wave` (8 waveforms), `ca_rule`, `symmetry`, `markov_bias` | Mode-specific; hidden in the UI when the selected mode never reads them. `symmetry` also selects the Cellular/Life initial state and the L-system grammar family; `markov_bias` packs four 2-bit transition biases (rest, repeat, chord-tone/role, novelty). Waveform ids/names come from the `OscWave` enum |
 | Mode data bridge | `GenParams::mode_data: [f32; 4]` | Fixed slots for values a future typed `ModeParams` enum would own; currently zero-filled and documented per mode in `REFERENCE_MAPPING.md` |
 | Clock | `rate`, `gate`, `swing`, `freerun` | Beat grid, NoteOff duration, stopped-transport behaviour |
 | LFO | `lfoN_wave`, `lfoN_rate_mode`, `lfoN_freq`, `lfoN_rate`, `lfoN_depth`, `lfoN_phase`, `lfoN_polarity` for N = 1–4; persisted `lfoN_links` masks; legacy `lfo1_target`/`lfo2_target` | Four runtime LFOs. Hz (0.01–10) is the default speed, with beat sync as the alternative. Depth runs 0–200%, where 1.0 is the target's full range and 2.0 is overdrive that clips. Bipolar spans ±depth, unipolar 0..depth and unipolar negative −depth..0. Links are drag/drop targets stored as one 24-bit mask per LFO. Feel/tuning targets are sampled per note; generator targets at loop boundaries. Legacy single-target values are treated as one link while the new mask is empty. Runtime modulation is not written back to host parameters and is not part of MIDI export |
@@ -250,7 +251,7 @@ variation comes from Generate, Randomize and the knobs.
 
 - `ViewNode` is a panel coordinate in a 210×210 viewbox; the ModePanel renders it at 300px via
   `px-per-unit`. Keep new geometry in the 210-unit space; do not pre-scale.
-- The editor layout is fixed at 860×675 and the window never resizes.
+- The editor layout is fixed at 860×697 and the window never resizes; the extra row is the bottom status strip.
 - The mode panel has seven path slots: `edges` (framing), `fills` (translucent polygons),
   `solid` (strong polygons), `slid` and `jumped` (acid tone classes), `lines` (contours) and
   `hand` (playhead). Acid piano-roll notes are routed by one precedence rule — octave jump,
@@ -294,16 +295,16 @@ variation comes from Generate, Randomize and the knobs.
 - Clock rate is one `RateField`. The wheel walks `Rate::RATE_ORDER` (base, dotted, triplet per
   value); a double-click opens an inline text field that accepts the enum labels or aliases
   (`1/16t`, `1/16.`, `1/16d`). The enum keeps host-state order; new divisions are appended.
-- The MIDI history panel is four paths (`history-bg`, `history-grid`, `history-notes`,
-  `history-pattern`) in an 800×200 viewbox inside a card that stretches from the description to
-  the bottom controls (preferred 187px so the fixed column sums exactly), driven entirely from
-  `history::build` output; the overlay is outline-only so the recorded notes stay readable
-  underneath. The INVERT/MIRROR side strips
-  use pre-rotated SVG assets (`ui/invert.svg`, `ui/mirror.svg`) drawn through
-  `Image { colorize: Theme.text }`: rotating a `Text` makes femtovg resample rotated glyph-atlas
-  quads, which reads as bold at 9 px, while baking the rotation into the vector asset keeps the
-  label crisp. The assets contain Noto Sans medium outlines rather than SVG text, so they do not
-  depend on the host font.
+- The MIDI history panel is a stack of paths in an 800×200 viewbox inside a card that stretches
+  from the description to the bottom controls (preferred 187px so the fixed column sums exactly),
+  driven entirely from `history::build_with_grid` output. Zoom and pan are applied with the
+  `viewbox-*` properties, so no geometry is rebuilt. The roll follows the clock automatically;
+  entering any edit mode freezes the editor timestamp so notes stay under the pointer, and a
+  stopped clock allows inspection panning. Note layers encode velocity, width encodes gate/length
+  and slide connectors are a separate stroke. The overlay is outline-only so the recorded notes
+  stay readable underneath. `MIRROR` and `INVERT` are ordinary horizontal text buttons stacked
+  under `EDIT` in the left gutter, matching the edit button's width and styling. They no longer
+  use rotated SVG label assets.
 - The tuning row chips (Root/Scale/EDO/Oct/NTS) replace the drum-lane chips. The Scale chip
   opens a dropdown list under the row; the mode header opens the same kind of list under
   itself. EDO divisions sit in this row so custom equal divisions stay beside the scale, and
@@ -318,7 +319,7 @@ variation comes from Generate, Randomize and the knobs.
 - All UI controls call a parameter setter; the GUI must never become an independent source of
   sequencing state.
 - Mode order is stable and shared: `Mode` in `src/modes.rs` is the host parameter, the
-  generator dispatch key and the UI index. A test pins all 29 indices; acid starts at 14.
+  generator dispatch key and the UI index. A test pins all 30 indices; acid starts at 14.
 - Scrolling over the current-mode header steps to the next/previous mode in the *displayed*
   (grouped) order and clamps at the ends (`Mode::step_in_display_order`): the list is sorted by
   `ModeGroup::rank()` then host index, so walking the raw host index would jump between groups.
@@ -343,6 +344,7 @@ variation comes from Generate, Randomize and the knobs.
 
 ## Extension points
 
-Per-step probability, ratchets, microtiming or a polyphonic voice count all change the
-NoteOff/voice bookkeeping in `process()` — define how they map to sample offsets before
-adding them to the pattern model.
+A polyphonic voice count or any per-step expression layer changes the NoteOff/voice bookkeeping
+in `process()` — define how it maps to sample offsets before adding it to the pattern model.
+The existing per-step edit overlay is the boundary: extend `EditView` and `history::Note` together
+so the scheduler, export and roll stay in parity.

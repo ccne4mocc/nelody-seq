@@ -47,9 +47,10 @@ index 14 because the melody modes build the non-acid half of that split.
 | 26 | Walking Bass | Music Theory | New wave: chord + chromatic approach | Absolute piano roll; ping-pong chord tones on even steps, chromatic approach on the weak step, `phase` = approach side |
 | 27 | Hilbert Curve | Geometric | New wave: space-filling curve | 2-D Hilbert order grid/path |
 | 28 | Ulam Spiral Primes | Number Theory | New wave: prime spiral | 2-D Ulam spiral with prime/hit marks; starts at integer `1 + round(64·phase) + round(64·seed) + 5·variation` |
+| 29 | Life-like CA | Cellular | nrum seq Life mode, adapted to one melodic line | 16×8 torus grid with live cells; `pulses` = warm-up generations, `ca_rule` selects Life/HighLife/Seeds/Day & Night/Dense, `symmetry` selects the seed shape. Each step reads one column; live rows become a scale-degree slot and population drives accent |
 
 Everything else in nelody seq's UI is either the nrum seq design untouched (header, generate/
-randomize buttons, clock row, settings slide-in, credits, scope chips, 860×675 fixed window)
+randomize buttons, clock row, settings slide-in, credits, scope chips, 860×697 fixed window)
 or the melody-specific replacements of the two drum-only slots:
 
 | nrum seq slot | nelody seq replacement |
@@ -84,7 +85,9 @@ mapping highlights, for modes where the knob name is wrong in the generic sense:
 | 26 Walking Bass | Chord tones (1–4) | Chromatic approach chance on the weak step | Approach side (below/above/mixed) |
 | 27 Hilbert Curve | Curve order (1–5) | Step gate | Quarter-turn rotation |
 | 28 Ulam Primes | Target hits | Prime keep fraction (spread over the primes) | Start integer `1 + round(64·phase) + round(64·seed) + 5·variation` |
-| Symmetry | Hidden entirely (`shows-param` returns false for key 11) — a drum-only idea | | |
+| 29 Life-like CA | Warm-up generations (0–64) | Cell density and onset gate | (unused) |
+| Symmetry | Cellular/Life: seed shape (Centre/Stripes/Solid+gap/Random); L-system: grammar family (A/B/C/D/Auto) | | |
+| Markov bias | Four 2-bit fields: rest, self-repeat, chord-tone/role preference and novelty leaps | | |
 
 `GenParams::mode_data` is the Phase-5 bridge for future typed mode parameters: fixed, zero-filled
 slots whose meaning belongs to the individual mode. Until a mode documents a slot, it must leave

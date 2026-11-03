@@ -8,7 +8,6 @@ source of requirements. Nothing here is scheduled.
 - A second, detuned unison voice — needs the voice bookkeeping rethink noted in
   `ARCHITECTURE.md` extension points.
 - Chord pads: emit a three-note voicing per step instead of one note.
-- Ratchets: fire/retrigger a note k times per step.
 
 ## Tuning
 
@@ -16,4 +15,4 @@ source of requirements. Nothing here is scheduled.
 
 ## Randomize
 
-- Feel-layer microtiming depth (sample-offset semantics must be defined first).
+- Randomize the generated variation itself (per-step editing is available in the roll editor).

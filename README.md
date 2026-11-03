@@ -7,19 +7,28 @@ eight-lane drum kit, and a right-to-left MIDI piano roll where the drum matrix u
 Route the track to a mono synth. nelody seq emits **notes, not percussion**: microtonal tunings,
 pitch slides, legato and accents travel over MIDI channel 1.
 
-- **29 generators**, deterministic and bounded: 24 melodic algorithms (Euclidean necklace,
+- **30 generators**, deterministic and bounded: 25 melodic algorithms (Euclidean necklace,
   Golomb ruler, logistic map, Eulerian walk, Arnold circle map, Mozart dice, Tonnetz walk,
-  Rule-30 cellular automaton, Markov walk, oscillator sampling, L-system grammar, Xenakis
-  sieve, Fibonacci/Sturmian word, Bernoulli, Thue-Morse, Rudin-Shapiro, Brownian walk,
-  Lévy flight, tent map, Hénon map, arpeggiator, walking bass, Hilbert curve, Ulam spiral
-  primes) plus 5 acid (Random, Euclid, Markov, Motif, Shift-register lines with
+  Rule-30 cellular automaton, Life-like 2-D CA, Markov walk, oscillator sampling, L-system
+  grammar, Xenakis sieve, Fibonacci/Sturmian word, Bernoulli, Thue-Morse, Rudin-Shapiro,
+  Brownian walk, Lévy flight, tent map, Hénon map, arpeggiator, walking bass, Hilbert curve,
+  Ulam spiral primes) plus 5 acid (Random, Euclid, Markov, Motif, Shift-register lines with
   accent/slide/octave-jump probability knobs).
+- **Hover descriptions** for every control, shown in a thin bottom status strip, and built-in
+  starting points (Acid, Arp, Bass, Dice, Ambient) that write ordinary host parameters.
+- **Algorithm depth**: Markov transition-bias fields (rest, repeat, chord-tone/role, novelty),
+  selectable L-system grammar families, and Cellular/Life initial-state policies.
 - **Microtonal**: root pitch class, twelve scales/ji tables (major, minor, dorian, pentatonics,
   12-TET chromatic, just 5-limit, Pythagorean, 1/4-comma meantone, harmonic series, slendro)
   or any EDO up to 72, with a root-cents fine tune. Non-12-TET pitch is sent as pitch bend
   (toggleable) and drawn as a detune offset inside each piano-roll row.
-- **MIDI history** panel: every emitted note event is dropped into a lock-free ring in the
-  audio thread and drawn right-to-left, sized in 4/4 bars from the host tempo.
+- **MIDI history / editor** panel: every emitted note event is dropped into a lock-free ring in
+  the audio thread and drawn right-to-left, sized in 4/4 bars from the host tempo. It follows the
+  clock automatically; EDIT freezes it for confident editing and stops following, while a stopped
+  clock allows inspection panning. The simple NOTES mode taps to toggle a hit and drags to resize
+  its length; ADV exposes probability, accent, ratchet, timing and clear modes. Zoom, a
+  step/beat/bar grid and velocity-shaded notes make the roll readable. Note width is length,
+  brightness is velocity/accent, and slides are outlined.
 - **Clock rates** from 1/4 to 1/64, including dotted and triplet divisions, edited in one
   field that steps with the wheel and accepts a typed rate name.
 - **Tuning row + acid sliders** where the drum-lane chips were: Root, a Scale chip that opens
@@ -54,6 +63,10 @@ cargo xtask bundle nelody-seq --release   # -> target/bundled/nelody-seq.clap + 
 ```
 
 ## Documentation
+
+The `nice-plug` dependency is pinned to commit `65c87588` in the `ccne4mocc/nice-plug` fork,
+which adds bounded state loading, parameter rescans after state load, and tolerant VST3
+activation before `setupProcessing()`.
 
 `docs/ARCHITECTURE.md` explains the layers and invariants. `docs/LFO_SYSTEM.md` documents the
 LFO clocks, target cadence, link storage and drag interaction. `docs/REFERENCE_MAPPING.md`
