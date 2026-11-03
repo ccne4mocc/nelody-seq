@@ -3,7 +3,7 @@
 This map records where every mode, view and machine came from, so follow-up agents can trace a
 row back to its reference instead of guessing. Two references feed nelody sequencer:
 
-- **nrum sequencer** (`~/Projects/_Nelody/_nDrums_reference`): the plugin skeleton, UI design,
+- **nrum sequencer** (the drum-sequencer ancestor project): the plugin skeleton, UI design,
   parameter set, post-transform pipeline and editor/export plumbing. Its percussive lane
   concept was removed.
 - **`_nMelody_old`**: the mono voice machinery that survived — the

@@ -58,3 +58,7 @@ contract for multi-agent work.
 
 ccne4mocc / feN — the Credits panel reads `src/lib.rs::contact`, the same constants the CLAP
 and VST3 metadata use.
+
+## License
+
+GPL-3.0-or-later. Copyright (C) 2026 `ccne4mocc / feN`. See [LICENSE](LICENSE).

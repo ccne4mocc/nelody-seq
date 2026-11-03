@@ -1,4 +1,12 @@
 /target/
 *.clap
 *.vst3
+*.log
+*.mid
+*.tar.gz
+*.zip
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+/Plugins/
