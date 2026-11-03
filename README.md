@@ -141,7 +141,7 @@ vendor/               vendored Slint/baseview adapter
 ## Credits and license
 
 - Author: `ccne4mocc / feN`
-- Copyright (C) 2026 `ccne4mocc / feN`
+- Copyright (C) 2026 ccne4mocc / feN
 - Built on the nrum seq architecture and the `_nMelody_old` voice machinery.
 - License: **GPL-3.0-or-later** (see [LICENSE](LICENSE)).
 
