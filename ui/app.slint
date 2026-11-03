@@ -1403,7 +1403,7 @@ export component AppWindow inherits Window {
             }
         }
         Rectangle {
-            height: 190px; vertical-stretch: 1; border-radius: 4px;
+            height: 187px; vertical-stretch: 1; border-radius: 4px;
             background: Theme.surface; border-width: 1px; border-color: Theme.border;
             clip: true;
             Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-x: 0; viewbox-y: 0; viewbox-width: 800; viewbox-height: 200; commands: root.history-bg; fill: Theme.cell-off.with-alpha(0.55); }
@@ -1550,7 +1550,7 @@ export component AppWindow inherits Window {
             }
         }
         HorizontalLayout {
-            height: 27px; padding-top: 2px; spacing: 5px;
+            height: 30px; padding-top: 5px; spacing: 5px;
             HorizontalLayout {
                 spacing: 0px;
                 OptSlider { width: 168px; opt: root.opts[12]; index: 12; mod-target: 13; changed(v) => { root.set-opt(12, v); } }
