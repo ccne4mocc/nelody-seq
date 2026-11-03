@@ -903,7 +903,7 @@ export component AppWindow inherits Window {
     background: @linear-gradient(135deg, Theme.bg1 0%, Theme.bg2 50%, Theme.bg3 100%);
     in property <int> mode: 0;
     in property <float> steps: 16;
-    in property <float> max-steps: 1024;
+    in property <float> max-steps: 256;
     in property <bool> round-steps: true;
     // Grid cells the generator will fill, mirroring `cell_count_for`: snap rounds, free length
     // takes the ceiling. Header and bounds read this so they cannot disagree with the matrix.

@@ -4,6 +4,7 @@
 //! shown by the host. Generators and panels match the same variants, so there is no second enum
 //! or index mapping.
 
+use crate::sequence::{MAX_STEPS, MIN_MAX_STEPS};
 use nice_plug::prelude::Enum;
 
 #[derive(Enum, PartialEq, Eq, Clone, Copy, Debug)]
@@ -150,6 +151,36 @@ impl Mode {
         order[(pos + delta).clamp(0, order.len() as i32 - 1) as usize]
     }
 
+    /// Shortest loop that still shows the mode's defining structure, in steps. `None` means the
+    /// mode is complete at any length and selecting it must not touch the loop.
+    ///
+    /// This is a functionality floor for the panel and the algorithm, not a taste preset: orbit
+    /// and walk panels need enough samples to read, word strips need more than one row, and the
+    /// 2-D attractors/spirals need a dense path. It never caps a longer loop.
+    pub fn min_steps(self) -> Option<usize> {
+        match self {
+            // An orbit or walk smaller than this is a few dots, not a shape.
+            Self::Logistic | Self::TentMap | Self::Brownian | Self::LevyFlight => Some(32),
+            // Two word-strip rows instead of one, and two staircase periods.
+            Self::LSystem | Self::ThueMorse | Self::RudinShapiro | Self::Fibonacci => Some(32),
+            // A 2-D attractor and a spiral need a dense path to be recognisable.
+            Self::HenonMap | Self::UlamPrimes => Some(64),
+            _ => None,
+        }
+    }
+
+    /// Effective `(steps, max_steps)` after a mode change: raises the floor without ever lowering
+    /// a longer loop or a higher ceiling. Both values stay inside the host bounds.
+    pub fn steps_for_mode(self, steps: f32, max_steps: usize) -> (f32, usize) {
+        let Some(floor) = self.min_steps() else {
+            return (steps, max_steps);
+        };
+        let floor = floor.clamp(1, MAX_STEPS);
+        let ceiling = max_steps.clamp(MIN_MAX_STEPS, MAX_STEPS).max(floor).min(MAX_STEPS);
+        let steps = if steps.is_finite() { steps } else { 1.0 };
+        (steps.max(floor as f32).min(ceiling as f32), ceiling)
+    }
+
     /// Every mode, for test sweeps; production dispatch matches on the variant.
     #[cfg(test)]
     pub fn all() -> impl Iterator<Item = Mode> {
@@ -193,6 +224,47 @@ mod tests {
         }
         assert_eq!(seen.len(), 8, "expected all eight currently used groups");
         assert_eq!(ModeGroup::ALL.len(), 9, "the shared taxonomy reserves Fractal for the next wave");
+    }
+
+    #[test]
+    fn only_modes_that_need_a_longer_loop_have_a_step_floor() {
+        // Selecting these must not change the loop length.
+        for mode in [
+            Mode::Euclidean, Mode::Golomb, Mode::Eulerian, Mode::CircleMap, Mode::Dice,
+            Mode::Tonnetz, Mode::Cellular, Mode::Markov, Mode::Oscillator, Mode::Sieve,
+            Mode::Bernoulli, Mode::AcidRandom, Mode::AcidEuclid, Mode::AcidMarkov,
+            Mode::AcidMotif, Mode::AcidShift, Mode::Arpeggiator, Mode::WalkingBass,
+            Mode::HilbertCurve,
+        ] {
+            assert_eq!(mode.min_steps(), None, "{mode:?} must not force a longer loop");
+        }
+        for (mode, floor) in [
+            (Mode::Logistic, 32), (Mode::LSystem, 32), (Mode::ThueMorse, 32),
+            (Mode::RudinShapiro, 32), (Mode::Brownian, 32), (Mode::LevyFlight, 32),
+            (Mode::TentMap, 32), (Mode::Fibonacci, 32), (Mode::HenonMap, 64),
+            (Mode::UlamPrimes, 64),
+        ] {
+            assert_eq!(mode.min_steps(), Some(floor), "{mode:?}");
+            assert!(floor <= crate::sequence::DEFAULT_MAX_STEPS, "{mode:?} floor spends the whole ceiling");
+        }
+    }
+
+    #[test]
+    fn floors_raise_without_ever_lowering() {
+        // A floor mode lifts a short loop and a low ceiling.
+        assert_eq!(Mode::HenonMap.steps_for_mode(16.0, 256), (64.0, 256));
+        assert_eq!(Mode::HenonMap.steps_for_mode(16.0, 64), (64.0, 64));
+        // A ceiling below the floor is raised just enough.
+        assert_eq!(Mode::UlamPrimes.steps_for_mode(16.0, 64), (64.0, 64));
+        // Longer loops and higher ceilings are untouched.
+        assert_eq!(Mode::Logistic.steps_for_mode(128.0, 1024), (128.0, 1024));
+        // Modes without a floor are identity, including fractional loops.
+        assert_eq!(Mode::Euclidean.steps_for_mode(16.5, 256), (16.5, 256));
+        assert_eq!(Mode::Euclidean.steps_for_mode(8.0, 64), (8.0, 64));
+        // Broken values cannot escape the host bounds.
+        let (steps, ceiling) = Mode::UlamPrimes.steps_for_mode(f32::NAN, 4096);
+        assert_eq!(ceiling, MAX_STEPS);
+        assert_eq!(steps, 64.0);
     }
 
     #[test]

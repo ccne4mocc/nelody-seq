@@ -166,13 +166,26 @@ fn pulse_limit(mode: Mode, cells: i32) -> i32 {
     }
 }
 
+/// Raise the loop and ceiling to a mode's step floor, then re-clamp everything that depends on
+/// the loop length. Never lowers a value; only user-initiated mode changes call this.
+fn apply_mode_shape(c: &Arc<dyn GuiContext>, p: &MelodyParams, mode: Mode, steps: f32) {
+    let (steps, ceiling) = mode.steps_for_mode(steps, p.step_ceiling());
+    if ceiling != p.step_ceiling() { set(c, &p.max_steps, ceiling as i32); }
+    if (steps - p.steps.value()).abs() > 1e-6 { set(c, &p.steps, steps); }
+    let cells = cell_count_for(steps, p.round_steps.value(), ceiling);
+    let limit = pulse_limit(mode, cells);
+    if p.pulses.value() > limit { set(c, &p.pulses, limit); }
+    if p.rotate.value() >= cells { set(c, &p.rotate, cells - 1); }
+    let history_max = crate::history_bars_ceiling(ceiling, p.rate.value());
+    if p.history_bars.value() > history_max { set(c, &p.history_bars, history_max); }
+}
+
 /// One mode-selection path for the list and the mode-header wheel.
 fn apply_mode(c: &Arc<dyn GuiContext>, p: &MelodyParams, index: i32) {
     let last = <Mode as Enum>::variants().len() as i32 - 1;
     let mode = Mode::from_index(index.clamp(0, last) as usize);
     set(c, &p.mode, mode);
-    let limit = pulse_limit(mode, p.cell_count());
-    if p.pulses.value() > limit { set(c, &p.pulses, limit); }
+    apply_mode_shape(c, p, mode, p.steps.value());
 }
 
 /// Change clock rate and keep the history window inside the new pattern-length ceiling.
@@ -412,6 +425,12 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
         set(ctx, &p.probability, probability.clamp(0.0, 1.0));
         set(ctx, &p.velocity, velocity.clamp(0.01, 1.0));
         set(ctx, &p.swing, swing.clamp(0.0, 0.5));
+    }
+    // A randomized mode still needs its functionality floor; the drawn length is kept when it
+    // is already long enough.
+    if scope_enabled(p, scope::MODE) || scope_enabled(p, scope::LENGTH) {
+        let steps = if scope_enabled(p, scope::LENGTH) { steps } else { p.steps.value() };
+        apply_mode_shape(ctx, p, mode_after, steps);
     }
 }
 

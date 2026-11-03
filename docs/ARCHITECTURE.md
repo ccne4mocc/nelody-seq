@@ -121,7 +121,12 @@ host parameter, so it cannot feed back into automation or dirty the project.
 
 ## Modes and the `max_steps` ceiling
 
-`MAX_STEPS` is 1024, but `max_steps` (default 64) is the effective ceiling the host exposes.
+`MAX_STEPS` is 1024, but `max_steps` (default 256) is the effective ceiling the host exposes.
+Selecting a mode also raises the loop to that mode's functionality floor (`Mode::min_steps`,
+`Mode::steps_for_mode`): orbit, walk, word and 2-D-attractor panels ask for 32–64 steps instead
+of the default 16, and a lowered ceiling is raised to match. Modes without a floor are left
+alone, and nothing is ever lowered. Only editor-initiated mode changes apply the floor, so
+saved short patterns and host automation of `mode` keep their values.
 Generation cost stays linear in the ceiling; top-k ranking runs through a fixed in-place sort
 instead of an O(n²) scan. `steps` is a float so the loop length can fall between grid cells:
 `round_steps` (on) snaps it to whole cells, off lets each cycle wrap mid-cell and drift.
@@ -182,7 +187,7 @@ first-run default is the host process working directory.
 
 | Parameter group | Parameters | Intended use |
 |---|---|---|
-| Pattern | `mode`, `steps` (1–1024), `max_steps` (64–1024), `round_steps`, `pulses`, `rotate`, `density`, `probability`, `velocity`, `regenerate_every`, `seed`, `generate`, `theme` | Pattern family, variation, palette. `steps` is bounded by `max_steps` at generation time; the default ceiling is 64, and changing it applies immediately because the arrays always have room for 1024 |
+| Pattern | `mode`, `steps` (1–1024), `max_steps` (64–1024), `round_steps`, `pulses`, `rotate`, `density`, `probability`, `velocity`, `regenerate_every`, `seed`, `generate`, `theme` | Pattern family, variation, palette. `steps` is bounded by `max_steps` at generation time; the default ceiling is 256, and changing it applies immediately because the arrays always have room for 1024. Mode selection raises both to the mode's `min_steps` floor when needed |
 | Randomization | `randomize_after_lengths`, `randomize_scope` (eight-bit mask: Mode, Length, Hits, Tuning, Clock, Phase, Acid, Feel) | Manual Randomize applies through the host setter; automatic randomization queues a request every N lengths while the editor is open. Draws come from mode-aware palettes (`src/randomize.rs`) instead of uniform ranges: lengths, the mode's own pulse vocabulary (Euclidean 3/5/7), density/probability/velocity/swing steps and musical root/octave/EDO sets, always clamped to `pulse_limit`. Feel covers velocity, swing and probability; NTS is part of Tuning because turning it off removes every microtonal bend |
 | Algorithm shape | `phase`, `osc_rate`, `osc_wave` (8 waveforms), `ca_rule`, `symmetry` | Mode-specific; hidden in the UI when the selected mode never reads them. Waveform ids/names come from the `OscWave` enum |
 | Mode data bridge | `GenParams::mode_data: [f32; 4]` | Fixed slots for values a future typed `ModeParams` enum would own; currently zero-filled and documented per mode in `REFERENCE_MAPPING.md` |

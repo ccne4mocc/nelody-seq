@@ -54,7 +54,8 @@ use crate::modes::Mode;
 /// Hard capacity for every pattern array; the host's `max_steps` ceiling can reach 1024.
 pub const MAX_STEPS: usize = 1024;
 pub const MIN_MAX_STEPS: usize = 64;
-pub const DEFAULT_MAX_STEPS: usize = 1024;
+/// Default ceiling. Long-horizon modes raise it themselves through `Mode::min_steps`.
+pub const DEFAULT_MAX_STEPS: usize = 256;
 pub const CA_ROWS: usize = 16;
 
 #[allow(clippy::approx_constant)] // the std constant is newer than the supported baseline
@@ -635,6 +636,22 @@ mod tests {
             let out = generate(&p);
             assert!(out.hit[0], "{kind:?} produced no hit at steps=1, full density");
             assert!(out.u[0].is_finite(), "{kind:?} produced a non-finite contour");
+        }
+    }
+
+    #[test]
+    fn every_mode_sounds_at_its_own_step_floor() {
+        for kind in Mode::all() {
+            let Some(floor) = kind.min_steps() else { continue };
+            let p = GenParams {
+                kind, steps: floor, length: floor as f32, pulses: (floor / 4).max(1),
+                density: 1.0, probability: 1.0, ..GenParams::default()
+            };
+            let out = generate(&p);
+            assert!(
+                out.hit[..floor].iter().any(|h| *h),
+                "{kind:?} is silent at its own floor of {floor} steps"
+            );
         }
     }
 
