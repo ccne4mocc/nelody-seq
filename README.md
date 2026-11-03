@@ -4,6 +4,8 @@
 
 ![nelody seq demo](assets/nelody-seq.gif)
 
+So... first of all, yes its partially less and partially heavier created with LLM assistance.
+
 nelody seq is the melodic sibling of [nrum seq](https://github.com/ccne4mocc): the same
 architecture and editor layout, but with one mono, 303-style voice and a right-to-left piano roll
 instead of an eight-lane drum matrix. It generates **notes, not percussion**, over MIDI channel 1.
@@ -20,7 +22,11 @@ Everything is deterministic and bounded for a given parameter snapshot and seed,
 be recalled, automated and exported without hidden state.
 
 The plugin still needs polish in many directions and I'm also planning to add more modes from time to time and partially slim it down. Some functionalities are rather rudimentary like internal lfos, since DAW LFO tools can be linked to the plugin parameters. Sequencer Matrix is also rather simple, cause I often record the midi or sound input directly into clips or just use the export midi function.
-Also it can get visually confusing with higher parameter values and some combinations, depending on modes. Nevertheless, having the limits loose was more fun (step ceiling can be increased in settings). Optimizing and giving more depth in the view/presentation is also somewhere on the list (first 1D/2D more work, but also 3D ideas). It's quite possible that I will smack both plugins to 1 package. Be also aware, switching theme to "Sketch" might burn your retina if you live in a cave like me.
+Also it can get visually confusing with higher parameter values and some combinations, depending on modes. Nevertheless, having the limits loose was more fun (step ceiling can be increased in settings). Optimizing and giving more depth in the view/presentation is also somewhere on the list (first 1D/2D more work, but also 3D ideas).
+It's quite possible that I will smack both plugins to 1 package. 
+
+Be also aware, switching theme to "Sketch" might burn your retina if you live in a cave like me.
+
 A reaper jsfx version is also on the way, but I'm not really fond of it right now.
 
 The windows variants are experimental, my focus is mainly on linux but they worked with my tests.
