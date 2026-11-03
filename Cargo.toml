@@ -6,6 +6,8 @@ rust-version = "1.88"
 description = "Algorithmic melodic MIDI sequencer plug-in (CLAP/VST3), Rust-based"
 license = "GPL-3.0-or-later"
 authors = ["ccne4mocc / feN"]
+keywords = ["midi", "sequencer", "clap", "vst3", "generative-music"]
+categories = ["multimedia::audio"]
 build = "build.rs"
 
 [lib]
