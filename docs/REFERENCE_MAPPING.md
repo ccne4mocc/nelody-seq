@@ -16,6 +16,21 @@ row back to its reference instead of guessing. Two references feed nelody seq:
 The `Mode` enum in `src/modes.rs` is one list for host, generators and views. Acid starts at
 index 14 because the melody modes build the non-acid half of that split.
 
+### Category summary
+
+| Category | Modes | Count |
+|---|---|---:|
+| Rhythm | Euclidean · Oscillator / Phase · L-System Grammar | 3 |
+| Stochastic | Mozart Dice · Markov Walk · Probabilistic (Bernoulli) · Brownian Walk · Lévy Flight | 5 |
+| Chaos / Physics | Logistic Map · Arnold Circle Map · Tent Map · Hénon Map | 4 |
+| Fractal | — (reserved, currently empty) | 0 |
+| Cellular | Cellular Automaton · Life-like CA | 2 |
+| Geometric | Eulerian Walk · Hilbert Curve | 2 |
+| Number Theory | Golomb Ruler · Xenakis Sieve · Fibonacci / Sturmian · Thue-Morse · Rudin-Shapiro · Ulam Spiral Primes | 6 |
+| Music Theory | Tonnetz Walk · Arpeggiator · Walking Bass | 3 |
+| Acid | Acid Random · Acid Euclid · Acid Markov · Acid Motif · Acid Shift Register | 5 |
+| **Total** | | **30** |
+
 | Index | nelody seq mode | Group | Origin | View in nelody seq |
 |---:|---|---|---|---|
 | 0 | Euclidean | Rhythm | nrum seq Euclidean (per-lane rings) collapsed to one ring + contour walk by 1/φ | Necklace ring, filled hit polygon, playhead hand |

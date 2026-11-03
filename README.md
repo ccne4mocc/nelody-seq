@@ -9,8 +9,23 @@ architecture and editor layout, but with one mono, 303-style voice and a right-t
 instead of an eight-lane drum matrix. It generates **notes, not percussion**, over MIDI channel 1.
 Route the track to a mono synth and use the plug-in as a generative player.
 
+This plugin grew out of lot of interessents in the last years, especially by starting to teach myself piano play and getting my head stuck in endless rabbit holes in music production & electronic music (and birds... and sound design... and music theory and so on lol). I was kinda unsatisfied with sequencers and generative stuff, also some where really unstable (looking at you HY-RPE), on the other side a variaty of plugins/software like strudl, supercollider and some other euclidian sequencers were awesome and really hooked me.
+
+I wanted something inbetween that allowed me to play around and jam fast with concepts & ideas, polymeter creation and something  usable for funny / experimental piano instrument play but also technical production.
+One reason was also knowing talented drummers that turn off their heads when complicated words come... so I needed some tool that can bridge the ideas I want to commuinicate (you know... for when it gets esoteric with ideas) - but well who knows ... drummers^^
+
+The basis for this project were lot of other side projects/works and linux music projects, which brought me to the point to use my former IT experience to get back a bit into coding and use opencode to concretize, build and merge my sideproject mess & ideas into these 2 plugins. Cause I didn't plan to come so far from 5 smaller Projects and also uncertain to even publish, I messed up to have a cleaner longer history but whatever...
+
 Everything is deterministic and bounded for a given parameter snapshot and seed, so a pattern can
 be recalled, automated and exported without hidden state.
+
+The plugin still needs polish in many directions and I'm also planning to add more modes from time to time and partially slim it down. Some functionalities are rather rudimentary like internal lfos, since DAW LFO tools can be linked to the plugin parameters. Sequencer Matrix is also rather simple, cause I often record the midi or sound input directly into clips or just use the export midi function.
+Also it can get visually confusing with higher parameter values and some combinations, depending on modes. Nevertheless, having the limits loose was more fun (step ceiling can be increased in settings). Optimizing and giving more depth in the view/presentation is also somewhere on the list (first 1D/2D more work, but also 3D ideas). It's quite possible that I will smack both plugins to 1 package. Be also aware, switching theme to "Sketch" might burn your retina if you live in a cave like me.
+A reaper jsfx version is also on the way, but I'm not really fond of it right now.
+
+The windows variants are experimental, my focus is mainly on linux but they worked with my tests.
+
+Enjoy :3
 
 ## Highlights
 
@@ -26,6 +41,25 @@ be recalled, automated and exported without hidden state.
 - **One-loop MIDI export** using the same generation path as the audio scheduler.
 - **Mode-aware Randomize** with a scope mask and built-in starting points.
 - **Four themes**, with Forest as the fresh default.
+
+## Modes
+
+The 30 generators use the same category taxonomy as nrum seq, plus the Acid group. The full
+mapping, derivation and view geometry live in
+[`docs/REFERENCE_MAPPING.md`](docs/REFERENCE_MAPPING.md).
+
+| Category | Modes | Count |
+|---|---|---:|
+| Rhythm | Euclidean · Oscillator / Phase · L-System Grammar | 3 |
+| Stochastic | Mozart Dice · Markov Walk · Probabilistic (Bernoulli) · Brownian Walk · Lévy Flight | 5 |
+| Chaos / Physics | Logistic Map · Arnold Circle Map · Tent Map · Hénon Map | 4 |
+| Fractal | — (reserved, currently empty) | 0 |
+| Cellular | Cellular Automaton · Life-like CA | 2 |
+| Geometric | Eulerian Walk · Hilbert Curve | 2 |
+| Number Theory | Golomb Ruler · Xenakis Sieve · Fibonacci / Sturmian · Thue-Morse · Rudin-Shapiro · Ulam Spiral Primes | 6 |
+| Music Theory | Tonnetz Walk · Arpeggiator · Walking Bass | 3 |
+| Acid | Acid Random · Acid Euclid · Acid Markov · Acid Motif · Acid Shift Register | 5 |
+| **Total** | | **30** |
 
 ## Quick start
 
@@ -66,6 +100,8 @@ depth (0–200%), phase, polarity and an enable toggle. Drag an LFO's coloured p
 numeric parameter to link it; drag again to unlink. Linked controls show a depth band and a
 second animated base→value bar, and the modulation matrix lists every link with its current
 value.
+
+I highly recommend to work with your LFOs in your DAW.
 
 ## Build
 
