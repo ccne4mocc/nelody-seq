@@ -1,4 +1,4 @@
-//! The 29 generation modes in one list (24 non-acid + 5 acid).
+//! The 30 generation modes in one list (25 non-acid + 5 acid).
 //!
 //! `Mode` is the host-visible enum: `id` values are stable project state and `name` values are
 //! shown by the host. Generators and panels match the same variants, so there is no second enum
@@ -38,6 +38,7 @@ pub enum Mode {
     #[id = "walking_bass"] #[name = "Walking Bass"] WalkingBass,
     #[id = "hilbert_curve"] #[name = "Hilbert Curve"] HilbertCurve,
     #[id = "ulam_primes"] #[name = "Ulam Spiral Primes"] UlamPrimes,
+    #[id = "life"] #[name = "Life-like CA"] Life,
 }
 
 /// Presentation-only grouping; `Mode` indices remain the stable project contract.
@@ -134,6 +135,7 @@ impl Mode {
             Self::TentMap | Self::HenonMap => ModeGroup::Chaos,
             Self::Arpeggiator | Self::WalkingBass => ModeGroup::MusicTheory,
             Self::HilbertCurve => ModeGroup::Geometric,
+            Self::Life => ModeGroup::Cellular,
         }
     }
 
@@ -163,8 +165,8 @@ impl Mode {
             Self::Logistic | Self::TentMap | Self::Brownian | Self::LevyFlight => Some(32),
             // Two word-strip rows instead of one, and two staircase periods.
             Self::LSystem | Self::ThueMorse | Self::RudinShapiro | Self::Fibonacci => Some(32),
-            // A 2-D attractor and a spiral need a dense path to be recognisable.
-            Self::HenonMap | Self::UlamPrimes => Some(64),
+            // A 2-D attractor, a spiral or a population wave needs a dense path.
+            Self::HenonMap | Self::UlamPrimes | Self::Life => Some(64),
             _ => None,
         }
     }
@@ -242,7 +244,7 @@ mod tests {
             (Mode::Logistic, 32), (Mode::LSystem, 32), (Mode::ThueMorse, 32),
             (Mode::RudinShapiro, 32), (Mode::Brownian, 32), (Mode::LevyFlight, 32),
             (Mode::TentMap, 32), (Mode::Fibonacci, 32), (Mode::HenonMap, 64),
-            (Mode::UlamPrimes, 64),
+            (Mode::UlamPrimes, 64), (Mode::Life, 64),
         ] {
             assert_eq!(mode.min_steps(), Some(floor), "{mode:?}");
             assert!(floor <= crate::sequence::DEFAULT_MAX_STEPS, "{mode:?} floor spends the whole ceiling");

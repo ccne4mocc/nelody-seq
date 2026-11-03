@@ -47,6 +47,10 @@ pub(crate) fn math(p: &GenParams) -> String {
         Mode::WalkingBass => format!("dominant7 ping-pong · {} tones · approach {:.0}% · dir {}", p.pulses.clamp(1, 4), d * 100.0, ((p.phase * 3.0) as i32).clamp(0, 2)),
         Mode::HilbertCurve => format!("order {} · {} cells · quarter-turn {}", p.pulses.clamp(1, 5), 1usize << (2 * p.pulses.clamp(1, 5)), ((p.phase * 4.0) as i32).clamp(0, 3)),
         Mode::UlamPrimes => format!("spiral side {} · from integer {} · {} onsets spread over the primes", (((n as f64).sqrt().ceil()) as usize).max(1), 1 + (p.phase * 64.0).round() as usize + 5 * p.variation as usize + (p.seed * 64.0).round() as usize, (k as f32 * d).round().max(1.0)),
+        Mode::Life => {
+            let family = ["Life", "HighLife", "Seeds", "Day & Night", "Dense"][p.ca_rule as usize % 5];
+            format!("16×8 torus · {} warm-up · {} · density {:.2} · one column read per step", p.pulses.min(64), family, d)
+        }
     }
 }
 

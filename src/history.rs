@@ -45,20 +45,49 @@ pub fn unpack(w: u64) -> Option<Ev> {
 pub struct Roll {
     /// Shading of black-key rows (fill).
     pub bg: String,
+    /// Alternating bar shading (fill).
+    pub bg_bars: String,
     /// C lines (stroke).
     pub grid: String,
+    /// Step, beat and bar lines (stroke paths with different weights in the UI).
+    pub grid_steps: String,
+    pub grid_beats: String,
+    pub grid_bars: String,
     /// Note rectangles (fill, gradient applied in the UI).
     pub notes: String,
+    /// Brightness layers: `notes` is the base, these add mid and high velocity notes.
+    pub notes_mid: String,
+    pub notes_hard: String,
     /// Ghost of the current pattern's loop, phase-locked to the transport (stroke in the UI).
     pub pattern: String,
+    /// Slide connectors for the current-loop ghost (stroke in the UI).
+    pub pattern_slides: String,
     pub lo: i32,
     pub hi: i32,
 }
 
-/// One pattern loop projected onto the history time axis. `notes` are `(note, cents, hold_steps)`
-/// in display order; the editor builds them through the same `pitch_for` path as playback.
+/// One note of the current loop, already resolved through `pitch_for`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Note {
+    pub step: usize,
+    pub note: u8,
+    pub cents: f32,
+    /// Hold length in steps.
+    pub hold: f32,
+    pub slide: bool,
+}
+
+/// Grid spacing used by the roll's time lines.
+#[derive(Clone, Copy, Debug)]
+pub struct GridSpec {
+    pub step_ms: f32,
+    pub steps_per_beat: f32,
+    pub beats_per_bar: f32,
+}
+
+/// One pattern loop projected onto the history time axis.
 pub struct Overlay<'a> {
-    pub notes: &'a [(u8, f32, f32)],
+    pub notes: &'a [Note],
     /// One grid step in milliseconds.
     pub step_ms: f32,
     /// Continuous position inside the loop at the right edge of the roll.
@@ -74,6 +103,7 @@ struct Seg {
     start: i64,
     end: i64,
     note: u8,
+    vel: u8,
     cents: f32,
 }
 
@@ -82,28 +112,42 @@ fn rect(s: &mut String, x0: f32, y0: f32, x1: f32, y1: f32) {
 }
 
 /// `events` may be unsorted / contain stale entries; `now_ms` is the right edge of the view.
+#[allow(dead_code)]
 pub fn build(events: &mut Vec<Ev>, now_ms: u64, window_ms: u64, w: f32, h: f32, overlay: Option<&Overlay>) -> Roll {
+    build_with_grid(events, now_ms, window_ms, w, h, overlay, None)
+}
+
+/// Build the roll with an optional musical time grid.
+pub fn build_with_grid(
+    events: &mut Vec<Ev>,
+    now_ms: u64,
+    window_ms: u64,
+    w: f32,
+    h: f32,
+    overlay: Option<&Overlay>,
+    grid: Option<&GridSpec>,
+) -> Roll {
     let t_min = now_ms as i64 - window_ms as i64;
     // Stable sort by time only: at the same millisecond an On must stay before its Off.
     events.sort_by_key(|e| e.t_ms);
     let mut segs: Vec<Seg> = Vec::new();
-    let mut open: [Option<(i64, f32)>; 128] = [None; 128];
+    let mut open: [Option<(i64, f32, u8)>; 128] = [None; 128];
     for e in events.iter() {
         let t = e.t_ms as i64;
         let n = (e.note & 0x7F) as usize;
         if e.on {
-            if let Some((s, c)) = open[n].take() {
-                segs.push(Seg { start: s, end: t, note: n as u8, cents: c });
+            if let Some((s, c, v)) = open[n].take() {
+                segs.push(Seg { start: s, end: t, note: n as u8, vel: v, cents: c });
             }
-            open[n] = Some((t, e.cents));
-        } else if let Some((s, c)) = open[n].take() {
-            segs.push(Seg { start: s, end: t, note: n as u8, cents: c });
+            open[n] = Some((t, e.cents, e.vel));
+        } else if let Some((s, c, v)) = open[n].take() {
+            segs.push(Seg { start: s, end: t, note: n as u8, vel: v, cents: c });
         }
         // An Off with no matching On is a ring-wrap/stale event; skip it.
     }
     for (n, o) in open.iter().enumerate() {
-        if let Some((s, c)) = o {
-            segs.push(Seg { start: *s, end: now_ms as i64, note: n as u8, cents: *c });
+        if let Some((s, c, v)) = o {
+            segs.push(Seg { start: *s, end: now_ms as i64, note: n as u8, vel: *v, cents: *c });
         }
     }
     segs.retain(|s| s.end >= t_min && s.start <= now_ms as i64 + 50);
@@ -142,14 +186,38 @@ pub fn build(events: &mut Vec<Ev>, now_ms: u64, window_ms: u64, w: f32, h: f32, 
         // A cent offset shifts the note inside its own row, so NTS pitches read as microtonal.
         let y = (hi - 1 - n) as f32 * rh - s.cents / 100.0 * rh;
         let (x0, x1) = (x_of(s.start), x_of(s.end));
-        rect(&mut roll.notes, x0, y + 0.5, x1.max(x0 + 2.0), y + rh - 0.5);
+        let x1 = x1.max(x0 + 2.0);
+        rect(&mut roll.notes, x0, y + 0.5, x1, y + rh - 0.5);
+        // Velocity is packed with the event; split it into two brighter overlay layers so the UI
+        // can shade notes without a per-note model.
+        if s.vel >= 64 {
+            rect(&mut roll.notes_mid, x0, y + 0.5, x1, y + rh - 0.5);
+        }
+        if s.vel >= 100 {
+            rect(&mut roll.notes_hard, x0, y + 0.5, x1, y + rh - 0.5);
+        }
     }
 
     if let Some(o) = overlay {
-        pattern_overlay(&mut roll.pattern, o, window_ms, w, lo, hi, rh);
+        pattern_overlay(&mut roll, o, window_ms, w, lo, hi, rh);
+    }
+    if let Some(g) = grid {
+        time_grid(&mut roll, now_ms, window_ms, w, h, g);
     }
 
-    for s in [&mut roll.bg, &mut roll.grid, &mut roll.notes, &mut roll.pattern] {
+    for s in [
+        &mut roll.bg,
+        &mut roll.bg_bars,
+        &mut roll.grid,
+        &mut roll.grid_steps,
+        &mut roll.grid_beats,
+        &mut roll.grid_bars,
+        &mut roll.notes,
+        &mut roll.notes_mid,
+        &mut roll.notes_hard,
+        &mut roll.pattern,
+        &mut roll.pattern_slides,
+    ] {
         if s.is_empty() {
             s.push_str("M0 0 ");
         }
@@ -159,9 +227,13 @@ pub fn build(events: &mut Vec<Ev>, now_ms: u64, window_ms: u64, w: f32, h: f32, 
 
 /// Project the current loop backwards from `now_ms` so the ghost can be compared with what the
 /// scheduler actually played. Bounded by the window and by `MAX_STEPS` drawn notes.
-fn pattern_overlay(s: &mut String, o: &Overlay, window_ms: u64, w: f32, lo: i32, hi: i32, rh: f32) {
+fn pattern_overlay(roll: &mut Roll, o: &Overlay, window_ms: u64, w: f32, lo: i32, hi: i32, rh: f32) {
     if o.notes.is_empty() || !o.step_ms.is_finite() || o.step_ms <= 0.0 { return; }
-    let loop_len = if o.loop_steps.is_finite() && o.loop_steps >= 1.0 { o.loop_steps } else { o.notes.len() as f32 };
+    let loop_len = if o.loop_steps.is_finite() && o.loop_steps >= 1.0 {
+        o.loop_steps
+    } else {
+        o.notes.iter().map(|n| n.step + 1).max().unwrap_or(1) as f32
+    };
     if !(loop_len > 0.0) { return; }
     let phase = o.phase_steps.rem_euclid(loop_len);
     let step_px = (o.step_ms * w / window_ms as f32).max(0.01);
@@ -169,20 +241,94 @@ fn pattern_overlay(s: &mut String, o: &Overlay, window_ms: u64, w: f32, lo: i32,
     let cycles = ((window_ms as f32 / (loop_len * o.step_ms)).ceil() as usize + 1).min(MAX_STEPS);
     let mut drawn = 0usize;
     'cycles: for cycle in 0..cycles {
-        for (k, &(note, cents, hold)) in o.notes.iter().enumerate() {
-            let onset = k as f32 + if k % 2 == 1 { swing } else { 0.0 };
-            let age = phase - onset + cycle as f32 * loop_len;
+        for (idx, note) in o.notes.iter().enumerate() {
+            let onset = |step: usize, wrapped: bool| {
+                step as f32
+                    + if step % 2 == 1 { swing } else { 0.0 }
+                    + if wrapped { loop_len } else { 0.0 }
+            };
+            let age = phase - onset(note.step, false) + cycle as f32 * loop_len;
             if age < 0.0 { continue; }
             let x0 = w - age * step_px;
-            let bw = (hold.clamp(0.02, 8.0) * step_px).max(1.5);
+            let bw = (note.hold.clamp(0.02, 8.0) * step_px).max(1.5);
             if x0 >= w { continue; }
             if x0 + bw < 0.0 { break 'cycles; }
-            let n = note as i32;
+            let n = note.note as i32;
             if !(lo..hi).contains(&n) { continue; }
-            let y = (hi - 1 - n) as f32 * rh - cents / 100.0 * rh;
-            rect(s, x0, y + 0.5, x0 + bw, y + rh - 0.5);
+            let y = (hi - 1 - n) as f32 * rh - note.cents / 100.0 * rh;
+            rect(&mut roll.pattern, x0, y + 0.5, x0 + bw, y + rh - 0.5);
             drawn += 1;
             if drawn >= MAX_STEPS { break 'cycles; }
+            // A slide holds until the next onset; draw the legato link so it reads as a slide
+            // rather than just a very long note.
+            if note.slide {
+                let next = &o.notes[(idx + 1) % o.notes.len()];
+                let wrapped = next.step <= note.step;
+                let next_age = phase - onset(next.step, wrapped) + cycle as f32 * loop_len;
+                if next_age >= 0.0 {
+                    let x1 = w - next_age * step_px;
+                    if x1 > x0 + bw {
+                        let ya = y + rh * 0.5;
+                        let _ = write!(roll.pattern_slides, "M{:.1} {:.1} L{:.1} {:.1} ", x0 + bw, ya, x1, ya);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Draw the bar shading and the step/beat/bar lines. Line density is bounded by pixel spacing so
+/// a 1024-step loop cannot blow up the path string.
+fn time_grid(roll: &mut Roll, now_ms: u64, window_ms: u64, w: f32, h: f32, g: &GridSpec) {
+    let step_ms = g.step_ms as f64;
+    if !step_ms.is_finite() || step_ms <= 0.0 || window_ms == 0 { return; }
+    let spb = if g.steps_per_beat.is_finite() && g.steps_per_beat > 0.0 {
+        g.steps_per_beat as f64
+    } else {
+        4.0
+    };
+    let bar_steps = spb * if g.beats_per_bar.is_finite() && g.beats_per_bar > 0.0 {
+        g.beats_per_bar as f64
+    } else {
+        4.0
+    };
+    let window = window_ms as f64;
+    let now = now_ms as f64;
+    let step_px = step_ms * w as f64 / window;
+    let x_of = |t: f64| (w as f64 - (now - t) * w as f64 / window) as f32;
+    let first = ((now - window) / step_ms).floor() as i64;
+    let last = (now / step_ms).ceil() as i64;
+    let count = (last - first + 1).clamp(0, 8192);
+    for n in 0..count {
+        let k = first + n;
+        let x = x_of(k as f64 * step_ms);
+        if !(0.0..=w).contains(&x) { continue; }
+        let beat_pos = (k as f64).rem_euclid(spb);
+        let bar_pos = (k as f64).rem_euclid(bar_steps);
+        if bar_pos.abs() < 1e-9 {
+            let _ = write!(roll.grid_bars, "M{x:.1} 0 L{x:.1} {h:.1} ");
+        } else if beat_pos.abs() < 1e-9 {
+            if step_px * spb >= 1.0 {
+                let _ = write!(roll.grid_beats, "M{x:.1} 0 L{x:.1} {h:.1} ");
+            }
+        } else if step_px >= 1.0 {
+            let _ = write!(roll.grid_steps, "M{x:.1} 0 L{x:.1} {h:.1} ");
+        }
+    }
+    // Alternate bar shading. Bars are bounded by the visible window.
+    let bar_ms = bar_steps * step_ms;
+    if bar_ms > 0.0 {
+        let first_bar = ((now - window) / bar_ms).floor() as i64;
+        let last_bar = (now / bar_ms).ceil() as i64;
+        let count = (last_bar - first_bar + 1).clamp(0, 4096);
+        for n in 0..count {
+            let b = first_bar + n;
+            if b.rem_euclid(2) == 0 { continue; }
+            let x0 = x_of(b as f64 * bar_ms).max(0.0);
+            let x1 = x_of((b + 1) as f64 * bar_ms).min(w);
+            if x1 > x0 {
+                rect(&mut roll.bg_bars, x0, 0.0, x1, h);
+            }
         }
     }
 }
@@ -276,8 +422,12 @@ mod tests {
         assert_eq!((r.lo, r.hi), (36, 84));
     }
 
-    fn loop_notes() -> Vec<(u8, f32, f32)> {
-        vec![(60, 0.0, 0.25), (64, 0.0, 0.25), (67, 0.0, 0.25), (71, 0.0, 0.25)]
+    fn note(step: usize, note: u8, cents: f32, hold: f32) -> Note {
+        Note { step, note, cents, hold, slide: false }
+    }
+
+    fn loop_notes() -> Vec<Note> {
+        vec![note(0, 60, 0.0, 0.25), note(1, 64, 0.0, 0.25), note(2, 67, 0.0, 0.25), note(3, 71, 0.0, 0.25)]
     }
 
     #[test]
@@ -298,8 +448,8 @@ mod tests {
 
     #[test]
     fn overlay_uses_the_rolls_pitch_range_and_cents() {
-        let detuned = vec![(48, 0.0, 0.5), (84, -30.0, 0.5)];
-        let plain = vec![(48, 0.0, 0.5), (84, 0.0, 0.5)];
+        let detuned = vec![note(0, 48, 0.0, 0.5), note(1, 84, -30.0, 0.5)];
+        let plain = vec![note(0, 48, 0.0, 0.5), note(1, 84, 0.0, 0.5)];
         let mut evs = vec![
             Ev { t_ms: 9_000, note: 48, vel: 90, on: true, cents: 0.0 },
             Ev { t_ms: 9_100, note: 48, vel: 0, on: false, cents: 0.0 },
@@ -326,6 +476,27 @@ mod tests {
         // The cent offset shifts the note inside its row, so the geometry must differ.
         assert_ne!(a.pattern, b.pattern);
         assert!(!a.pattern.contains("NaN"));
+    }
+
+    #[test]
+    fn time_grid_draws_beat_and_bar_lines() {
+        let mut evs = vec![];
+        let grid = GridSpec { step_ms: 125.0, steps_per_beat: 4.0, beats_per_bar: 4.0 };
+        let r = build_with_grid(&mut evs, 10_000, 2_000, 800.0, 200.0, None, Some(&grid));
+        assert!(r.grid_bars.matches('M').count() >= 2);
+        assert!(r.grid_beats.matches('M').count() >= 2);
+        assert!(!r.grid_steps.contains("NaN"));
+        assert!(!r.bg_bars.contains("NaN"));
+    }
+
+    #[test]
+    fn slide_connectors_follow_the_pattern_ghost() {
+        let mut notes = loop_notes();
+        notes[0].slide = true;
+        let o = Overlay { notes: &notes, step_ms: 125.0, phase_steps: 4.0, loop_steps: 4.0, swing_steps: 0.0 };
+        let mut evs = vec![];
+        let r = build(&mut evs, 10_000, 2_000, 600.0, 96.0, Some(&o));
+        assert!(r.pattern_slides.starts_with('M'), "missing slide connector: {}", r.pattern_slides);
     }
 
     #[test]

@@ -11,16 +11,28 @@ This project is intended for multi-agent development. Read `README.md`, `docs/AR
 3. **Separate view geometry:** keep Slint types out of `src/sequence/` and keep algorithm logic out of `src/view.rs`. All panel geometry is tested as pure data.
 4. **Stable host IDs:** once an `#[id = "..."]` parameter ships in a project/preset, do not rename it casually. Parameter defaults, units, bounds and mode semantics belong in docs and tests.
 5. **MIDI semantics:** all notes are emitted on zero-based channel 0 (MIDI channel 1) as a single melodic voice. Every emitted NoteOn must have a bounded NoteOff strategy, including stop, reset and transport jump; slides hold until the next note, with a fixed overlap as the safety net. Non-12-TET pitch is carried as pitch bend only while `nts` is on, and the bend is reset to centre when the voice stops. Follow host sample timing; never use wall-clock timers to schedule notes.
-6. **Behavioral parity:** the editor preview, the MIDI export and the audio scheduler go through the same `sequence::generate()` and `pitch_for()` path. Do not implement a separate UI-only version of a generator.
+6. **Behavioral parity:** the editor preview, the MIDI export and the audio scheduler go through the same `sequence::generate()` + `pitch_for()` path. Do not implement a separate UI-only version of a generator.
 7. **No silent failure:** add unit tests for algorithm invariants, view mapping, parameter exposure and scheduling edge cases when modifying those areas. If a toolchain is unavailable, call that out explicitly rather than claiming a successful build.
 
    Two specific checks are expected, not optional: `generation_never_allocates` guards invariant #1 for the generator path, and every mode must still produce hits at `steps=1` and at full density. Both were violated at some point and neither was caught.
 
+## MIDI editor
+
+The bottom roll is both the MIDI **history** and the per-step editor. It shows every emitted event
+right-to-left and overlays the current loop, phase-locked to the transport. The edit overlay is
+persisted project state (`src/edits.rs`) but never a host parameter and never touched from
+`process()` except through the plain `EditView` snapshot.
+
+Per-step edits are display-space: hit/rest, probability, accent, ratchet, microtiming and gate
+length. A length override replaces the global `Gate` for that step; `Slide` still holds to the next
+onset. Zoom, stopped-clock panning and the length snap grid are editor-only view state. The roll
+follows the clock automatically and freezes while an edit mode is active.
+
 ## Change ownership
 
 - Generator agents own only their `src/sequence/<mode>.rs`, targeted tests, and the relevant rows in `docs/REFERENCE_MAPPING.md`.
-- Audio/MIDI agents own `src/lib.rs`, timing behavior, NoteOn/NoteOff handling, history recording and scheduler tests.
-- UI agents own `ui/app.slint`, `src/editor.rs`, and mode-view geometry integration; they must coordinate parameter ID or `ViewNode`/history-path schema changes.
+- Audio/MIDI agents own `src/lib.rs`, timing behavior, NoteOn/NoteOff handling, the history ring in `src/history.rs` and scheduler tests.
+- UI agents own `ui/app.slint`, `src/editor.rs`, `src/edits.rs` integration, and mode-view geometry integration; they must coordinate parameter ID or `ViewNode`/history-path schema changes.
 - Packaging/release agents own `Cargo.toml`, `Cargo.lock`, `xtask/`, bundle validation and host-matrix documentation.
 - Architecture/QA agents own shared invariants, cross-mode tests, and `docs/` contracts.
 

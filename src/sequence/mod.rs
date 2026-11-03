@@ -18,6 +18,7 @@ mod golomb;
 mod henon_map;
 mod hilbert_curve;
 mod levy_flight;
+pub(crate) mod life;
 mod logistic;
 mod lsystem;
 mod markov;
@@ -49,6 +50,7 @@ pub(crate) use tent_map::mu_of as tent_mu;
 pub(crate) use tonnetz::TONNETZ_START;
 
 // The mode enum is the shared host parameter type: one list, one order, no mapping table.
+use crate::edits::{EditView, HIT_OFF, HIT_ON};
 use crate::modes::Mode;
 
 /// Hard capacity for every pattern array; the host's `max_steps` ceiling can reach 1024.
@@ -95,6 +97,10 @@ pub struct GenParams {
     pub invert: bool,
     /// Reverse the step order after generation (retrograde).
     pub mirror: bool,
+    /// Markov transition bias: two bits each for rest, repeat, role-compatible and novelty.
+    pub markov_bias: u8,
+    /// Revision of the manual edit overlay in this snapshot; part of the cache key.
+    pub edit_rev: u32,
     /// Acid knobs: probability that a note is accented / slid / octave-jumped.
     pub accent: f32,
     pub slide: f32,
@@ -124,6 +130,8 @@ impl Default for GenParams {
             variation: 0,
             invert: false,
             mirror: false,
+            markov_bias: 0,
+            edit_rev: 0,
             accent: 0.3,
             slide: 0.2,
             octave: 0.15,
@@ -440,10 +448,26 @@ fn run_mode(q: &GenParams) -> Pattern {
         Mode::WalkingBass => walking_bass::generate(q),
         Mode::HilbertCurve => hilbert_curve::generate(q),
         Mode::UlamPrimes => ulam_primes::generate(q),
+        Mode::Life => life::generate(q),
     }
 }
 
+/// Plain generation without manual edits. Kept for tests and callers that do not carry an
+/// overlay; production paths use [`generate_with`].
+#[cfg(test)]
 pub fn generate(p: &GenParams) -> Pattern {
+    generate_impl(p, None)
+}
+
+/// Generate with a manual edit overlay. The overlay is applied in display space, after rotation
+/// and mirror, so an edit stays on the step the user clicked. Probability overrides are applied
+/// at the same point as the global probability, which lets a higher override restore a hit the
+/// global value would have dropped.
+pub fn generate_with(p: &GenParams, edits: &EditView) -> Pattern {
+    generate_impl(p, Some(edits))
+}
+
+fn generate_impl(p: &GenParams, edits: Option<&EditView>) -> Pattern {
     let steps = p.steps.clamp(1, MAX_STEPS);
     let mut q = *p;
     q.steps = steps;
@@ -460,24 +484,34 @@ pub fn generate(p: &GenParams) -> Pattern {
     // Modes may opt in to the single-octave degree path on their own (Markov does).
     out.acid |= q.kind.is_acid();
 
+    // Rotation includes probability drops, the mode's own accent data and auxiliary view data.
+    // Variation also rotates by one or more steps, so closed-form modes regenerate differently.
+    // Computed before probability so a display-space probability override can be mapped back to
+    // the generator step.
+    let shift = ((q.rotate % steps) + (q.variation as usize % steps)) % steps;
+    let display_slot = |g: usize| {
+        let rotated = (g + shift) % steps;
+        if q.mirror { (2 * steps - 1 - rotated) % steps } else { rotated }
+    };
     // Probability is applied after the algorithm so it behaves consistently across modes.
     for i in 0..steps {
         if out.hit[i] {
+            let probability = edits
+                .and_then(|e| e.probability_at(display_slot(i)))
+                .unwrap_or(q.probability)
+                .clamp(0.0, 1.0);
             let mut rng = Rng::new(q.seed, q.variation, 0xBABA_0000 + i as u64);
-            if rng.unit() >= q.probability.clamp(0.0, 1.0) {
+            if rng.unit() >= probability {
                 out.hit[i] = false;
                 out.slide[i] = false;
             }
         }
     }
-    if q.density <= 0.0 || (q.kind != Mode::Cellular && q.pulses == 0) {
+    if q.density <= 0.0 || (q.kind != Mode::Cellular && q.kind != Mode::Life && q.pulses == 0) {
         out.hit[..steps].fill(false);
         out.slide[..steps].fill(false);
     }
 
-    // Rotation includes probability drops, the mode's own accent data and auxiliary view data.
-    // Variation also rotates by one or more steps, so closed-form modes regenerate differently.
-    let shift = ((q.rotate % steps) + (q.variation as usize % steps)) % steps;
     out.rotation = shift;
     if shift != 0 {
         let old_hit = out.hit;
@@ -567,50 +601,44 @@ pub fn generate(p: &GenParams) -> Pattern {
         let metric = if out.acid { 0.985 + 0.015 * out.acc[i] } else { out.acc[i] };
         out.acc[i] = (metric * mode_accents[i]).clamp(0.05, 1.0);
     }
+    // Manual edits are display-space and win over the algorithm and the metric accents.
+    if let Some(edits) = edits {
+        for i in 0..steps {
+            let hit = match edits.hit_override(i) {
+                HIT_ON => true,
+                HIT_OFF => false,
+                _ => out.hit[i],
+            };
+            if hit != out.hit[i] {
+                out.hit[i] = hit;
+                if !hit { out.slide[i] = false; }
+            }
+            if let Some(accent) = edits.accent_at(i) {
+                out.acc[i] = if hit { accent } else { 0.0 };
+            }
+        }
+    }
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::alloc::{GlobalAlloc, Layout, System};
-
-    // Counting allocator for invariant #1. Thread-local so parallel tests cannot leak allocations
-    // into the count.
-    std::thread_local! {
-        static ALLOCS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-    }
-    struct Counting;
-    unsafe impl GlobalAlloc for Counting {
-        unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-            let _ = ALLOCS.try_with(|c| c.set(c.get() + 1));
-            System.alloc(l)
-        }
-        unsafe fn dealloc(&self, p: *mut u8, l: Layout) { System.dealloc(p, l) }
-        unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
-            let _ = ALLOCS.try_with(|c| c.set(c.get() + 1));
-            System.realloc(p, l, n)
-        }
-    }
-    #[global_allocator]
-    static ALLOCATOR: Counting = Counting;
 
     #[test]
     fn generation_never_allocates() {
-        ALLOCS.with(|c| {
-            c.set(0);
-            for kind in Mode::all() {
-                for steps in [1usize, 2, 7, 16, 64, MAX_STEPS] {
-                    let p = GenParams {
-                        kind, steps, length: steps as f32, pulses: (steps / 2).max(1),
-                        density: 0.8, probability: 1.0, ..GenParams::default()
-                    };
-                    std::hint::black_box(generate(&p));
-                }
+        crate::test_alloc::reset();
+        for kind in Mode::all() {
+            for steps in [1usize, 2, 7, 16, 64, MAX_STEPS] {
+                let p = GenParams {
+                    kind, steps, length: steps as f32, pulses: (steps / 2).max(1),
+                    density: 0.8, probability: 1.0, ..GenParams::default()
+                };
+                std::hint::black_box(generate(&p));
             }
-            let used = c.get();
-            assert_eq!(used, 0, "generate() allocated {used} times on the audio path");
-        });
+        }
+        let used = crate::test_alloc::count();
+        assert_eq!(used, 0, "generate() allocated {used} times on the audio path");
     }
 
     #[test]
@@ -664,9 +692,9 @@ mod tests {
     }
 
     #[test]
-    fn zero_pulses_silences_except_the_cellular_mode() {
+    fn zero_pulses_silences_except_the_cellular_modes() {
         for kind in Mode::all() {
-            if kind == Mode::Cellular { continue; }
+            if kind == Mode::Cellular || kind == Mode::Life { continue; }
             let out = generate(&GenParams { kind, pulses: 0, density: 1.0, ..GenParams::default() });
             assert!(out.hit[..out.steps].iter().all(|h| !h), "{kind:?}");
         }
@@ -1079,5 +1107,49 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn an_empty_edit_overlay_is_identical_to_the_plain_generator() {
+        for kind in Mode::all() {
+            let p = GenParams { kind, steps: 16, pulses: 5, density: 0.7, probability: 1.0, ..GenParams::default() };
+            let plain = generate(&p);
+            let edited = generate_with(&p, &EditView::default());
+            assert_eq!(plain.hit, edited.hit, "{kind:?} hit");
+            assert_eq!(plain.u, edited.u, "{kind:?} u");
+            assert_eq!(plain.acc, edited.acc, "{kind:?} acc");
+            assert_eq!(plain.slide, edited.slide, "{kind:?} slide");
+        }
+    }
+
+    #[test]
+    fn manual_hit_and_accent_edits_win_over_the_generator() {
+        let p = GenParams {
+            kind: Mode::Euclidean, steps: 16, pulses: 5, density: 1.0,
+            probability: 1.0, ..GenParams::default()
+        };
+        let mut edits = EditView::default();
+        edits.hit[0] = HIT_OFF;
+        edits.hit[3] = HIT_ON;
+        edits.accent[3] = 200;
+        let out = generate_with(&p, &edits);
+        assert!(!out.hit[0], "forced rest still sounded");
+        assert!(out.hit[3], "forced hit did not sound");
+        assert!((out.acc[3] - 200.0 / 255.0).abs() < 1e-3, "accent override {}", out.acc[3]);
+    }
+
+    #[test]
+    fn probability_override_uses_the_display_slot() {
+        let p = GenParams {
+            kind: Mode::Euclidean, steps: 16, pulses: 16, density: 1.0,
+            probability: 1.0, rotate: 4, ..GenParams::default()
+        };
+        let plain = generate(&p);
+        assert!(plain.hit[0]);
+        let mut edits = EditView::default();
+        edits.probability[0] = 0;
+        let out = generate_with(&p, &edits);
+        assert!(!out.hit[0], "display step 0 did not take the probability override");
+        assert!(out.hit[1..].iter().any(|hit| *hit), "the override silenced more than one step");
     }
 }

@@ -33,6 +33,7 @@ fn pulse_vocabulary(mode: Mode) -> &'static [usize] {
         Mode::Euclidean | Mode::AcidEuclid => &[3, 5, 7],
         Mode::Dice => &[1, 2, 3],
         Mode::Cellular => &[4, 8, 12, 15],
+        Mode::Life => &[2, 4, 8, 12],
         Mode::Sieve => &[1, 2],
         Mode::AcidMotif => &[3, 4, 8, 16],
         Mode::AcidRandom => &[4, 6, 8, 12, 16],
@@ -177,6 +178,6 @@ mod tests {
         }
         assert!((1..=6).contains(&OCTAVES[0]) && *OCTAVES.last().unwrap() <= 6);
         // Appending a mode cannot silently give it an empty vocabulary.
-        assert!(<Mode as Enum>::variants().len() == 29);
+        assert!(<Mode as Enum>::variants().len() == 30);
     }
 }

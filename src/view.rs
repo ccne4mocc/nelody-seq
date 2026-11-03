@@ -121,6 +121,14 @@ fn poly(s: &mut String, pts: &[(f32, f32)]) {
     }
     s.push_str("Z ");
 }
+fn rect(s: &mut String, x0: f32, y0: f32, x1: f32, y1: f32) {
+    mv(s, x0, y0);
+    ln(s, x1, y0);
+    ln(s, x1, y1);
+    ln(s, x0, y1);
+    s.push_str("Z ");
+}
+
 fn line(s: &mut String, a: (f32, f32), b: (f32, f32)) {
     mv(s, a.0, a.1);
     ln(s, b.0, b.1);
@@ -758,6 +766,7 @@ pub fn build(kind: Mode, pat: &crate::sequence::Pattern, steps: usize, cur: i32,
         Mode::WalkingBass => absolute_view(&mut v, pat, n, cur),
         Mode::HilbertCurve => hilbert_view(&mut v, pat, n, cur),
         Mode::UlamPrimes => ulam_view(&mut v, pat, n, cur),
+        Mode::Life => life_view(&mut v, pat, cur),
     }
     for s in v.slots() {
         if s.is_empty() {
@@ -765,6 +774,29 @@ pub fn build(kind: Mode, pat: &crate::sequence::Pattern, steps: usize, cur: i32,
         }
     }
     v
+}
+
+/// 16 × 8 Life torus; only the live cells are filled, with a border and a playhead column.
+fn life_view(v: &mut View, pat: &Pattern, cur: i32) {
+    let (x0, y0) = (25.0f32, 35.0f32);
+    let (w, h) = (160.0f32, 112.0f32);
+    let cw = w / crate::sequence::life::WIDTH as f32;
+    let ch = h / crate::sequence::life::HEIGHT as f32;
+    rect(&mut v.edges, x0, y0, x0 + w, y0 + h);
+    for row in 0..crate::sequence::life::HEIGHT {
+        for col in 0..crate::sequence::life::WIDTH {
+            if pat.ca[row][col] {
+                let x = x0 + col as f32 * cw;
+                let y = y0 + row as f32 * ch;
+                rect(&mut v.fills, x + 0.6, y + 0.6, x + cw - 0.6, y + ch - 0.6);
+            }
+        }
+    }
+    if cur >= 0 {
+        let col = (cur as usize) % crate::sequence::life::WIDTH;
+        let x = x0 + col as f32 * cw;
+        rect(&mut v.hand, x, y0, x + cw, y0 + h);
+    }
 }
 
 #[cfg(test)]

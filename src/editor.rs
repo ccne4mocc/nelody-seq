@@ -1,10 +1,13 @@
 //! Slint GUI adapter between pure geometry and UI glue. Everything here runs on the editor
 //! thread; `process()` never sees Slint and the editor regenerates only when a snapshot changes.
+use crate::edits::{
+    quantize_length, EditState, ACCENT_AUTO, HIT_AUTO, HIT_OFF, HIT_ON, PROB_AUTO,
+};
 use crate::globals;
 use crate::history;
 use crate::keys;
 use crate::midi_export;
-use crate::sequence::{generate, GenParams, Pattern, Rng, MAX_STEPS, MIN_MAX_STEPS};
+use crate::sequence::{generate_with, GenParams, Pattern, Rng, MAX_STEPS, MIN_MAX_STEPS};
 use crate::view::{self, View};
 use crate::modulation::{format_target_value, target_in_mask, LFO_COUNT, LFO_MAX_HZ};
 use crate::{
@@ -16,19 +19,39 @@ use slint::platform::WindowEvent;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use slint_baseview::{default_gl_config, Size, SlintWindow, WindowHandle, WindowOpenOptions, WindowScalePolicy};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::Relaxed};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 slint::include_modules!();
 const WIDTH: u32 = 860;
-const HEIGHT: u32 = 675;
+const HEIGHT: u32 = 697;
 /// Drawing size of the history roll, matching the Slint path viewbox.
 const HISTORY_W: f32 = 800.0;
 const HISTORY_H: f32 = 200.0;
 const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 /// History length is expressed in 4/4 bars; the host tempo supplies the beat duration.
 const BEATS_PER_BAR: f32 = 4.0;
+
+/// Built-in starting points. These are editor conveniences, not host parameters: applying one
+/// writes ordinary host parameters so the result remains automatable and saveable.
+struct Preset {
+    name: &'static str,
+    mode: Mode,
+    steps: f32,
+    pulses: i32,
+    density: f32,
+    probability: f32,
+    seed: f32,
+}
+
+const PRESETS: &[Preset] = &[
+    Preset { name: "ACID", mode: Mode::AcidEuclid, steps: 16.0, pulses: 5, density: 0.82, probability: 1.0, seed: 0.271 },
+    Preset { name: "ARP", mode: Mode::Arpeggiator, steps: 16.0, pulses: 4, density: 0.88, probability: 1.0, seed: 0.413 },
+    Preset { name: "BASS", mode: Mode::WalkingBass, steps: 16.0, pulses: 4, density: 0.90, probability: 1.0, seed: 0.127 },
+    Preset { name: "DICE", mode: Mode::Dice, steps: 32.0, pulses: 2, density: 0.70, probability: 0.95, seed: 0.611 },
+    Preset { name: "AMBIENT", mode: Mode::LSystem, steps: 64.0, pulses: 8, density: 0.55, probability: 0.90, seed: 0.337 },
+];
 
 /// Append one technical line to `nelody-seq.log` in the user's home directory. GUI thread only.
 fn log_line(text: &str) {
@@ -153,6 +176,166 @@ fn set<P: Param>(ctx: &Arc<dyn GuiContext>, param: &P, value: P::Plain) {
     setter.end_set_parameter(param);
 }
 
+/// Editor-local undo stack for the per-step overlay. Bounded so a long editing session cannot
+/// grow without limit; pattern changes are not recorded here (the host owns parameter undo).
+#[derive(Default)]
+struct EditHistory {
+    undo: Vec<EditState>,
+    redo: Vec<EditState>,
+}
+
+impl EditHistory {
+    const LIMIT: usize = 64;
+
+    fn record(&mut self, state: EditState) {
+        if self.undo.last().map(|last| &last.cells) == Some(&state.cells) { return; }
+        self.undo.push(state);
+        if self.undo.len() > Self::LIMIT { self.undo.remove(0); }
+        self.redo.clear();
+    }
+
+    fn undo(&mut self, current: EditState) -> Option<EditState> {
+        let previous = self.undo.pop()?;
+        self.redo.push(current);
+        Some(previous)
+    }
+
+    fn redo(&mut self, current: EditState) -> Option<EditState> {
+        let next = self.redo.pop()?;
+        self.undo.push(current);
+        Some(next)
+    }
+}
+
+/// Apply one edit-mode click to a step. Modes match the UI strip: HIT, PROB, ACC, CLR, RAT, TIME.
+fn edit_step(p: &MelodyParams, step: usize, mode: i32) {
+    let store = &p.edit_overlay;
+    let step = step.min((p.cell_count().max(1) - 1) as usize);
+    match mode {
+        1 => store.set_hit(step, match store.hit(step) {
+            HIT_AUTO => HIT_ON,
+            HIT_ON => HIT_OFF,
+            _ => HIT_AUTO,
+        }),
+        2 => store.set_probability(step, match store.probability(step) {
+            255 => 254,
+            254 => 191,
+            191 => 127,
+            127 => 64,
+            _ => 255,
+        }),
+        3 => store.set_accent(step, match store.accent(step) {
+            0 => 255,
+            255 => 191,
+            191 => 128,
+            _ => 0,
+        }),
+        4 => store.clear_cell(step),
+        5 => store.set_ratchet(step, match store.ratchet(step) {
+            1 => 2,
+            2 => 3,
+            3 => 4,
+            _ => 1,
+        }),
+        6 => store.set_offset(step, match store.offset(step).max(0) {
+            0 => 16,
+            16 => 32,
+            32 => 64,
+            _ => 0,
+        }),
+        _ => {}
+    }
+}
+
+/// One-line description of every override on a step, shown while editing.
+fn edit_status(p: &MelodyParams, step: usize) -> String {
+    let store = &p.edit_overlay;
+    let step = step.min(p.cell_count().saturating_sub(1) as usize);
+    let hit = match store.hit(step) {
+        HIT_AUTO => "auto",
+        HIT_ON => "on",
+        _ => "off",
+    };
+    let probability = store.probability(step);
+    let probability = if probability == PROB_AUTO {
+        "auto".to_string()
+    } else {
+        format!("{}%", (probability as f32 / 254.0 * 100.0).round() as i32)
+    };
+    let accent = store.accent(step);
+    let accent = if accent == ACCENT_AUTO {
+        "auto".to_string()
+    } else {
+        format!("{}%", (accent as f32 / 255.0 * 100.0).round() as i32)
+    };
+    let time = match store.offset(step).max(0) {
+        0 => "0",
+        16 => "1/8",
+        32 => "1/4",
+        64 => "1/2",
+        _ => "custom",
+    };
+    format!(
+        "STEP {} · HIT {} · PROB {} · ACC {} · RAT {} · TIME {}",
+        step + 1,
+        hit,
+        probability,
+        accent,
+        store.ratchet(step),
+        time
+    )
+}
+
+/// Map a click in the 0..1 width of the history roll to the current pattern's display step.
+/// The roll flows right to left, so x = 1 is the newest beat and x = 0 the oldest edge of the
+/// visible window. Swing is ignored for hit-testing; it moves onsets by a fraction of a step.
+fn overlay_position(
+    p: &MelodyParams,
+    shared: &Shared,
+    bpm: f32,
+    now_ms: u64,
+    x01: f32,
+) -> Option<(usize, f32)> {
+    let bpm = if bpm.is_finite() && bpm > 0.0 { bpm } else { 120.0 };
+    let spb = p.rate.value().steps_per_beat();
+    let step_ms = 60_000.0 / (bpm as f64 * spb);
+    let phase_steps = roll_phase_steps(shared, bpm, now_ms, spb);
+    let window_ms = history_window_ms(p.history_bars.value(), bpm);
+    let age_steps = (1.0f64 - f64::from(x01.clamp(0.0, 1.0))) * window_ms as f64 / step_ms;
+    let k = phase_steps - age_steps;
+    let gen = p.gen_params();
+    let loop_len = gen.length.max(1.0 / 1024.0) as f64;
+    let wrapped = k.rem_euclid(loop_len);
+    let step = (wrapped.floor() as usize).min(gen.steps.saturating_sub(1));
+    Some((step, (wrapped - wrapped.floor()) as f32))
+}
+
+/// Current step phase for the roll. Before the first processed block there is no scheduler
+/// anchor, so the editor uses wall-clock time; this keeps the current-pattern ghost scrolling in
+/// lockstep with the recorded history instead of freezing at beat zero.
+fn roll_phase_steps(shared: &Shared, bpm: f32, now_ms: u64, steps_per_beat: f64) -> f64 {
+    let bpm = if bpm.is_finite() && bpm > 0.0 { bpm as f64 } else { 120.0 };
+    let beat = f64::from_bits(shared.last_beat.load(Relaxed));
+    let beat_ms = shared.beat_ms.load(Relaxed) as f64;
+    let now_beat = if beat_ms > 0.0 {
+        beat + (now_ms as f64 - beat_ms) * bpm / 60_000.0
+    } else {
+        now_ms as f64 * bpm / 60_000.0
+    };
+    now_beat * steps_per_beat
+}
+
+/// Map a click in the 0..1 width of the history roll to a display step.
+fn overlay_step_at(
+    p: &MelodyParams,
+    shared: &Shared,
+    bpm: f32,
+    now_ms: u64,
+    x01: f32,
+) -> Option<usize> {
+    overlay_position(p, shared, bpm, now_ms, x01).map(|(step, _)| step)
+}
+
 /// How many generators can use at most, for the current mode and cell count.
 fn pulse_limit(mode: Mode, cells: i32) -> i32 {
     match mode {
@@ -178,6 +361,20 @@ fn apply_mode_shape(c: &Arc<dyn GuiContext>, p: &MelodyParams, mode: Mode, steps
     if p.rotate.value() >= cells { set(c, &p.rotate, cells - 1); }
     let history_max = crate::history_bars_ceiling(ceiling, p.rate.value());
     if p.history_bars.value() > history_max { set(c, &p.history_bars, history_max); }
+}
+
+fn apply_preset(c: &Arc<dyn GuiContext>, p: &MelodyParams, index: i32) {
+    let Some(preset) = PRESETS.get(index.max(0) as usize) else { return; };
+    set(c, &p.mode, preset.mode);
+    // The preset's loop is a suggestion; the mode's functionality floor still wins.
+    apply_mode_shape(c, p, preset.mode, preset.steps);
+    let (steps, ceiling) = preset.mode.steps_for_mode(preset.steps, p.step_ceiling());
+    let cells = cell_count_for(steps, p.round_steps.value(), ceiling);
+    set(c, &p.pulses, preset.pulses.min(pulse_limit(preset.mode, cells)));
+    set(c, &p.density, preset.density);
+    set(c, &p.probability, preset.probability);
+    set(c, &p.seed, preset.seed);
+    p.variation.fetch_add(1, Relaxed);
 }
 
 /// One mode-selection path for the list and the mode-header wheel.
@@ -449,13 +646,18 @@ fn write_midi_file(p: &MelodyParams, bpm: f64, folder: &str) -> Result<PathBuf, 
     std::fs::create_dir_all(&folder).map_err(|e| format!("create {}: {e}", folder.display()))?;
 
     let gen = p.gen_params();
-    let pattern = generate(&gen);
+    let mut edit_view = crate::edits::EditView::default();
+    p.edit_overlay.fill(&mut edit_view);
+    let pattern = generate_with(&gen, &edit_view);
     let settings = midi_export::ExportSettings {
         bpm,
         steps_per_beat: p.rate.value().steps_per_beat(),
         loop_steps: gen.length as f64,
         gate: p.gate.value() as f64,
         swing: p.swing.value() as f64,
+        offsets: std::array::from_fn(|step| edit_view.offset_at(step).max(0.0)),
+        ratchets: std::array::from_fn(|step| edit_view.ratchet_at(step)),
+        lengths: std::array::from_fn(|step| edit_view.length_at(step).unwrap_or(0.0)),
     };
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -509,7 +711,7 @@ fn history_window_ms(bars: f32, bpm: f32) -> u64 {
 }
 
 /// Note bars for the current-loop overlay, built through the same `pitch_for` path as playback.
-fn overlay_notes(p: &MelodyParams, pattern: &Pattern, pitch: &crate::PitchValues) -> Vec<(u8, f32, f32)> {
+fn overlay_notes(p: &MelodyParams, pattern: &Pattern, pitch: &crate::PitchValues) -> Vec<history::Note> {
     let gate = p.gate.value().clamp(0.02, 1.0);
     let n = pattern.steps;
     let nts = p.nts.value();
@@ -517,15 +719,23 @@ fn overlay_notes(p: &MelodyParams, pattern: &Pattern, pitch: &crate::PitchValues
     for i in 0..n {
         if !pattern.hit[i] { continue; }
         let (note, cents) = p.pitch_for_values(pattern, i, pitch);
-        // Same hold rule as playback and export: a slide runs to the next onset, else the gate.
+        // Same hold rule as playback and export: a slide runs to the next onset, else the
+        // per-step length override, else the global gate.
+        let length = p.edit_overlay.length_at(i).unwrap_or(gate);
         let hold = if pattern.slide[i] {
             crate::next_hit_after(&pattern.hit, i, n)
                 .map(|j| ((j + n - i) % n) as f32 + 0.5)
-                .unwrap_or(gate)
+                .unwrap_or(length)
         } else {
-            gate
+            length
         };
-        out.push((note, if nts { cents } else { 0.0 }, hold));
+        out.push(history::Note {
+            step: i,
+            note,
+            cents: if nts { cents } else { 0.0 },
+            hold,
+            slide: pattern.slide[i],
+        });
     }
     out
 }
@@ -537,19 +747,16 @@ fn overlay_clock<'a>(
     bpm: f32,
     now_ms: u64,
     loop_steps: f32,
-    notes: &'a [(u8, f32, f32)],
+    notes: &'a [history::Note],
 ) -> Option<history::Overlay<'a>> {
-    if notes.is_empty() || !shared.lfo_running.load(Relaxed) { return None; }
+    if notes.is_empty() { return None; }
     let bpm64 = bpm as f64;
     if !(bpm64.is_finite() && bpm64 > 0.0) { return None; }
     let spb = p.rate.value().steps_per_beat();
-    let beat = f64::from_bits(shared.last_beat.load(Relaxed));
-    let beat_ms = shared.beat_ms.load(Relaxed) as f64;
-    let now_beat = beat + (now_ms as f64 - beat_ms) * bpm64 / 60_000.0;
     Some(history::Overlay {
         notes,
         step_ms: (60_000.0 / (bpm64 * spb)) as f32,
-        phase_steps: (now_beat * spb) as f32,
+        phase_steps: roll_phase_steps(shared, bpm, now_ms, spb) as f32,
         loop_steps,
         swing_steps: p.swing.value().clamp(0.0, 0.5),
     })
@@ -565,9 +772,9 @@ fn push_history(
     bpm: f32,
     bars: f32,
     loop_steps: f32,
+    now_ms: u64,
 ) {
     let window_ms = history_window_ms(bars, bpm);
-    let now_ms = shared.epoch.elapsed().as_millis() as u64;
     let mut events = shared.snapshot();
     let notes = if p.history_overlay.value() {
         overlay_notes(p, pattern, pitch)
@@ -575,11 +782,32 @@ fn push_history(
         Vec::new()
     };
     let overlay = overlay_clock(shared, p, bpm, now_ms, loop_steps, &notes);
-    let roll = history::build(&mut events, now_ms, window_ms, HISTORY_W, HISTORY_H, overlay.as_ref());
+    let spb = p.rate.value().steps_per_beat();
+    let grid = history::GridSpec {
+        step_ms: (60_000.0 / (bpm as f64 * spb)) as f32,
+        steps_per_beat: spb as f32,
+        beats_per_bar: 4.0,
+    };
+    let roll = history::build_with_grid(
+        &mut events,
+        now_ms,
+        window_ms,
+        HISTORY_W,
+        HISTORY_H,
+        overlay.as_ref(),
+        Some(&grid),
+    );
     ui.set_history_bg(SharedString::from(roll.bg.as_str()));
+    ui.set_history_bg_bars(SharedString::from(roll.bg_bars.as_str()));
     ui.set_history_grid(SharedString::from(roll.grid.as_str()));
+    ui.set_history_grid_steps(SharedString::from(roll.grid_steps.as_str()));
+    ui.set_history_grid_beats(SharedString::from(roll.grid_beats.as_str()));
+    ui.set_history_grid_bars(SharedString::from(roll.grid_bars.as_str()));
     ui.set_history_notes(SharedString::from(roll.notes.as_str()));
+    ui.set_history_notes_mid(SharedString::from(roll.notes_mid.as_str()));
+    ui.set_history_notes_hard(SharedString::from(roll.notes_hard.as_str()));
     ui.set_history_pattern(SharedString::from(roll.pattern.as_str()));
+    ui.set_history_pattern_slides(SharedString::from(roll.pattern_slides.as_str()));
     ui.set_history_range(SharedString::from(format!(
         "{} – {}",
         note_label(roll.lo),
@@ -745,6 +973,7 @@ impl Editor for SlintEditor {
         let setup_midi_dir = midi_dir.clone();
         let update_midi_dir = midi_dir.clone();
         let mod_rects = Arc::new(Mutex::new(Vec::<ModRect>::new()));
+        let edit_history = Arc::new(Mutex::new(EditHistory::default()));
         if scale > 0.0 && self.scale.load(Relaxed) == 0 { self.scale.store(scale.to_bits(), Relaxed); }
         if let Some(theme) = stored.theme {
             let theme = PluginTheme::from_index(theme);
@@ -767,6 +996,8 @@ impl Editor for SlintEditor {
             let folder = setup_midi_dir.lock().map(|d| d.clone()).unwrap_or_default();
             ui.set_midi_folder(SharedString::from(folder.as_str()));
             {
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_apply_preset(move |index| apply_preset(&c, &p, index));
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_set_mode(move |v| apply_mode(&c, &p, v));
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
@@ -792,6 +1023,92 @@ impl Editor for SlintEditor {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_set_osc_wave(move |v| {
                     set(&c, &p.osc_wave, OscWave::from_index(v.clamp(0, OscWave::variants().len() as i32 - 1) as usize));
+                });
+                let (p, c) = (setup_params.clone(), setup_ctx.clone());
+                ui.on_set_markov_bias(move |v| set(&c, &p.markov_bias, (v.round() as i32).clamp(0, 255)));
+            }
+            {
+                let (p, shared) = (setup_params.clone(), setup_shared.clone());
+                let history = edit_history.clone();
+                ui.on_edit_overlay(move |x, mode| {
+                    let hold = shared.history_hold_ms.load(Relaxed);
+                    let now = if hold > 0 { hold } else { shared.epoch.elapsed().as_millis() as u64 };
+                    let bpm = f32::from_bits(shared.tempo_bits.load(Relaxed));
+                    let Some(step) = overlay_step_at(&p, &shared, bpm, now, x) else { return; };
+                    if let Ok(mut history) = history.lock() {
+                        history.record(p.edit_overlay.snapshot());
+                    }
+                    edit_step(&p, step, mode);
+                    shared.edit_step.store(step as i32, Relaxed);
+                });
+                let (p, shared) = (setup_params.clone(), setup_shared.clone());
+                let history = edit_history.clone();
+                // phase: 0 = start, 1 = move, 2 = end. The start point fixes both the edited step
+                // and its onset, so dragging one note never paints neighbouring steps.
+                let length_origin = Arc::new(Mutex::new(None::<(usize, f32)>));
+                ui.on_edit_length(move |x, snap, phase| {
+                    if phase == 2 {
+                        if let Ok(mut origin) = length_origin.lock() { *origin = None; }
+                        return;
+                    }
+                    let hold = shared.history_hold_ms.load(Relaxed);
+                    let now = if hold > 0 { hold } else { shared.epoch.elapsed().as_millis() as u64 };
+                    let bpm = f32::from_bits(shared.tempo_bits.load(Relaxed));
+                    let bpm = if bpm.is_finite() && bpm > 0.0 { bpm } else { 120.0 };
+                    let spb = p.rate.value().steps_per_beat();
+                    let window_ms = history_window_ms(p.history_bars.value(), bpm);
+                    let step_x = (60_000.0 / (bpm as f64 * spb)) as f32 / window_ms as f32;
+                    if phase == 0 {
+                        let Some((step, fraction)) = overlay_position(&p, &shared, bpm, now, x) else {
+                            return;
+                        };
+                        if let Ok(mut history) = history.lock() {
+                            history.record(p.edit_overlay.snapshot());
+                        }
+                        if let Ok(mut origin) = length_origin.lock() {
+                            *origin = Some((step, x - fraction * step_x));
+                        }
+                        shared.edit_step.store(step as i32, Relaxed);
+                        return;
+                    }
+                    let origin = length_origin.lock().ok().and_then(|o| *o);
+                    let Some((step, onset_x)) = origin else { return; };
+                    let unit = snap.clamp(1.0 / 64.0, 1.0);
+                    let raw = ((x - onset_x) / step_x).clamp(0.02, 1.0);
+                    let length = ((raw / unit).round() * unit).clamp(0.02, 1.0);
+                    p.edit_overlay.set_length(step, quantize_length(Some(length)));
+                    shared.edit_step.store(step as i32, Relaxed);
+                });
+                let (p, shared) = (setup_params.clone(), setup_shared.clone());
+                let history = edit_history.clone();
+                ui.on_clear_edits(move || {
+                    if let Ok(mut history) = history.lock() {
+                        history.record(p.edit_overlay.snapshot());
+                    }
+                    p.edit_overlay.clear_all();
+                    shared.edit_step.store(-1, Relaxed);
+                });
+                let (p, shared) = (setup_params.clone(), setup_shared.clone());
+                let history = edit_history.clone();
+                ui.on_undo_edit(move || {
+                    let current = p.edit_overlay.snapshot();
+                    if let Ok(mut history) = history.lock() {
+                        if let Some(previous) = history.undo(current) {
+                            p.edit_overlay.apply(&previous);
+                        }
+                    }
+                    shared.edit_step.store(-1, Relaxed);
+                });
+                let (p, shared) = (setup_params.clone(), setup_shared.clone());
+                let history = edit_history.clone();
+                ui.on_redo_edit(move || {
+                    let current = p.edit_overlay.snapshot();
+                    if let Ok(mut history) = history.lock() {
+                        if let Some(next) = history.redo(current) {
+                            p.edit_overlay.apply(&next);
+                        }
+                    }
+                    shared.edit_step.store(-1, Relaxed);
                 });
             }
             {
@@ -1007,6 +1324,9 @@ impl Editor for SlintEditor {
             ui.set_rate_names(ModelRc::new(VecModel::from(
                 <Rate as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));
+            ui.set_preset_names(ModelRc::new(VecModel::from(
+                PRESETS.iter().map(|preset| SharedString::from(preset.name)).collect::<Vec<_>>(),
+            )));
             ui.set_mod_rows(ModelRc::new(VecModel::from(Vec::<ModRow>::new())));
             ui.set_mod_status(SharedString::new());
             ui.set_mode_rows(ModelRc::new(VecModel::from(mode_rows())));
@@ -1026,6 +1346,8 @@ impl Editor for SlintEditor {
         let last_regen_pulse = AtomicU32::new(update_shared.regen_pulse.load(Relaxed));
         // `u32::MAX` forces the first tick to publish whatever track name is already known.
         let last_track_rev = AtomicU32::new(u32::MAX);
+        // History paths are expensive to rebuild; 30 fps is smooth for a scrolling piano roll.
+        let last_history_ms = AtomicU64::new(0);
         let update = move |h: &slint_baseview::SlintWindowHandler<AppWindow>, _window: &mut slint_baseview::Window| {
             let requested = update_shared.randomize_request.load(Relaxed);
             let previous = last_randomize_request.swap(requested, Relaxed);
@@ -1093,6 +1415,7 @@ impl Editor for SlintEditor {
             ui.set_osc_wave(p.osc_wave.value().to_index() as i32);
             ui.set_ca_rule(p.ca_rule.value() as f32);
             ui.set_symmetry(p.symmetry.value() as f32);
+            ui.set_markov_bias(p.markov_bias.value() as f32);
             ui.set_rate(p.rate.value().to_index() as i32);
             let live_clock = update_shared.lfo_clock();
             let live_signals = p.lfo_signals(live_clock);
@@ -1211,12 +1534,21 @@ impl Editor for SlintEditor {
             let preview_pitch = p.pitch_values_at(preview_clock);
             let cur = update_shared.current_step.load(Relaxed);
             ui.set_current_step(cur);
+            let edited_step = update_shared.edit_step.load(Relaxed);
+            if edited_step >= 0 {
+                ui.set_edit_status(SharedString::from(edit_status(&p, edited_step as usize)));
+            } else {
+                ui.set_edit_status(SharedString::new());
+            }
+            ui.set_history_running(update_shared.lfo_running.load(Relaxed));
             let mut c = update_cache.lock().unwrap_or_else(|poisoned| {
                 log_line("WARNING: update cache mutex was poisoned; recovering its inner state");
                 poisoned.into_inner()
             });
             if c.gen_key != Some(gen_key) {
-                c.pattern = generate(&gen_key);
+                let mut edit_view = crate::edits::EditView::default();
+                p.edit_overlay.fill(&mut edit_view);
+                c.pattern = generate_with(&gen_key, &edit_view);
                 ui.set_mode_math(SharedString::from(crate::help::math(&gen_key)));
                 if p.logging.value() {
                     log_line(&format!(
@@ -1239,7 +1571,28 @@ impl Editor for SlintEditor {
                 push_view(&ui, &v);
                 c.view_key = Some(view_key);
             }
-            push_history(&ui, &update_shared, p, &c.pattern, &preview_pitch, update_shared.sample_tempo(), history_bars_effective, gen_key.length);
+            // Live clock: follow the newest note automatically. Entering an edit mode freezes the
+            // scroll position at the edit start, so notes stay under the pointer while they are
+            // being changed; leaving edit mode resumes live following on the next tick.
+            let editing = ui.get_history_editing();
+            let now = update_shared.epoch.elapsed().as_millis() as u64;
+            let now_ms = if editing {
+                let hold = update_shared.history_hold_ms.load(Relaxed);
+                if hold > 0 {
+                    hold
+                } else {
+                    update_shared.history_hold_ms.store(now, Relaxed);
+                    now
+                }
+            } else {
+                update_shared.history_hold_ms.store(0, Relaxed);
+                now
+            };
+            let last = last_history_ms.load(Relaxed);
+            if editing || now.saturating_sub(last) >= 33 {
+                last_history_ms.store(now, Relaxed);
+                push_history(&ui, &update_shared, p, &c.pattern, &preview_pitch, update_shared.sample_tempo(), history_bars_effective, gen_key.length, now_ms);
+            }
         };
         let factory = move || {
             let ui = AppWindow::new()?;
@@ -1505,5 +1858,42 @@ mod tests {
         assert_eq!(rows[0].target.as_str(), "Steps");
         assert_eq!(rows[0].target_id, ModTarget::Steps.index() as i32);
         assert_ne!(rows[0].value.as_str(), rows[0].base.as_str());
+    }
+
+    #[test]
+    fn overlay_click_maps_to_the_display_step() {
+        let p = MelodyParams::default();
+        let shared = Shared::default();
+        shared.last_beat.store(0.0f64.to_bits(), Relaxed);
+        shared.beat_ms.store(1_000, Relaxed);
+        // 4 bars at 120 BPM and 1/16 is 8000 ms; x = 0.875 is 1000 ms (8 steps) before now.
+        assert_eq!(overlay_step_at(&p, &shared, 120.0, 1_000, 1.0), Some(0));
+        assert_eq!(overlay_step_at(&p, &shared, 120.0, 1_000, 0.875), Some(8));
+    }
+
+    #[test]
+    fn overlay_scrolls_before_the_first_processed_block() {
+        let p = MelodyParams::default();
+        let shared = Shared::default();
+        assert_eq!(shared.beat_ms.load(Relaxed), 0);
+        // 120 BPM, 1/16: 125 ms per step. With no scheduler anchor the wall clock supplies phase.
+        assert_eq!(overlay_step_at(&p, &shared, 120.0, 0, 1.0), Some(0));
+        assert_eq!(overlay_step_at(&p, &shared, 120.0, 125, 1.0), Some(1));
+        assert_eq!(overlay_step_at(&p, &shared, 120.0, 1_000, 1.0), Some(8));
+        // x = 0.875 is 1000 ms behind the edge, so it lands back on the loop start.
+        assert_eq!(overlay_step_at(&p, &shared, 120.0, 1_000, 0.875), Some(0));
+    }
+
+    #[test]
+    fn built_in_presets_are_valid_for_the_current_bounds() {
+        assert!(!PRESETS.is_empty());
+        for preset in PRESETS {
+            assert!(!preset.name.is_empty());
+            assert!(preset.steps >= 1.0 && preset.steps <= MAX_STEPS as f32, "{}", preset.name);
+            assert!(preset.pulses >= 0 && preset.pulses <= preset.steps as i32, "{}", preset.name);
+            assert!((0.0..=1.0).contains(&preset.density), "{}", preset.name);
+            assert!((0.0..=1.0).contains(&preset.probability), "{}", preset.name);
+            assert!((0.0..=1.0).contains(&preset.seed), "{}", preset.name);
+        }
     }
 }

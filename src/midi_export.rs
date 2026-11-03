@@ -18,6 +18,12 @@ pub(crate) struct ExportSettings {
     pub loop_steps: f64,
     pub gate: f64,
     pub swing: f64,
+    /// Step-wide microtiming in fractions of one step (0..0.9), from the edit overlay.
+    pub offsets: [f32; MAX_STEPS],
+    /// Ratchet count per step (1..=4), from the edit overlay.
+    pub ratchets: [u8; MAX_STEPS],
+    /// Per-step gate/length override in fractions of one step; 0 follows `gate`.
+    pub lengths: [f32; MAX_STEPS],
 }
 
 struct Event {
@@ -71,28 +77,45 @@ pub(crate) fn smf(pattern: &Pattern, p: &MelodyParams, settings: &ExportSettings
     }
     for i in 0..steps {
         if !pattern.hit[i] { continue; }
-        let onset = i as f64 * step_len + if i % 2 == 1 { swing } else { 0.0 };
-        // A slide is held until the next onset; otherwise the gate knob decides.
-        let hold = if pattern.slide[i] {
-            crate::next_hit_after(&pattern.hit, i, steps)
-                .map(|j| ((j + steps - i) % steps) as f64 + 0.5)
-                .unwrap_or(gate)
+        let offset = settings.offsets[i].clamp(0.0, 0.9) as f64 * step_len;
+        let onset = i as f64 * step_len
+            + if i % 2 == 1 { swing } else { 0.0 }
+            + offset;
+        // A per-step length replaces the global gate.
+        let step_gate = if settings.lengths[i] > 0.0 {
+            settings.lengths[i].clamp(0.02, 1.0) as f64
         } else {
             gate
         };
+        // A slide is held until the next onset on the last ratchet substep; intermediate
+        // substeps are gated to their own spacing so the mono voice never overlaps itself.
+        let slide_steps = if pattern.slide[i] {
+            crate::next_hit_after(&pattern.hit, i, steps)
+                .map(|j| ((j + steps - i) % steps) as f64 + 0.5)
+                .unwrap_or(step_gate)
+        } else {
+            step_gate
+        };
+        let ratchet = settings.ratchets[i].clamp(1, 4) as usize;
+        let substep = step_len / ratchet as f64;
+        let sub_gate = if ratchet > 1 { step_gate.min(0.9 / ratchet as f64) } else { step_gate };
         let velocity = (p.velocity.value() * pattern.acc[i]).clamp(0.0, 1.0);
         let velocity = (velocity * 127.0).round().clamp(1.0, 127.0) as u8;
         let (note, cents) = p.pitch_for(pattern, i);
-        if nts {
-            let bend = (crate::bend_value(cents, bend_range) * 16_383.0).round() as u16;
-            events.push(Event {
-                tick: to_tick(onset),
-                order: 7,
-                data: [0xE0 | CHANNEL, (bend & 0x7F) as u8, (bend >> 7) as u8],
-            });
+        for r in 0..ratchet {
+            let at = onset + r as f64 * substep;
+            let hold = if r + 1 == ratchet { slide_steps } else { sub_gate };
+            if nts {
+                let bend = (crate::bend_value(cents, bend_range) * 16_383.0).round() as u16;
+                events.push(Event {
+                    tick: to_tick(at),
+                    order: 7,
+                    data: [0xE0 | CHANNEL, (bend & 0x7F) as u8, (bend >> 7) as u8],
+                });
+            }
+            events.push(Event { tick: to_tick(at), order: 8, data: [0x90 | CHANNEL, note, velocity] });
+            events.push(Event { tick: to_tick(at + hold * step_len), order: 0, data: [0x80 | CHANNEL, note, 0] });
         }
-        events.push(Event { tick: to_tick(onset), order: 8, data: [0x90 | CHANNEL, note, velocity] });
-        events.push(Event { tick: to_tick(onset + hold * step_len), order: 0, data: [0x80 | CHANNEL, note, 0] });
     }
     let loop_end = to_tick(loop_steps * step_len);
     if nts {
@@ -161,7 +184,10 @@ mod tests {
             nts: BoolParam::new("Microtonal Pitch Bend (NTS)", false),
             ..MelodyParams::default()
         };
-        let settings = ExportSettings { bpm: 120.0, steps_per_beat: 4.0, loop_steps: 4.0, gate: 0.5, swing: 0.0 };
+        let settings = ExportSettings {
+            bpm: 120.0, steps_per_beat: 4.0, loop_steps: 4.0, gate: 0.5, swing: 0.0,
+            offsets: [0.0; MAX_STEPS], ratchets: [1; MAX_STEPS], lengths: [0.0; MAX_STEPS],
+        };
         (pattern, p, settings)
     }
 
@@ -193,6 +219,35 @@ mod tests {
         assert_eq!((events[1].0, events[1].1), (60, 0x80));
         assert_eq!((events[2].0, events[2].1, events[2].2), (120, 0x90, 48));
         assert!(track.ends_with(&[0xFF, 0x2F, 0x00]));
+    }
+
+    #[test]
+    fn per_step_length_replaces_the_global_gate() {
+        let (pattern, p, mut settings) = setup(&[0, 1]);
+        settings.lengths[0] = 0.25;
+        let events = channel_events(&smf(&pattern, &p, &settings)[22..]);
+        // 0.25 of a 120-tick step is 30 ticks.
+        assert_eq!((events[0].0, events[0].1), (0, 0x90));
+        assert_eq!((events[1].0, events[1].1), (30, 0x80));
+        // The next step still follows the global gate (60 ticks).
+        assert_eq!((events[3].0, events[3].1), (180, 0x80));
+    }
+
+    #[test]
+    fn ratchets_and_microtiming_reach_the_export() {
+        let (pattern, p, mut settings) = setup(&[0]);
+        settings.offsets[0] = 0.5;
+        settings.ratchets[0] = 3;
+        let bytes = smf(&pattern, &p, &settings);
+        let track = &bytes[22..];
+        let ons: Vec<u32> = channel_events(track)
+            .into_iter()
+            .filter(|(_, status, _)| *status == 0x90)
+            .map(|(tick, _, _)| tick)
+            .collect();
+        // 480 PPQ, four steps per beat: one step is 120 ticks. The half-step delay puts the
+        // first onset at 60, then three evenly spaced substeps 40 ticks apart.
+        assert_eq!(ons, vec![60, 100, 140], "ratchet onsets {ons:?}");
     }
 
     #[test]

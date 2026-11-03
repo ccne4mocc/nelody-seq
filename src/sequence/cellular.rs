@@ -31,16 +31,34 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     let rule = if p.ca_rule == 0 { 30 } else { p.ca_rule };
     let mut rng = Rng::new(p.seed, p.variation, 0xCA00_0030);
     let mut row = [false; MAX_STEPS];
-    if p.variation == 0 && n > 1 {
-        row[n / 2] = true;
-    } else {
-        for c in row.iter_mut().take(n) {
-            *c = rng.next_u64() & 1 == 1;
+    // `symmetry` is free in this mode, so it selects the initial-row policy. The default 4 keeps
+    // the historical seed/variation behaviour; 1-3 are deterministic starting shapes.
+    match p.symmetry {
+        1 => {
+            // A single centre seed: the cleanest way to watch the rule propagate.
+            row[n / 2] = true;
         }
-        if !row[..n].iter().any(|&b| b) {
-            row[0] = true;
+        2 => {
+            // Alternating stripes.
+            for (i, cell) in row.iter_mut().take(n).enumerate() { *cell = i % 2 == 0; }
+        }
+        3 => {
+            // Solid row with one gap: a dense, asymmetric start.
+            for cell in row.iter_mut().take(n) { *cell = true; }
+            if n > 1 { row[0] = false; }
+        }
+        _ => {
+            if p.variation == 0 && n > 1 {
+                row[n / 2] = true;
+            } else {
+                for c in row.iter_mut().take(n) {
+                    *c = rng.next_u64() & 1 == 1;
+                }
+            }
         }
     }
+    // Every policy must leave at least one live cell.
+    if !row[..n].iter().any(|&b| b) { row[n / 2] = true; }
     out.ca[0] = row;
     for r in 1..CA_ROWS {
         let prev = out.ca[r - 1];
@@ -69,4 +87,32 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         out.acc[0] = 0.85;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modes::Mode;
+
+    #[test]
+    fn initial_state_policies_are_deterministic_and_audible() {
+        let n = 16usize;
+        let pat = |symmetry| generate(&GenParams {
+            kind: Mode::Cellular, steps: n, pulses: 5, symmetry, density: 0.5,
+            probability: 1.0, ..GenParams::default()
+        });
+        let centre = pat(1);
+        assert_eq!(centre.ca[0][..n].iter().filter(|&&cell| cell).count(), 1);
+        assert!(centre.hit[..n].iter().any(|hit| *hit));
+        let stripes = pat(2);
+        assert_eq!(stripes.ca[0][..n].iter().filter(|&&cell| cell).count(), n / 2);
+        let solid = pat(3);
+        assert_eq!(solid.ca[0][..n].iter().filter(|&&cell| cell).count(), n - 1);
+        for symmetry in 1..=4 {
+            let a = pat(symmetry);
+            let b = pat(symmetry);
+            assert_eq!(a.hit, b.hit, "policy {symmetry} is not deterministic");
+            assert!(a.hit[..n].iter().any(|hit| *hit), "policy {symmetry} is silent");
+        }
+    }
 }

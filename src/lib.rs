@@ -1,6 +1,7 @@
 //! nelody seq: algorithmic melodic MIDI sequence generation, emitted as MIDI.
 //! The plug-in intentionally has no audio renderer: route it to a mono / legato synth.
 mod editor;
+mod edits;
 mod globals;
 mod help;
 mod history;
@@ -22,8 +23,10 @@ use modulation::{
 };
 use nice_plug::prelude::*;
 use sequence::{
-    generate, GenParams, Pattern, DEFAULT_MAX_STEPS, MAX_STEPS, MIN_MAX_STEPS,
+    generate_with, GenParams, Pattern, DEFAULT_MAX_STEPS, MAX_STEPS, MIN_MAX_STEPS,
 };
+#[cfg(test)]
+use sequence::generate;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicUsize, Ordering::Relaxed};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -225,6 +228,9 @@ pub struct MelodyParams {
     /// Persisted generation nonce. Generate switches it indirectly; pattern snapshots include it.
     #[persist = "variation"]
     pub variation: AtomicU32,
+    /// Per-step manual edits. Lock-free mirror so the audio thread never takes a lock.
+    #[persist = "edit_overlay"]
+    pub edit_overlay: Arc<edits::EditStore>,
     #[id = "mode"] pub mode: EnumParam<Mode>,
     /// Pattern length in steps; fractional values wrap between grid cells.
     #[id = "steps"] pub steps: FloatParam,
@@ -245,6 +251,8 @@ pub struct MelodyParams {
     #[id = "osc_wave"] pub osc_wave: EnumParam<OscWave>,
     #[id = "ca_rule"] pub ca_rule: IntParam,
     #[id = "symmetry"] pub symmetry: IntParam,
+    /// Markov transition bias: 2 bits each for rest, repeat, role and novelty.
+    #[id = "markov_bias"] pub markov_bias: IntParam,
     #[id = "theme"] pub theme: EnumParam<Theme>,
     #[id = "rate"] pub rate: EnumParam<Rate>,
     #[id = "gate"] pub gate: FloatParam,
@@ -365,6 +373,7 @@ impl Default for MelodyParams {
     fn default() -> Self {
         Self {
             variation: AtomicU32::new(0),
+            edit_overlay: Arc::new(edits::EditStore::default()),
             mode: EnumParam::new("Generation Mode", Mode::Euclidean),
             steps: FloatParam::new("Steps", 16.0, FloatRange::Linear { min: 1.0, max: MAX_STEPS as f32 }),
             max_steps: IntParam::new(
@@ -389,6 +398,7 @@ impl Default for MelodyParams {
             osc_wave: EnumParam::new("Oscillator Wave", OscWave::Sine),
             ca_rule: IntParam::new("Cellular Automaton Rule", 30, IntRange::Linear { min: 0, max: 255 }),
             symmetry: IntParam::new("Crystallographic Symmetry", 4, IntRange::Linear { min: 1, max: 8 }),
+            markov_bias: IntParam::new("Markov Transition Bias", 0, IntRange::Linear { min: 0, max: 255 }),
             theme: EnumParam::new("Theme", Theme::Neon),
             rate: EnumParam::new("Rate", Rate::Sixteenth),
             gate: FloatParam::new("Gate", 0.12, FloatRange::Linear { min: 0.02, max: 1.0 }),
@@ -523,6 +533,8 @@ impl MelodyParams {
             osc_wave: self.osc_wave.value().to_index(),
             ca_rule: self.ca_rule.value().clamp(0, 255) as u8,
             symmetry: self.symmetry.value().clamp(1, 8) as usize,
+            markov_bias: self.markov_bias.value().clamp(0, 255) as u8,
+            edit_rev: self.edit_overlay.revision(),
             variation: self.variation.load(Relaxed),
             invert: self.invert.value(),
             mirror: self.mirror.value(),
@@ -848,6 +860,10 @@ pub struct Shared {
     pub text_focus: AtomicBool,
     /// Host-forwarded editing keys waiting to be replayed into the UI.
     pub key_queue: Mutex<Vec<(keys::EditKey, bool)>>,
+    /// Last step touched by the editor's per-step overlay, or -1 when no edit is selected.
+    pub edit_step: AtomicI32,
+    /// Epoch milliseconds at which the history view was frozen by LIVE/pan; 0 while following.
+    pub history_hold_ms: AtomicU64,
     /// Right-to-left MIDI history ring: packed events, written by `process` only.
     pub ring: [AtomicU64; HISTORY_LEN],
     pub widx: AtomicUsize,
@@ -869,6 +885,8 @@ impl Default for Shared {
             track_name: Mutex::new(String::new()),
             track_rev: AtomicU32::new(0),
             text_focus: AtomicBool::new(false),
+            edit_step: AtomicI32::new(-1),
+            history_hold_ms: AtomicU64::new(0),
             key_queue: Mutex::new(Vec::new()),
             ring: std::array::from_fn(|_| AtomicU64::new(0)),
             widx: AtomicUsize::new(0),
@@ -992,6 +1010,13 @@ pub struct NelodySeq {
     /// Unmodulated snapshot used to detect manual parameter edits.
     last_base_key: Option<GenParams>,
     pattern: Pattern,
+    /// Plain snapshot of the manual edit overlay, refreshed when its revision changes.
+    edit_view: edits::EditView,
+    last_edit_rev: u32,
+    /// Substep resolution for ratchets: 1 normally, 12 while a step ratchets.
+    subdivisions: u32,
+    /// Step-wide microtiming delay in beats, carried across substeps.
+    step_delay: f64,
     /// Loop length in steps, from the same snapshot as `pattern`.
     loop_length: f64,
     last_generate: Option<bool>,
@@ -1003,6 +1028,8 @@ pub struct NelodySeq {
     expected_beat: Option<f64>,
     /// Next step index to schedule, carried across blocks so swing cannot drop a step.
     next_step: Option<i64>,
+    /// Substep to resume at when a block ends mid-ratchet.
+    next_sub: u32,
     /// Set by `reset`, which has no `ProcessContext` to send NoteOffs with.
     pending_reset: bool,
     free_beat: f64,
@@ -1021,6 +1048,10 @@ impl Default for NelodySeq {
             last_key: None,
             last_base_key: None,
             pattern: Pattern::default(),
+            edit_view: edits::EditView::default(),
+            last_edit_rev: 0,
+            subdivisions: 1,
+            step_delay: 0.0,
             loop_length: 16.0,
             last_generate: None,
             active: None,
@@ -1028,6 +1059,7 @@ impl Default for NelodySeq {
             bend_range_sent: None,
             expected_beat: None,
             next_step: None,
+            next_sub: 0,
             pending_reset: false,
             free_beat: 0.0,
             last_regen_cycle: None,
@@ -1189,12 +1221,20 @@ impl Plugin for NelodySeq {
                 .store(modulation::lfo_phase(p.lfo_spec(slot), clock_start).to_bits(), Relaxed);
         }
 
+        // Refresh the lock-free edit snapshot before generation sees it; the revision is part of
+        // the pattern key, so a manual edit takes the same path as a parameter change.
+        let edit_rev = p.edit_overlay.revision();
+        if edit_rev != self.last_edit_rev {
+            p.edit_overlay.fill(&mut self.edit_view);
+            self.last_edit_rev = edit_rev;
+        }
+
         // Base parameters drive change detection; the pattern key includes this beat's LFO
         // snapshot, while pattern-shaping modulation is sampled at loop boundaries below.
         let base_key = p.gen_params();
         if self.last_base_key != Some(base_key) {
             let initial_key = p.gen_params_at(clock_start);
-            self.pattern = generate(&initial_key);
+            self.pattern = generate_with(&initial_key, &self.edit_view);
             self.loop_length = initial_key.length as f64;
             self.last_key = Some(initial_key);
             self.last_base_key = Some(base_key);
@@ -1223,7 +1263,10 @@ impl Plugin for NelodySeq {
         let spb = p.rate.value().steps_per_beat();
         let step_len = 1.0 / spb;
         let s1 = end * spb;
-        let mut k = resume_cursor(self.next_step, transport_jump, start, end, spb);
+        let carried_step = self.next_step;
+        let mut k = resume_cursor(carried_step, transport_jump, start, end, spb);
+        let mut sub = if carried_step == Some(k) && !transport_jump { self.next_sub } else { 0 };
+        if self.subdivisions == 0 { self.subdivisions = 1; }
         let schedule_start = p.schedule_at(clock_start);
         let every = automatic_interval(p.regenerate_every.value(), schedule_start.regenerate_every);
         let randomize_every =
@@ -1238,8 +1281,20 @@ impl Plugin for NelodySeq {
             let nominal_clock = LfoClock::from_beat(nominal_beat, bpm);
             let swing_value = p.schedule_at(nominal_clock).swing;
             let swing = swing_value.clamp(0.0, 0.5) as f64 * step_len;
+            let sub_len = step_len / self.subdivisions.max(1) as f64;
+            if sub == 0 {
+                let idx = step_index(k, self.loop_length) as usize;
+                let idx = idx.min(self.pattern.steps.saturating_sub(1));
+                // Microtiming is step-wide and positive-only; negative offsets are stored but
+                // need a lookahead scheduler to fire early.
+                let offset = self.edit_view.offset_at(idx).max(0.0) as f64;
+                self.step_delay = (offset * step_len).min(step_len * 0.9);
+            }
             let next_step = if (k as f64) < s1 + 1.0 {
-                nominal_beat + if k.rem_euclid(2) != 0 { swing } else { 0.0 }
+                nominal_beat
+                    + if k.rem_euclid(2) != 0 { swing } else { 0.0 }
+                    + self.step_delay
+                    + sub as f64 * sub_len
             } else {
                 f64::INFINITY
             };
@@ -1258,6 +1313,7 @@ impl Plugin for NelodySeq {
             }
 
             if next_step <= at + 1e-9 && next_step < end - 1e-9 {
+                if sub == 0 {
                 if let Some(cycle) = regeneration_cycle_at(k, self.loop_length, randomize_every, self.last_randomize_cycle) {
                     self.shared.randomize_request.fetch_add(1, Relaxed);
                     self.last_randomize_cycle = Some(cycle);
@@ -1275,7 +1331,7 @@ impl Plugin for NelodySeq {
                     }
                     // `variation` is already bumped for regenerate-after-N; this is the next block's base key.
                     let next_key = p.gen_params_at(nominal_clock);
-                    self.pattern = generate(&next_key);
+                    self.pattern = generate_with(&next_key, &self.edit_view);
                     self.loop_length = next_key.length as f64;
                     self.last_key = Some(next_key);
                     // Refresh the base snapshot to avoid a false manual change next block.
@@ -1283,10 +1339,19 @@ impl Plugin for NelodySeq {
                     self.last_mod_cycle = Some((k as f64 / self.loop_length).floor() as i64);
                     self.shared.pattern_beat.store(nominal_beat.to_bits(), Relaxed);
                 }
+                }
                 let idx = step_index(k, self.loop_length) as usize;
                 let idx = idx.min(self.pattern.steps.saturating_sub(1));
-                self.shared.current_step.store(idx as i32, Relaxed);
-                if self.pattern.hit[idx] {
+                if sub == 0 {
+                    self.shared.current_step.store(idx as i32, Relaxed);
+                    // Read this step's ratchet count once; 12 subdivisions divide 1..4 evenly.
+                    let ratchet = self.edit_view.ratchet_at(idx);
+                    self.subdivisions = if ratchet > 1 { 12 } else { 1 };
+                }
+                let ratchet = self.edit_view.ratchet_at(idx);
+                let spacing = 12 / ratchet as u32;
+                let trigger = ratchet == 1 || sub % spacing == 0;
+                if self.pattern.hit[idx] && trigger {
                     let t = timing(next_step);
                     let note_clock = LfoClock::from_beat(next_step, bpm);
                     let (note, cents) = p.pitch_for_values(
@@ -1296,14 +1361,23 @@ impl Plugin for NelodySeq {
                     );
                     let schedule_note = p.schedule_at(note_clock);
                     let velocity = (schedule_note.velocity * self.pattern.acc[idx]).clamp(0.01, 1.0);
-                    // A sliding note is held right up to the next note (across any rests), not gated.
-                    let hold = if self.pattern.slide[idx] {
+                    // A per-step length replaces the global gate. A ratchet gate is still capped
+                    // to its own substep spacing, so a retrigger cannot overlap the next substep.
+                    let gate_frac = self.edit_view.length_at(idx).unwrap_or(schedule_note.gate);
+                    let lane_len = step_len / self.subdivisions.max(1) as f64;
+                    let gate_beats = if ratchet > 1 {
+                        (gate_frac as f64 * step_len).min(lane_len * 0.9)
+                    } else {
+                        gate_frac as f64 * step_len
+                    };
+                    let last_substep = ratchet == 1 || sub >= 12 - spacing;
+                    let hold = if self.pattern.slide[idx] && last_substep {
                         next_hit_after(&self.pattern.hit, idx, self.pattern.steps)
                             .map(|next| ((next + self.pattern.steps - idx) % self.pattern.steps) as f64 + SLIDE_OVERLAP)
                     } else {
                         None
                     };
-                    let off_beat = next_step + hold.unwrap_or(schedule_note.gate as f64) * step_len;
+                    let off_beat = next_step + hold.unwrap_or(gate_beats);
                     let next = Active { note, cents, off_beat, slide: hold.is_some() };
                     let tr = transition(self.active.as_ref(), note);
                     match tr {
@@ -1334,7 +1408,13 @@ impl Plugin for NelodySeq {
                     }
                     self.active = Some(next);
                 }
-                k += 1;
+                // Advance one substep, then one step once every subdivision has fired.
+                if sub + 1 < self.subdivisions {
+                    sub += 1;
+                } else {
+                    sub = 0;
+                    k += 1;
+                }
             }
         }
 
@@ -1348,6 +1428,7 @@ impl Plugin for NelodySeq {
             }
         }
         self.next_step = Some(k);
+        self.next_sub = sub;
         ProcessStatus::Normal
     }
 }
@@ -1360,7 +1441,7 @@ pub(crate) fn next_hit_after(hit: &[bool; MAX_STEPS], idx: usize, steps: usize) 
 
 impl ClapPlugin for NelodySeq {
     const CLAP_ID: &'static str = "com.nelodyseq.nelodyseq";
-    const CLAP_DESCRIPTION: Option<&'static str> = Some("Algorithmic melodic MIDI sequencer with 29 generators and microtonal tunings");
+    const CLAP_DESCRIPTION: Option<&'static str> = Some("Algorithmic melodic MIDI sequencer with 30 generators and microtonal tunings");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(contact::GITHUB);
     const CLAP_SUPPORT_URL: Option<&'static str> = Some(contact::SUPPORT);
     const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::NoteEffect, ClapFeature::Utility];
@@ -1373,8 +1454,138 @@ nice_export_clap!(NelodySeq);
 nice_export_vst3!(NelodySeq);
 
 #[cfg(test)]
+pub(crate) mod test_alloc {
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+
+    // Counting allocator for invariant #1. Thread-local so parallel tests cannot leak allocations
+    // into the count.
+    thread_local! {
+        static ALLOCS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(crate) struct Counting;
+    unsafe impl GlobalAlloc for Counting {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            let _ = ALLOCS.try_with(|count| count.set(count.get() + 1));
+            System.alloc(layout)
+        }
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) { System.dealloc(ptr, layout) }
+        unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+            let _ = ALLOCS.try_with(|count| count.set(count.get() + 1));
+            System.realloc(ptr, layout, new_size)
+        }
+    }
+
+    #[global_allocator]
+    static ALLOCATOR: Counting = Counting;
+
+    pub(crate) fn reset() { ALLOCS.with(|count| count.set(0)); }
+    pub(crate) fn count() -> usize { ALLOCS.with(|count| count.get()) }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use nice_plug::params::InternalParamMut;
+    use nice_plug::prelude::ProcessContext;
+
+    /// A transport-aware host stub that records every event at its absolute sample position.
+    struct MockContext {
+        transport: Transport,
+        events: Vec<(u64, PluginNoteEvent<NelodySeq>)>,
+        total_samples: u64,
+        record: bool,
+        sent: u64,
+    }
+
+    impl MockContext {
+        fn new(sample_rate: f32) -> Self {
+            let mut transport = Transport::new(sample_rate);
+            transport.playing = true;
+            transport.tempo = Some(120.0);
+            transport.pos_beats = Some(0.0);
+            Self { transport, events: Vec::new(), total_samples: 0, record: true, sent: 0 }
+        }
+
+        fn set_recording(&mut self, record: bool) { self.record = record; }
+
+        fn process(&mut self, plugin: &mut NelodySeq, samples: usize) {
+            let mut buffer = Buffer::default();
+            unsafe { buffer.set_slices(samples, |_| {}) };
+            let mut inputs: [Buffer<'_>; 0] = [];
+            let mut outputs: [Buffer<'_>; 0] = [];
+            let mut aux = AuxiliaryBuffers { inputs: &mut inputs, outputs: &mut outputs };
+            let _ = plugin.process(&mut buffer, &mut aux, self);
+            self.total_samples += samples as u64;
+        }
+
+        fn note_ons(&self) -> Vec<(u64, u8)> {
+            self.events
+                .iter()
+                .filter_map(|(at, event)| match event {
+                    NoteEvent::NoteOn { note, .. } => Some((*at, *note)),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn note_offs(&self) -> Vec<(u64, u8)> {
+            self.events
+                .iter()
+                .filter_map(|(at, event)| match event {
+                    NoteEvent::NoteOff { note, .. } => Some((*at, *note)),
+                    _ => None,
+                })
+                .collect()
+        }
+    }
+
+    impl ProcessContext<NelodySeq> for MockContext {
+        fn plugin_api(&self) -> PluginApi { PluginApi::Clap }
+        fn execute_background(&self, _task: ()) {}
+        fn execute_gui(&self, _task: ()) {}
+        fn transport(&self) -> &Transport { &self.transport }
+        fn next_event(&mut self) -> Option<PluginNoteEvent<NelodySeq>> { None }
+        fn send_event(&mut self, event: PluginNoteEvent<NelodySeq>) {
+            self.sent += 1;
+            if !self.record { return; }
+            let at = self.total_samples + event.timing() as u64;
+            self.events.push((at, event));
+        }
+        fn set_latency_samples(&self, _samples: u32) {}
+        fn set_current_voice_capacity(&self, _capacity: u32) {}
+    }
+
+    fn set_param<P: Param + InternalParamMut>(param: &P, value: P::Plain) {
+        unsafe { param._internal_set_plain_value(value); }
+    }
+
+    /// A one-voice line with a hit on every step, for consecutive timing assertions.
+    fn every_step_plugin() -> (NelodySeq, MockContext) {
+        let mut plugin = NelodySeq::default();
+        plugin.sample_rate = 44_100.0;
+        set_param(&plugin.params.mode, Mode::Euclidean);
+        set_param(&plugin.params.steps, 16.0);
+        set_param(&plugin.params.pulses, 16);
+        set_param(&plugin.params.density, 1.0);
+        set_param(&plugin.params.probability, 1.0);
+        set_param(&plugin.params.gate, 0.5);
+        set_param(&plugin.params.swing, 0.0);
+        (plugin, MockContext::new(44_100.0))
+    }
+
+    fn run_playing(plugin: &mut NelodySeq, ctx: &mut MockContext, blocks: usize, block_samples: usize) {
+        let bpm = ctx.transport.tempo.unwrap();
+        let sr = ctx.transport.sample_rate as f64;
+        let beats_per_sample = (bpm / 60.0) / sr;
+        for _ in 0..blocks {
+            ctx.process(plugin, block_samples);
+            if let Some(pos) = ctx.transport.pos_beats.as_mut() {
+                *pos += block_samples as f64 * beats_per_sample;
+            }
+        }
+    }
 
     #[test]
     fn every_parameter_is_host_automatable_and_visible() {
@@ -1385,7 +1596,7 @@ mod tests {
             "mode", "steps", "max_steps", "round_steps", "pulses", "rotate", "density",
             "probability", "velocity", "regenerate_every", "randomize_after_lengths",
             "randomize_scope", "theme", "seed", "phase", "osc_rate", "osc_wave", "ca_rule",
-            "symmetry", "rate", "gate", "swing", "lfo1_enabled", "lfo1_wave", "lfo1_rate_mode", "lfo1_freq",
+            "symmetry", "markov_bias", "rate", "gate", "swing", "lfo1_enabled", "lfo1_wave", "lfo1_rate_mode", "lfo1_freq",
             "lfo1_rate", "lfo1_depth", "lfo1_phase", "lfo1_polarity", "lfo1_target",
             "lfo2_enabled", "lfo2_wave", "lfo2_rate_mode", "lfo2_freq", "lfo2_rate", "lfo2_depth", "lfo2_phase",
             "lfo2_polarity", "lfo2_target", "lfo3_enabled", "lfo3_wave", "lfo3_rate_mode", "lfo3_freq",
@@ -1425,11 +1636,11 @@ mod tests {
             Mode::AcidEuclid, Mode::AcidMarkov, Mode::AcidMotif, Mode::AcidShift,
             Mode::ThueMorse, Mode::RudinShapiro, Mode::Brownian, Mode::LevyFlight,
             Mode::TentMap, Mode::HenonMap, Mode::Arpeggiator, Mode::WalkingBass,
-            Mode::HilbertCurve, Mode::UlamPrimes,
+            Mode::HilbertCurve, Mode::UlamPrimes, Mode::Life,
         ].into_iter().enumerate() {
             assert_eq!(Mode::from_index(index), mode, "mode index {index}");
         }
-        assert_eq!(<Mode as Enum>::variants().len(), 29);
+        assert_eq!(<Mode as Enum>::variants().len(), 30);
         assert_eq!(Mode::AcidRandom.to_index(), 14, "the acid row starts at 14");
     }
 
@@ -1845,5 +2056,102 @@ mod tests {
         let sh = Shared::default();
         sh.tempo_bits.store((128.0f32).to_bits(), Relaxed);
         assert_eq!(sh.sample_tempo(), 128.0);
+    }
+
+    #[test]
+    fn process_never_allocates() {
+        // Invariant #1 covers the whole audio callback, not just `sequence::generate()`.
+        for kind in Mode::all() {
+            let (mut plugin, mut ctx) = every_step_plugin();
+            set_param(&plugin.params.mode, kind);
+            set_param(&plugin.params.steps, 16.0);
+            set_param(&plugin.params.pulses, 5);
+            set_param(&plugin.params.density, 0.65);
+            set_param(&plugin.params.probability, 1.0);
+            ctx.set_recording(false);
+            // First block generates the initial pattern and primes the LFO/regeneration state.
+            run_playing(&mut plugin, &mut ctx, 1, 64);
+            crate::test_alloc::reset();
+            run_playing(&mut plugin, &mut ctx, 8, 64);
+            let used = crate::test_alloc::count();
+            assert_eq!(used, 0, "process() allocated {used} times with {kind:?} on the audio thread");
+        }
+    }
+
+    #[test]
+    fn manual_step_edits_reach_the_scheduler() {
+        let (mut plugin, mut ctx) = every_step_plugin();
+        plugin.params.edit_overlay.set_hit(0, crate::edits::HIT_OFF);
+        run_playing(&mut plugin, &mut ctx, 48, 512);
+        let ons = ctx.note_ons();
+        assert!(!ons.is_empty(), "the forced-rest run produced no notes at all");
+        assert!(ons.iter().all(|(at, _)| *at > 1), "the forced rest still sounded: {:?}", ons[0]);
+        assert!(ons.iter().any(|(at, _)| (*at as f64 - 5512.5).abs() <= 1.5),
+            "step 1 did not sound after the forced rest: {:?}", ons);
+
+        let (mut plugin, mut ctx) = every_step_plugin();
+        set_param(&plugin.params.pulses, 1);
+        plugin.params.edit_overlay.set_hit(3, crate::edits::HIT_ON);
+        run_playing(&mut plugin, &mut ctx, 48, 512);
+        assert!(ctx.note_ons().iter().any(|(at, _)| (*at as f64 - 3.0 * 5512.5).abs() <= 1.5),
+            "the forced hit at step 3 did not sound: {:?}", ctx.note_ons());
+    }
+
+    #[test]
+    fn ratchets_distribute_substeps_within_the_step() {
+        let (mut plugin, mut ctx) = every_step_plugin();
+        plugin.params.edit_overlay.set_ratchet(0, 3);
+        run_playing(&mut plugin, &mut ctx, 48, 512);
+        let first: Vec<u64> = ctx
+            .note_ons()
+            .into_iter()
+            .filter(|(at, _)| (*at as f64) < 5000.0)
+            .map(|(at, _)| at)
+            .collect();
+        assert_eq!(first.len(), 3, "expected three ratchet onsets, got {first:?}");
+        for (i, at) in first.iter().enumerate() {
+            let expected = i as f64 * 5512.5 / 3.0;
+            assert!((*at as f64 - expected).abs() <= 1.5, "ratchet {i} at {at}, expected {expected}");
+        }
+    }
+
+    #[test]
+    fn a_long_scheduler_run_stays_bounded() {
+        let (mut plugin, mut ctx) = every_step_plugin();
+        set_param(&plugin.params.steps, MAX_STEPS as f32);
+        set_param(&plugin.params.max_steps, MAX_STEPS as i32);
+        set_param(&plugin.params.pulses, MAX_STEPS as i32);
+        set_param(&plugin.params.density, 1.0);
+        ctx.set_recording(false);
+        let blocks = 500usize;
+        run_playing(&mut plugin, &mut ctx, blocks, 32);
+        assert!(ctx.sent > 0, "the long run produced no events");
+        // One mono voice emits at most a note on and an off per step, and a 32-sample block
+        // cannot contain a whole step at these tempos.
+        assert!(ctx.sent <= (blocks * 16 + 32) as u64, "event count {} looks unbounded", ctx.sent);
+    }
+
+    #[test]
+    fn per_step_length_controls_the_note_off() {
+        let (mut plugin, mut ctx) = every_step_plugin();
+        set_param(&plugin.params.slide, 0.0);
+        plugin.params.edit_overlay.set_length(0, crate::edits::quantize_length(Some(0.25)));
+        run_playing(&mut plugin, &mut ctx, 12, 512);
+        let offs = ctx.note_offs();
+        assert!(!offs.is_empty(), "the first note was never released");
+        assert!((offs[0].0 as f64 - 1383.7).abs() <= 2.0, "off at {}", offs[0].0);
+    }
+
+    #[test]
+    fn microtiming_delays_the_step_without_moving_the_grid() {
+        let (mut plugin, mut ctx) = every_step_plugin();
+        plugin.params.edit_overlay.set_offset(0, 64);
+        run_playing(&mut plugin, &mut ctx, 48, 512);
+        let ons = ctx.note_ons();
+        let expected = 64.0 / 127.0 * 5512.5;
+        assert!(ons.iter().any(|(at, _)| (*at as f64 - expected).abs() <= 1.5),
+            "the delayed step is missing: {ons:?}, expected {expected}");
+        assert!(ons.iter().any(|(at, _)| (*at as f64 - 5512.5).abs() <= 1.5),
+            "the following step moved with the delayed one: {ons:?}");
     }
 }

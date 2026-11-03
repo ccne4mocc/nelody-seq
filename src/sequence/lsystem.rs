@@ -29,7 +29,15 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
     }
     let mut symbols = [A; CAP];
     let mut len = 1usize;
-    let family = ((p.seed.clamp(0.0, 0.999_999) * 4.0) as usize + p.variation as usize) % 4;
+    // `symmetry` is free here, so 1/2/3/5 select a grammar family explicitly. The default 4
+    // (and 6-8) keeps the historical seed/variation-derived family.
+    let family = match p.symmetry {
+        1 => 0,
+        2 => 1,
+        3 => 2,
+        5 => 3,
+        _ => ((p.seed.clamp(0.0, 0.999_999) * 4.0) as usize + p.variation as usize) % 4,
+    };
 
     // Fibonacci growth needs 16 rewrites to reach 1024 symbols; still bounded by CAP.
     for _ in 0..16 {
@@ -81,4 +89,30 @@ pub(super) fn generate(p: &GenParams) -> Pattern {
         out.acc[0] = 0.9;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modes::Mode;
+
+    #[test]
+    fn symmetry_selects_a_grammar_family_without_changing_the_default() {
+        let base = GenParams {
+            kind: Mode::LSystem, steps: 64, pulses: 8, density: 0.7,
+            probability: 1.0, seed: 0.31, variation: 2, ..GenParams::default()
+        };
+        let auto = generate(&base);
+        let default = generate(&GenParams { symmetry: 4, ..base });
+        assert_eq!(auto.lsym, default.lsym, "default symmetry must keep the seed/variation family");
+        let families: Vec<[u8; crate::sequence::MAX_STEPS]> = [1usize, 2, 3, 5]
+            .iter()
+            .map(|symmetry| generate(&GenParams { symmetry: *symmetry, ..base }).lsym)
+            .collect();
+        for (i, a) in families.iter().enumerate() {
+            for b in &families[i + 1..] {
+                assert_ne!(a, b, "two grammar families produced the same word");
+            }
+        }
+    }
 }
