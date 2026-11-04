@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.1 — Documentation release
+
+Documentation and packaging only; plug-in behaviour is unchanged from 1.0.0.
+
+### Changed
+
+- README: added a Download section with Linux and Windows install paths, a Motivation section
+  and a link to the new website.
+- Added `assets/og.png` social preview card.
+- Added `.github/FUNDING.yml` for Buy Me a Coffee.
+- Updated the host-identity note to refer to the 1.0.x line.
+
 ## 1.0.0 — Initial release
 
 First release under the v1.0.0 version line. It includes all work previously tagged

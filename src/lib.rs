@@ -1616,7 +1616,7 @@ mod tests {
     #[test]
     fn forest_is_the_default_theme() {
         assert_eq!(MelodyParams::default().theme.value(), Theme::Forest);
-        assert_eq!(contact::VERSION, "1.0.0");
+        assert_eq!(contact::VERSION, "1.0.1");
     }
 
     #[test]

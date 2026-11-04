@@ -151,7 +151,7 @@ loading, parameter rescans after state load, and tolerant VST3 activation before
 
 ## Compatibility
 
-Version 1.0.0 uses the host identity `com.nelodyseq.nelodyseq` (CLAP) and `nelody-seq` (VST3 class
+The 1.0.x line uses the host identity `com.nelodyseq.nelodyseq` (CLAP) and `nelody-seq` (VST3 class
 ID). Sessions created with the old `com.nelody.nelody` / `Nelody` IDs must replace the plug-in
 instance.
 

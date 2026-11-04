@@ -6,7 +6,7 @@ combination. Everything else is **untested**, even when the plug-in bundles and 
 
 ## Build under test
 
-- Version: 1.0.0
+- Version: 1.0.1 (documentation-only release; code and results below are unchanged from 1.0.0)
 - Bundles: `target/bundled/nelody-seq.clap`, `target/bundled/nelody-seq.vst3`
 - Build command: `cargo xtask bundle nelody-seq --release`
 - Date: 2026-11-03
