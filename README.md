@@ -13,6 +13,23 @@ architecture and editor layout, but with one mono, 303-style voice and a right-t
 instead of an eight-lane drum matrix. It generates **notes, not percussion**, over MIDI channel 1.
 Route the track to a mono synth and use the plug-in as a generative player.
 
+## Download
+
+Prebuilt Linux and Windows bundles are on the
+[latest release](https://github.com/ccne4mocc/nelody-seq/releases/latest). Linux is the primary
+target; the Windows build is experimental.
+
+```sh
+tar -xzf nelody-seq-*-linux-x86_64.tar.gz
+mkdir -p ~/.clap ~/.vst3
+cp -r nelody-seq.clap ~/.clap/
+cp -r nelody-seq.vst3 ~/.vst3/
+```
+
+On Windows, unzip and copy `nelody-seq.clap` and `nelody-seq.vst3` into
+`C:\Program Files\Common Files\CLAP` and `C:\Program Files\Common Files\VST3`.
+More details and install notes: [ccne4mocc.github.io](https://ccne4mocc.github.io/).
+
 This plugin grew out of lot of interessents in the last years, especially by starting to teach myself piano play and getting my head stuck in endless rabbit holes in music production & electronic music (and birds... and sound design... and music theory and so on lol). I was kinda unsatisfied with sequencers and generative stuff, also some where really unstable (looking at you HY-RPE), on the other side a variaty of plugins/software like strudl, supercollider and some other euclidian sequencers were awesome and really hooked me.
 
 I wanted something inbetween that allowed me to play around and jam fast with concepts & ideas, polymeter creation and something  usable for funny / experimental piano instrument play but also technical production.
