@@ -30,6 +30,8 @@ On Windows, unzip and copy `nelody-seq.clap` and `nelody-seq.vst3` into
 `C:\Program Files\Common Files\CLAP` and `C:\Program Files\Common Files\VST3`.
 More details and install notes: [ccne4mocc.github.io](https://ccne4mocc.github.io/).
 
+## Motivation
+
 This plugin grew out of lot of interessents in the last years, especially by starting to teach myself piano play and getting my head stuck in endless rabbit holes in music production & electronic music (and birds... and sound design... and music theory and so on lol). I was kinda unsatisfied with sequencers and generative stuff, also some where really unstable (looking at you HY-RPE), on the other side a variaty of plugins/software like strudl, supercollider and some other euclidian sequencers were awesome and really hooked me.
 
 I wanted something inbetween that allowed me to play around and jam fast with concepts & ideas, polymeter creation and something  usable for funny / experimental piano instrument play but also technical production.
