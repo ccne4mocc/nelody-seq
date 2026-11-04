@@ -2,16 +2,24 @@
 
 **Algorithmic melodic MIDI sequencer (CLAP + VST3), written in Rust.**
 
+
 ![nelody seq demo](assets/nelody-seq.gif)
 
 So... first of all: **AI-assisted, human-tested, maintained and used.** The code was written with
 heavy LLM assistance, but every release is reviewed, built and smoke-tested in real hosts by a
 human who uses the plugins in actual productions.
 
+**This is an EARLY phase! 
+Clock, generation, mode logic/function-wise, aswell as overall architecture and documents will be updated/polished over time.
+
+The actual version is in concept & preperation status.
+**
+
 nelody seq is the melodic sibling of [nrum seq](https://github.com/ccne4mocc): the same
 architecture and editor layout, but with one mono, 303-style voice and a right-to-left piano roll
 instead of an eight-lane drum matrix. It generates **notes, not percussion**, over MIDI channel 1.
 Route the track to a mono synth and use the plug-in as a generative player.
+
 
 ## Download
 
