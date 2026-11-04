@@ -10,10 +10,9 @@ heavy LLM assistance, but every release is reviewed, built and smoke-tested in r
 human who uses the plugins in actual productions.
 
 **This is an EARLY phase! 
-Clock, generation, mode logic/function-wise, aswell as overall architecture and documents will be updated/polished over time.
+Clock, generation, mode logic/function-wise, aswell as overall architecture and documents will be updated/polished over time.**
 
-The actual version is in concept & preperation status.
-**
+**The actual version is in concept & preperation status.**
 
 nelody seq is the melodic sibling of [nrum seq](https://github.com/ccne4mocc): the same
 architecture and editor layout, but with one mono, 303-style voice and a right-to-left piano roll
