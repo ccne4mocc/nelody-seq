@@ -664,131 +664,6 @@ component NumBox inherits Rectangle {
 }
 
 // One clock-rate field: wheel steps it, double-click opens a text field for a rate name.
-component RateField inherits Rectangle {
-    in property <string> label: "RATE";
-    in property <string> value;
-    in property <string> hint: "Click to type a rate, scroll to step";
-    callback stepped(int);
-    callback submitted(string);
-    callback menu-requested();
-    out property <bool> editing: root.edit-open;
-    height: 25px;
-    border-radius: 4px; background: Theme.control; border-width: 1px; border-color: Theme.border;
-    horizontal-stretch: 1;
-    property <bool> edit-open: false;
-    property <bool> focus-pending: false;
-    property <bool> click-armed: false;
-    property <length> first-click-x: 0px;
-    property <length> first-click-y: 0px;
-    in-out property <string> draft: "";
-
-    function begin-entry() {
-        root.draft = root.value;
-        root.edit-open = true;
-
-        root.focus-pending = true;
-    }
-    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.label; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; }
-    Text { x: 4px; width: parent.width - 18px; height: parent.height; text: root.value; color: Theme.text; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
-    Text { x: parent.width - 18px; width: 14px; height: parent.height; text: "▾"; color: Theme.text-muted; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
-    ta := TouchArea {
-        pointer-event(e) => {
-            if (root.hint != "") {
-                HoverTip.text = root.hint;
-                HoverTip.x = root.absolute-position.x + ta.mouse-x;
-                HoverTip.y = root.absolute-position.y + ta.mouse-y;
-                HoverTip.owner-x = root.absolute-position.x;
-                HoverTip.owner-y = root.absolute-position.y;
-            }
-            if (!root.edit-open && e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
-                if (root.click-armed
-                    && Math.abs(ta.mouse-x - root.first-click-x) < 12px
-                    && Math.abs(ta.mouse-y - root.first-click-y) < 12px) {
-                    root.click-armed = false;
-                    root.begin-entry();
-                } else {
-                    root.click-armed = true;
-                    root.first-click-x = ta.mouse-x;
-                    root.first-click-y = ta.mouse-y;
-                }
-            }
-        }
-        double-clicked => {
-            if (!root.edit-open) { root.begin-entry(); }
-        }
-        scroll-event(e) => {
-            if (!root.edit-open && e.delta-y != 0px) {
-                root.stepped(e.delta-y > 0px ? 1 : -1);
-                accept
-            } else {
-                reject
-            }
-        }
-        moved => {
-            if (root.hint != "") {
-                HoverTip.text = root.hint;
-                HoverTip.x = root.absolute-position.x + ta.mouse-x;
-                HoverTip.y = root.absolute-position.y + ta.mouse-y;
-                HoverTip.owner-x = root.absolute-position.x;
-                HoverTip.owner-y = root.absolute-position.y;
-            }
-        }
-        changed has-hover => {
-            if (ta.has-hover) {
-                HoverTip.text = root.hint;
-                HoverTip.x = root.absolute-position.x + ta.mouse-x;
-                HoverTip.y = root.absolute-position.y + ta.mouse-y;
-                HoverTip.owner-x = root.absolute-position.x;
-                HoverTip.owner-y = root.absolute-position.y;
-            } else if (HoverTip.owner-x == root.absolute-position.x && HoverTip.owner-y == root.absolute-position.y) {
-                HoverTip.text = "";
-            }
-        }
-    }
-    arrow-touch := TipTouch {
-        x: parent.width - 20px; y: 0px; width: 20px; height: parent.height;
-        hint: "Choose the clock rate";
-        clicked => { root.menu-requested(); }
-    }
-    editor := Rectangle {
-        visible: root.edit-open;
-        x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
-        border-radius: 3px; background: Theme.surface; border-width: 1px; border-color: Theme.c2;
-        entry := TextInput {
-            x: 6px; y: 0px; width: parent.width - 12px; height: parent.height;
-            text: root.draft;
-            color: Theme.text; font-size: 11px;
-            horizontal-alignment: right; vertical-alignment: center;
-            edited => { root.draft = self.text; }
-            accepted => { root.submitted(root.draft); root.edit-open = false; }
-            changed has-focus => {
-                if (!self.has-focus && root.edit-open) {
-                    root.submitted(root.draft);
-                    root.edit-open = false;
-                }
-            }
-            key-pressed(event) => {
-                if (event.text == Key.Escape) { root.edit-open = false; return accept; }
-                return reject;
-            }
-        }
-    }
-    Timer {
-        interval: 1ms;
-        running: root.focus-pending && root.edit-open;
-        triggered => {
-            root.focus-pending = false;
-            entry.focus();
-            // Typing should replace the old value, not insert somewhere inside it.
-            entry.select-all();
-        }
-    }
-    Timer {
-        interval: 500ms;
-        running: root.click-armed;
-        triggered => { root.click-armed = false; }
-    }
-}
 
 // One LFO in the 2x2 rack; its drag handle links the LFO to a numeric control.
 component LfoCell inherits Rectangle {
@@ -962,7 +837,7 @@ component ModeDropdown inherits Rectangle {
     }
 }
 
-// Compact dropdown list shared by Scale and Rate, overlaid so the editor keeps its full width.
+// Compact dropdown list shared by the Scale picker, overlaid so the editor keeps its full width.
 component DropdownList inherits Rectangle {
     in property <[string]> options;
     in property <int> current;
@@ -1034,6 +909,10 @@ export component AppWindow inherits Window {
     in property <float> steps: 16;
     in property <float> max-steps: 256;
     in property <bool> round-steps: true;
+    in property <int> voices: 1;
+    in property <float> voice-spread: 0.25;
+    in property <int> voice-mode: 0;
+    in property <int> voice-preview: 0;
     // Grid cells the generator will fill, mirroring `cell_count_for`: snap rounds, free length
     // takes the ceiling. Header and bounds read this so they cannot disagree with the matrix.
     property <int> cells: root.round-steps ? Math.round(root.steps) : Math.ceil(root.steps);
@@ -1107,7 +986,6 @@ export component AppWindow inherits Window {
     in property <float> markov-bias: 0;
     in property <float> symmetry: 4;
     in property <int> rate: 3;
-    in property <[string]> rate-names;
     in property <int> osc-wave: 0;
     in property <[string]> wave-names;
     // SVG thumbnails aligned with `wave-names`; generated by `view::wave_icon_paths()`.
@@ -1118,7 +996,6 @@ export component AppWindow inherits Window {
     in property <bool> scope-length: true;
     in property <bool> scope-hits: true;
     in property <bool> scope-tuning: true;
-    in property <bool> scope-clock: true;
     in property <bool> scope-phase: true;
     in property <bool> scope-acid: true;
     in property <bool> scope-feel: true;
@@ -1129,7 +1006,7 @@ export component AppWindow inherits Window {
     // DAW track hosting this instance; empty when the host does not report one.
     in property <string> track-name: "";
     // Any text field with keyboard focus. Rust reads this each frame (see `keys.rs`).
-    out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || edo-row.editing || midi-root-box.editing || cents-box.editing || bend-box.editing || hist-box.editing || rate-field.editing || OptEdit.index >= 0;
+    out property <bool> text-focused: midi-input.has-focus || max-steps-box.editing || tuning-root.editing || tuning-oct.editing || edo-row.editing || midi-root-box.editing || cents-box.editing || bend-box.editing || hist-box.editing || OptEdit.index >= 0;
     in-out property <string> export-status: "";
     // -1 forces the first update tick to push the real palette (project or global setting)
     // instead of leaving the Slint defaults visible.
@@ -1140,7 +1017,6 @@ export component AppWindow inherits Window {
     // Dropdown anchors; the fixed layout hangs both menus directly under their controls.
     in property <length> mode-menu-x: 384px;
     in property <length> mode-menu-y: 86px;
-    in-out property <bool> rate-menu-open: false;
     in property <length> rate-menu-x: 55px;
     in property <length> rate-menu-y: 386px;
     // Waveform picker popup: -1 closed, 0 oscillator, 1–4 LFO slots.
@@ -1195,6 +1071,7 @@ export component AppWindow inherits Window {
     in property <string> history-pattern-slides: "M0 0";
     in property <bool> history-overlay-on: true;
     in property <string> history-range: "";
+    in property <string> history-timing: "";
     // Editor-only view state: zoom > 1 magnifies; pan 0 = newest/top.
     in-out property <float> history-zoom-x: 1.0;
     in-out property <float> history-zoom-y: 1.0;
@@ -1220,8 +1097,9 @@ export component AppWindow inherits Window {
     in-out property <float> notes-cx: 0.0;
     in-out property <bool> edit-advanced: false;
     in-out property <int> gate-snap-index: 1;
-    // Steps in the visible history window, pushed from the host clock rate.
-    in property <float> steps-per-beat: 4.0;
+    // Grid spacing derived from the selected mode; no clock-rate or meter setting exists.
+    in property <float> steps-per-bar: 16.0;
+    in property <string> timing-summary: "4/4 · step 1/16";
     property <float> history-vb-w: 800.0 / Math.max(1.0, root.history-zoom-x);
     property <float> history-vb-h: 200.0 / Math.max(1.0, root.history-zoom-y);
     // Live clock follows the newest note. A stopped clock and edit mode allow inspection/pans.
@@ -1268,7 +1146,7 @@ export component AppWindow inherits Window {
     // Entering edit mode zooms in until one step is at least ~6.5 logical px wide, so dense
     // 1/32 and 1/64 lines are still reachable with the pointer.
     function ensure-edit-zoom() {
-        let visible-steps = Math.max(1.0, root.history-bars * 4.0 * Math.max(root.steps-per-beat, 0.25));
+        let visible-steps = Math.max(1.0, root.history-bars * Math.max(root.steps-per-bar, 1.0));
         let natural-step = 800.0 / visible-steps;
         let target = Math.max(1.0, Math.min(8.0, 6.5 / Math.max(natural-step, 0.0001)));
         if (target > root.history-zoom-x) {
@@ -1287,6 +1165,8 @@ export component AppWindow inherits Window {
     in property <string> mode-math: "";
     in property <string> edit-status: "";
     in-out property <int> edit-mode: 0;
+    /// Polymeter voice timing is exact; manual cell edits are disabled while it is active.
+    in property <bool> timing-locked: false;
     in property <[string]> preset-names;
     callback set-mode(int);
     callback apply-preset(int);
@@ -1298,9 +1178,6 @@ export component AppWindow inherits Window {
     callback redo-edit();
     // One wheel notch over the current-mode header: -1 previous, +1 next.
     callback step-mode(int);
-    callback step-rate(int);
-    callback set-rate(int);
-    callback rate-submitted(string);
     callback set-osc-wave(int);
     callback set-markov-bias(float);
     callback set-lfo-enabled(int, bool);
@@ -1564,21 +1441,12 @@ export component AppWindow inherits Window {
             Text { visible: root.track-name != ""; text: "· \{root.track-name}"; color: Theme.text-muted; font-size: 10px; vertical-alignment: center; overflow: elide; }
             // Hover descriptions live in the bottom status strip, clear of the pointer.
             Rectangle { horizontal-stretch: 1; }
-            Text { text: "CLOCK RATE"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; }
-            rate-field := RateField {
-                width: 70px; height: 25px;
-                label: "";
-                hint: "Click to type a rate, scroll to step, arrow for the list";
-                value: root.rate < root.rate-names.length ? root.rate-names[root.rate] : "";
-                stepped(d) => { root.step-rate(d); }
-                submitted(s) => { root.rate-submitted(s); }
-                menu-requested => { root.rate-menu-open = true; root.mode-menu-open = false; root.tuning-open = false; root.settings-open = false; }
-            }
             Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.free-run ? Theme.c1.with-alpha(0.22) : Theme.control; Text { text: "free-run"; color: Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } free-touch := TipTouch { hint: "Run the internal clock while the host transport is stopped"; clicked => { root.toggle-free-run(); } } }
             Text { text: root.free-run ? "FREE-RUN CLOCK: ON" : "SYNC: HOST TRANSPORT"; color: root.free-run ? Theme.c1 : Theme.text-muted; font-size: 9px; vertical-alignment: center; }
+            Text { text: root.timing-summary; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide; }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: generate-touch.has-hover ? Theme.hi : Theme.control; Text { text: root.generate-on ? "RE-GENERATE ↻" : "GENERATE ↻"; color: generate-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } generate-touch := TipTouch { hint: "Create a new deterministic variation of the current line"; clicked => { root.generate-pressed(); } } }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: randomize-touch.has-hover ? Theme.c3 : Theme.control; Text { text: "RANDOMIZE ⚄"; color: randomize-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } randomize-touch := TipTouch { hint: "Randomize the parameter groups enabled in RANDOMIZE SCOPE"; clicked => { root.randomize-pressed(); } } }
-            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TipTouch { hint: "Open settings: theme, presets, limits, export and credits"; clicked => { root.tuning-open = false; root.rate-menu-open = false; root.settings-open = !root.settings-open; if (root.settings-open) { root.matrix-open = false; } } } }
+            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TipTouch { hint: "Open settings: theme, presets, limits, export and credits"; clicked => { root.tuning-open = false; root.settings-open = !root.settings-open; if (root.settings-open) { root.matrix-open = false; } } } }
         }
         HorizontalLayout {
             // 300px fits the description and live math line without squeezing the sliders.
@@ -1598,7 +1466,7 @@ export component AppWindow inherits Window {
                     }
                     mode-menu-touch := TipTouch {
                         hint: "Open the grouped generator list; scroll the header to step modes";
-                        clicked => { root.tuning-open = false; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = !root.mode-menu-open; }
+                        clicked => { root.tuning-open = false; root.settings-open = false; root.mode-menu-open = !root.mode-menu-open; }
                         // Hovering the mode header and scrolling steps the list; the open list scrolls.
                         scroll-event(e) => {
                             if (e.delta-y != 0px) {
@@ -1680,7 +1548,7 @@ export component AppWindow inherits Window {
                     height: 28px; spacing: 5px;
                     tuning-root := NumBox { horizontal-stretch: 1; height: 28px; label: "ROOT"; hint: "Root pitch class, 0 = C"; value: root.root-pc; minimum: 0; maximum: 11; step: 1; mod-target: 17; changed(v) => { root.set-opt(18, v); } }
                     // The chip shows the current scale and opens a dropdown under itself.
-                    scale-chip := TuningChip { horizontal-stretch: 1; label: "SCALE"; hint: "Choose a scale or tuning table"; value: root.tuning-name + "  ▾"; centered: true; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.rate-menu-open = false; root.settings-open = false; root.mode-menu-open = false; } }
+                    scale-chip := TuningChip { horizontal-stretch: 1; label: "SCALE"; hint: "Choose a scale or tuning table"; value: root.tuning-name + "  ▾"; centered: true; active: root.tuning-open; wheel-cycles: false; cycled => { root.tuning-open = !root.tuning-open; root.settings-open = false; root.mode-menu-open = false; } }
                     // EDO applies to Equal (EDO) only. It sits beside the scale chip and collapses
                     // to zero width when inactive, so `text-focused` can still see its editor.
                     edo-row := NumBox {
@@ -1821,7 +1689,7 @@ export component AppWindow inherits Window {
                 }
             }
             // Edit toolbar sits above the roll, so it never consumes layout height.
-            if root.edit-mode == 0: Rectangle {
+            if !root.timing-locked && root.edit-mode == 0: Rectangle {
                 x: 8px; y: 8px; width: 46px; height: 20px; border-radius: 3px;
                 background: edit-open-touch.has-hover ? Theme.c2.with-alpha(0.7) : Theme.control.with-alpha(0.92);
                 border-width: 1px; border-color: Theme.border;
@@ -1846,7 +1714,7 @@ export component AppWindow inherits Window {
                 Text { width: parent.width; height: parent.height; text: "INVERT"; color: root.invert-on ? Theme.on-accent : Theme.text; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
                 invert-touch := TipTouch { hint: "Invert every hit and rest in the finished line"; clicked => { root.toggle-invert(); } }
             }
-            if root.edit-mode > 0: HorizontalLayout {
+            if !root.timing-locked && root.edit-mode > 0: HorizontalLayout {
                 x: 8px; y: 6px; height: 22px; spacing: 3px;
                 Rectangle {
                     width: 44px; height: 20px; border-radius: 3px;
@@ -1920,7 +1788,7 @@ export component AppWindow inherits Window {
                 x: 60px; y: 8px; width: parent.width - 190px; height: 22px;
                 border-radius: 3px; background: Theme.surface.with-alpha(0.88);
                 border-width: 1px; border-color: Theme.border;
-                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MIDI HISTORY  ·  right → left  ·  \{root.history-range}  ·  width = gate · bright = velocity/accent · outline = slide"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide; }
+                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: "MIDI HISTORY  ·  right → left  ·  \{root.history-range}  ·  \{root.history-timing}  ·  width = gate · bright = velocity/accent · outline = slide"; color: Theme.text-muted; font-size: 9px; vertical-alignment: center; overflow: elide; }
             }
             // Zoom / fit controls sit in the left gutter, below NOTE/MIRROR/INVERT.
             HorizontalLayout {
@@ -2062,7 +1930,6 @@ export component AppWindow inherits Window {
                                 root.matrix-open = !root.matrix-open;
                                 root.mode-menu-open = false;
                                 root.tuning-open = false;
-                                root.rate-menu-open = false;
                                 root.scope-menu-open = false;
                                 root.wave-menu-target = -1;
                                 root.settings-open = false;
@@ -2203,10 +2070,10 @@ export component AppWindow inherits Window {
     }
 
     // Mode and Scale dropdowns; a transparent catcher closes the open list on the next click.
-    if root.mode-menu-open || root.tuning-open || root.rate-menu-open || root.wave-menu-target >= 0 || root.scope-menu-open: Rectangle {
+    if root.mode-menu-open || root.tuning-open || root.wave-menu-target >= 0 || root.scope-menu-open: Rectangle {
         x: 0px; y: 0px; width: root.base-width; height: root.base-height;
         background: #00000010;
-        TouchArea { clicked => { root.mode-menu-open = false; root.tuning-open = false; root.rate-menu-open = false; root.wave-menu-target = -1; root.scope-menu-open = false; } }
+        TouchArea { clicked => { root.mode-menu-open = false; root.tuning-open = false; root.wave-menu-target = -1; root.scope-menu-open = false; } }
     }
     if root.mode-menu-open: ModeDropdown {
         x: root.mode-menu-x; y: root.mode-menu-y;
@@ -2220,12 +2087,6 @@ export component AppWindow inherits Window {
         width: scale-chip.width; height: 300px;
         options: root.scale-names; current: root.scale-index;
         selected(i) => { root.set-scale(i); root.tuning-open = false; }
-    }
-    if root.rate-menu-open: DropdownList {
-        x: rate-field.absolute-position.x; y: rate-field.absolute-position.y + rate-field.height + 2px;
-        width: 70px; height: 260px;
-        options: root.rate-names; current: root.rate; centered: true;
-        selected(i) => { root.set-rate(i); root.rate-menu-open = false; }
     }
     // Collapsed waveform picker popup, shared by the oscillator and all four LFO slots.
     if root.wave-menu-target >= 0: Rectangle {
@@ -2282,7 +2143,6 @@ export component AppWindow inherits Window {
             }
             HorizontalLayout {
                 spacing: 3px;
-                ScopeChip { width: 72px; label: "CLOCK"; active: root.scope-clock; toggled => { root.toggle-scope(4); } }
                 ScopeChip { width: 72px; label: "PHASE"; active: root.scope-phase; toggled => { root.toggle-scope(5); } }
             }
             HorizontalLayout {
@@ -2400,26 +2260,18 @@ export component AppWindow inherits Window {
             Text { text: "Presets write ordinary host parameters, so the result stays automatable."; color: Theme.text-muted; font-size: 8px; wrap: word-wrap; }
             Text { text: "CONFIG FILE"; color: Theme.text-muted; font-size: 9px; }
             Text { text: root.settings-path; color: Theme.text-muted; font-size: 8px; wrap: word-wrap; }
-            Text { text: "STEP SPACING"; color: Theme.text-muted; font-size: 9px; }
-            // Turning rounding off lets the loop wrap between grid cells and drift against the grid.
-            Rectangle {
-                height: 26px; border-radius: 4px;
-                background: root.round-steps ? Theme.c1.with-alpha(0.8) : (round-touch.has-hover ? Theme.control-hover : Theme.control);
-                Text {
-                    x: 8px; width: parent.width - 16px;
-                    text: root.round-steps ? "WHOLE STEPS" : "FRACTIONAL STEPS";
-                    color: root.round-steps ? Theme.on-accent : Theme.text;
-                    font-size: 9px; vertical-alignment: center;
-                }
-                round-touch := TipTouch { hint: "Snap the loop length to whole grid cells or let it drift"; clicked => { root.toggle-round-steps(); } }
-            }
+            Text { text: "VOICES"; color: Theme.text-muted; font-size: 9px; }
+            NumBox { label: "Voices"; value: root.voices; minimum: 1; maximum: 6; step: 1; changed(v) => { root.set-opt(26, v); } }
+            NumBox { label: "Voice spread"; value: root.voice-spread; minimum: 0; maximum: 1; step: 0.01; changed(v) => { root.set-opt(27, v); } }
+            Selector { options: ["Shared Loop", "Polymeter"]; current: root.voice-mode; selected(i) => { root.set-opt(28, i); } }
+            Selector { options: ["Voice 1", "Voice 2", "Voice 3", "Voice 4", "Voice 5", "Voice 6"]; current: root.voice-preview; selected(i) => { root.set-opt(29, i); } }
             Text {
-                text: "Whole steps snap the loop to the step grid; fractional steps let it drift.";
+                text: "Six voices share the loop. Voice 0 is the historic single line; spread separates seed and phase. With NTS on, each voice uses its own MIDI channel for independent pitch bend.";
                 color: Theme.text-muted; font-size: 9px; wrap: word-wrap;
             }
             Text { text: "PATTERN LIMIT"; color: Theme.text-muted; font-size: 9px; }
-            max-steps-box := NumBox { label: "Max steps"; value: root.max-steps; minimum: 64; maximum: 1024; step: 1; mod-target: 22; changed(v) => { root.set-opt(14, v); } }
-            // Pattern arrays are allocated for 1024 steps up front, so ceiling changes need no restart.
+            max-steps-box := NumBox { label: "Max steps"; value: root.max-steps; minimum: 64; maximum: 512; step: 1; mod-target: 22; changed(v) => { root.set-opt(14, v); } }
+            // Pattern arrays are allocated for 512 steps up front, so ceiling changes need no restart.
             Text { text: "Max steps applies immediately; no restart is needed."; color: Theme.text-muted; font-size: 9px; }
             Text { text: "TUNING"; color: Theme.text-muted; font-size: 9px; }
             midi-root-box := NumBox { label: "Root MIDI note"; value: root.midi-root; minimum: 0; maximum: 120; step: 1; mod-target: 19; changed(v) => { root.set-opt(20, v); } }

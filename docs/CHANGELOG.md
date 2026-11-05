@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Mode-derived timing
+
+- Timing is derived from the selected mode and its generated loop; the clock-rate setting was
+  removed.
+- `Mode::step_unit()` gives every mode its own subdivision; the host supplies tempo only.
+- The history window is measured in generated pattern loops, and its grid bars use the loop
+  instead of a hardcoded 4/4 assumption.
+- MIDI export writes the implied time signature when the loop has an exact one.
+
 ## 1.0.1 — Documentation release
 
 Documentation and packaging only; plug-in behaviour is unchanged from 1.0.0.

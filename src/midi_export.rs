@@ -3,19 +3,21 @@
 //! Editor thread only; `process()` never builds or writes a file. One format-0 track with note
 //! events and a tempo meta event is small enough to encode directly, so no MIDI crate is needed.
 
+use crate::clock::Meter;
 use crate::sequence::{Pattern, MAX_STEPS};
 use crate::MelodyParams;
 
 const PPQ: u16 = 480;
-const CHANNEL: u8 = 0;
 
 pub(crate) struct ExportSettings {
     /// Host tempo. Invalid or missing values fall back to 120 BPM.
     pub bpm: f64,
     /// Clock rate in steps per beat (4 = 1/16).
     pub steps_per_beat: f64,
-    /// Exact loop length in steps. Fractional lengths wrap mid-cell.
-    pub loop_steps: f64,
+    /// Loop length in whole steps.
+    pub loop_steps: u32,
+    /// Meter implied by the mode and pattern; `None` when it has no exact signature.
+    pub meter: Option<Meter>,
     pub gate: f64,
     pub swing: f64,
     /// Step-wide microtiming in fractions of one step (0..0.9), from the edit overlay.
@@ -47,18 +49,20 @@ const RPN_ZERO: [(u8, u8); 6] = [
 
 /// Encode one generated loop as a format-0 Standard MIDI File.
 pub(crate) fn smf(pattern: &Pattern, p: &MelodyParams, settings: &ExportSettings) -> Vec<u8> {
-    let steps = pattern.steps.clamp(1, MAX_STEPS);
+    smf_voices(std::slice::from_ref(pattern), p, settings)
+}
+
+/// Encode a multi-voice loop. With NTS off every voice shares channel 0; with NTS on each voice
+/// uses its own channel so pitch bends stay independent, matching the scheduler.
+pub(crate) fn smf_voices(patterns: &[Pattern], p: &MelodyParams, settings: &ExportSettings) -> Vec<u8> {
+    let first_steps = patterns.first().map(|p| p.steps).unwrap_or(1).clamp(1, MAX_STEPS);
     let spb = if settings.steps_per_beat.is_finite() && settings.steps_per_beat > 0.0 {
         settings.steps_per_beat
     } else {
         4.0
     };
     let step_len = 1.0 / spb;
-    let loop_steps = if settings.loop_steps.is_finite() && settings.loop_steps > 0.0 {
-        settings.loop_steps
-    } else {
-        steps as f64
-    };
+    let loop_steps = if settings.loop_steps > 0 { settings.loop_steps } else { first_steps as u32 };
     let gate = settings.gate.clamp(0.02, 1.0);
     let swing = settings.swing.clamp(0.0, 0.5) * step_len;
     let to_tick = |beat: f64| (beat * PPQ as f64).round().clamp(0.0, u32::MAX as f64) as u32;
@@ -70,57 +74,75 @@ pub(crate) fn smf(pattern: &Pattern, p: &MelodyParams, settings: &ExportSettings
         // The file carries the same sensitivity the plugin announces over MIDI, so the notes do
         // not play back at a different microtonal offset than they sounded. The RPN needs its
         // four messages in order, so each one gets its own sort key.
-        for (k, (cc, raw)) in RPN_ZERO.iter().copied().enumerate() {
-            let raw = if cc == 6 { p.bend_range.value().clamp(1, 24) as u8 } else { raw };
-            events.push(Event { tick: 0, order: 1 + k as u8, data: [0xB0 | CHANNEL, cc, raw] });
-        }
-    }
-    for i in 0..steps {
-        if !pattern.hit[i] { continue; }
-        let offset = settings.offsets[i].clamp(0.0, 0.9) as f64 * step_len;
-        let onset = i as f64 * step_len
-            + if i % 2 == 1 { swing } else { 0.0 }
-            + offset;
-        // A per-step length replaces the global gate.
-        let step_gate = if settings.lengths[i] > 0.0 {
-            settings.lengths[i].clamp(0.02, 1.0) as f64
-        } else {
-            gate
-        };
-        // A slide is held until the next onset on the last ratchet substep; intermediate
-        // substeps are gated to their own spacing so the mono voice never overlaps itself.
-        let slide_steps = if pattern.slide[i] {
-            crate::next_hit_after(&pattern.hit, i, steps)
-                .map(|j| ((j + steps - i) % steps) as f64 + 0.5)
-                .unwrap_or(step_gate)
-        } else {
-            step_gate
-        };
-        let ratchet = settings.ratchets[i].clamp(1, 4) as usize;
-        let substep = step_len / ratchet as f64;
-        let sub_gate = if ratchet > 1 { step_gate.min(0.9 / ratchet as f64) } else { step_gate };
-        let velocity = (p.velocity.value() * pattern.acc[i]).clamp(0.0, 1.0);
-        let velocity = (velocity * 127.0).round().clamp(1.0, 127.0) as u8;
-        let (note, cents) = p.pitch_for(pattern, i);
-        for r in 0..ratchet {
-            let at = onset + r as f64 * substep;
-            let hold = if r + 1 == ratchet { slide_steps } else { sub_gate };
-            if nts {
-                let bend = (crate::bend_value(cents, bend_range) * 16_383.0).round() as u16;
+        for voice in 0..patterns.len() {
+            let channel = voice as u8;
+            for (k, (cc, raw)) in RPN_ZERO.iter().copied().enumerate() {
+                let raw = if cc == 6 { p.bend_range.value().clamp(1, 24) as u8 } else { raw };
                 events.push(Event {
-                    tick: to_tick(at),
-                    order: 7,
-                    data: [0xE0 | CHANNEL, (bend & 0x7F) as u8, (bend >> 7) as u8],
+                    tick: 0,
+                    order: 1 + k as u8,
+                    data: [0xB0 | channel, cc, raw],
                 });
             }
-            events.push(Event { tick: to_tick(at), order: 8, data: [0x90 | CHANNEL, note, velocity] });
-            events.push(Event { tick: to_tick(at + hold * step_len), order: 0, data: [0x80 | CHANNEL, note, 0] });
         }
     }
-    let loop_end = to_tick(loop_steps * step_len);
+    for (voice, pattern) in patterns.iter().enumerate() {
+        let steps = pattern.steps.clamp(1, MAX_STEPS);
+        let channel = if nts { voice as u8 } else { 0 };
+        for i in 0..loop_steps as usize {
+            let idx = i % steps;
+            if !pattern.hit[idx] { continue; }
+            let offset = settings.offsets[idx].clamp(0.0, 0.9) as f64 * step_len;
+            let onset = i as f64 * step_len
+                + if i % 2 == 1 { swing } else { 0.0 }
+                + offset;
+            // A per-step length replaces the global gate.
+            let step_gate = if settings.lengths[idx] > 0.0 {
+                settings.lengths[idx].clamp(0.02, 1.0) as f64
+            } else {
+                gate
+            };
+            // A slide is held until the next onset on the last ratchet substep; intermediate
+            // substeps are gated to their own spacing so the mono voice never overlaps itself.
+            let slide_steps = if pattern.slide[idx] {
+                crate::next_hit_after(&pattern.hit, idx, steps)
+                    .map(|j| ((j + steps - idx) % steps) as f64 + 0.5)
+                    .unwrap_or(step_gate)
+            } else {
+                step_gate
+            };
+            let ratchet = settings.ratchets[idx].clamp(1, 4) as usize;
+            let substep = step_len / ratchet as f64;
+            let sub_gate = if ratchet > 1 { step_gate.min(0.9 / ratchet as f64) } else { step_gate };
+            let velocity = (p.velocity.value() * pattern.acc[idx]).clamp(0.0, 1.0);
+            let velocity = (velocity * 127.0).round().clamp(1.0, 127.0) as u8;
+            let (note, cents) = p.pitch_for(pattern, idx);
+            for r in 0..ratchet {
+                let at = onset + r as f64 * substep;
+                let hold = if r + 1 == ratchet { slide_steps } else { sub_gate };
+                if nts {
+                    let bend = (crate::bend_value(cents, bend_range) * 16_383.0).round() as u16;
+                    events.push(Event {
+                        tick: to_tick(at),
+                        order: 7,
+                        data: [0xE0 | channel, (bend & 0x7F) as u8, (bend >> 7) as u8],
+                    });
+                }
+                events.push(Event { tick: to_tick(at), order: 8, data: [0x90 | channel, note, velocity] });
+                events.push(Event { tick: to_tick(at + hold * step_len), order: 0, data: [0x80 | channel, note, 0] });
+            }
+        }
+    }
+    let loop_end = to_tick(loop_steps as f64 * step_len);
     if nts {
         // The loop must not end carrying the last note's bend into the next iteration.
-        events.push(Event { tick: loop_end, order: 7, data: [0xE0 | CHANNEL, 0x00, 0x40] });
+        for voice in 0..patterns.len() {
+            events.push(Event {
+                tick: loop_end,
+                order: 7,
+                data: [0xE0 | voice as u8, 0x00, 0x40],
+            });
+        }
     }
     events.sort_unstable_by(|a, b| {
         a.tick.cmp(&b.tick).then(a.order.cmp(&b.order)).then(a.data.cmp(&b.data))
@@ -131,7 +153,16 @@ pub(crate) fn smf(pattern: &Pattern, p: &MelodyParams, settings: &ExportSettings
     let us_per_beat = (60_000_000.0 / bpm).round().clamp(1.0, 16_777_215.0) as u32;
     track.extend_from_slice(&[0, 0xFF, 0x51, 0x03]);
     track.extend_from_slice(&us_per_beat.to_be_bytes()[1..]);
-    track.extend_from_slice(&[0, 0xFF, 0x58, 0x04, 4, 2, 24, 8]);
+    // Implied meter, written only when the derived pattern has one. Triplet grids and
+    // multi-bar loops leave the host signature alone instead of claiming 4/4.
+    if let Some(meter) = settings.meter {
+        let den = meter.den.max(1);
+        if den.is_power_of_two() {
+            let exp = den.trailing_zeros() as u8;
+            let num = meter.num.clamp(1, 255) as u8;
+            track.extend_from_slice(&[0, 0xFF, 0x58, 0x04, num, exp, 24, 8]);
+        }
+    }
 
     let mut last_tick = 0;
     for event in &events {
@@ -185,7 +216,9 @@ mod tests {
             ..MelodyParams::default()
         };
         let settings = ExportSettings {
-            bpm: 120.0, steps_per_beat: 4.0, loop_steps: 4.0, gate: 0.5, swing: 0.0,
+            bpm: 120.0, steps_per_beat: 4.0, loop_steps: 4,
+            meter: crate::clock::meter_from_steps(4, crate::clock::StepUnit::Sixteenth),
+            gate: 0.5, swing: 0.0,
             offsets: [0.0; MAX_STEPS], ratchets: [1; MAX_STEPS], lengths: [0.0; MAX_STEPS],
         };
         (pattern, p, settings)
@@ -251,11 +284,31 @@ mod tests {
     }
 
     #[test]
-    fn fractional_loop_uses_the_exact_loop_length() {
+    fn loop_length_is_always_whole_steps() {
         let (pattern, p, mut settings) = setup(&[]);
-        settings.loop_steps = 4.5;
+        settings.loop_steps = 4;
         let bytes = smf(&pattern, &p, &settings);
-        assert!(bytes[22..].ends_with(&[0x84, 0x1C, 0xFF, 0x2F, 0x00]));
+        assert!(bytes[22..].ends_with(&[0x83, 0x60, 0xFF, 0x2F, 0x00]));
+    }
+
+    #[test]
+    fn multi_voice_export_uses_one_channel_per_voice() {
+        let (pattern, p, settings) = setup(&[0, 1]);
+        let p = MelodyParams {
+            nts: nice_plug::prelude::BoolParam::new("Microtonal Pitch Bend (NTS)", true),
+            ..p
+        };
+        let mut second = pattern;
+        second.hit = [false; MAX_STEPS];
+        second.hit[0] = true;
+        let bytes = smf_voices(&[pattern, second], &p, &settings);
+        let events = channel_events(&bytes[22..]);
+        let channels: std::collections::BTreeSet<u8> = events
+            .iter()
+            .filter(|(_, st, _)| st & 0xF0 == 0x90)
+            .map(|(_, st, _)| st & 0x0F)
+            .collect();
+        assert_eq!(channels, [0, 1].into_iter().collect());
     }
 
     fn channel_events(track: &[u8]) -> Vec<(u32, u8, u8)> {
@@ -272,7 +325,7 @@ mod tests {
                     let (len, used) = read_vlq(&track[at..]);
                     at += used + len as usize;
                 }
-                0x80..=0x9F => {
+                0x80..=0x9F | 0xB0..=0xBF | 0xE0..=0xEF => {
                     out.push((tick, track[at], track[at + 1]));
                     at += 3;
                 }
@@ -365,6 +418,28 @@ mod tests {
         let bytes = smf(&pattern, &p, &settings);
         let events = all_events(&bytes[22..]);
         assert!(events.iter().all(|(_, e)| e[0] != 0xE0 && e[0] != 0xB0), "unexpected bend/CC");
+    }
+
+    fn time_signature(bytes: &[u8]) -> Option<(u8, u8)> {
+        bytes.windows(6).find_map(|w| {
+            (w[0] == 0xFF && w[1] == 0x58 && w[2] == 0x04).then_some((w[3], w[4]))
+        })
+    }
+
+    #[test]
+    fn export_writes_the_derived_time_signature() {
+        let (pattern, p, mut settings) = setup(&[0, 2]);
+        settings.meter = crate::clock::meter_from_steps(16, crate::clock::StepUnit::Sixteenth);
+        let bytes = smf(&pattern, &p, &settings);
+        assert_eq!(time_signature(&bytes), Some((4, 2)), "16 steps at 1/16 is 4/4");
+
+        settings.meter = crate::clock::meter_from_steps(13, crate::clock::StepUnit::Sixteenth);
+        let bytes = smf(&pattern, &p, &settings);
+        assert_eq!(time_signature(&bytes), Some((13, 4)), "13 steps at 1/16 is 13/16");
+
+        settings.meter = None;
+        let bytes = smf(&pattern, &p, &settings);
+        assert_eq!(time_signature(&bytes), None, "no exact signature must not claim 4/4");
     }
 
     fn read_vlq(data: &[u8]) -> (u32, usize) {

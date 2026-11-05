@@ -7,12 +7,12 @@ use crate::globals;
 use crate::history;
 use crate::keys;
 use crate::midi_export;
-use crate::sequence::{generate_with, GenParams, Pattern, Rng, MAX_STEPS, MIN_MAX_STEPS};
+use crate::sequence::{generate_with, GenParams, Pattern, Rng, MAX_STEPS, MAX_VOICES, MIN_MAX_STEPS};
 use crate::view::{self, View};
 use crate::modulation::{format_target_value, target_in_mask, LFO_COUNT, LFO_MAX_HZ};
 use crate::{
     cell_count_for, scope, LfoPolarity, LfoRateMode, LfoTarget, MelodyParams, Mode, ModTarget,
-    OscWave, Rate, Shared, Theme as PluginTheme, Tuning,
+    OscWave, Shared, Theme as PluginTheme, Tuning, VoiceMode,
 };
 use nice_plug::prelude::*;
 use slint::platform::WindowEvent;
@@ -30,8 +30,6 @@ const HEIGHT: u32 = 697;
 const HISTORY_W: f32 = 800.0;
 const HISTORY_H: f32 = 200.0;
 const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-/// History length is expressed in 4/4 bars; the host tempo supplies the beat duration.
-const BEATS_PER_BAR: f32 = 4.0;
 
 /// Built-in starting points. These are editor conveniences, not host parameters: applying one
 /// writes ordinary host parameters so the result remains automatable and saveable.
@@ -297,14 +295,14 @@ fn overlay_position(
     x01: f32,
 ) -> Option<(usize, f32)> {
     let bpm = if bpm.is_finite() && bpm > 0.0 { bpm } else { 120.0 };
-    let spb = p.rate.value().steps_per_beat();
+    let spb = p.steps_per_beat();
     let step_ms = 60_000.0 / (bpm as f64 * spb);
     let phase_steps = roll_phase_steps(shared, bpm, now_ms, spb);
-    let window_ms = history_window_ms(p.history_bars.value(), bpm);
+    let window_ms = history_window_ms(p.history_bars.value(), bpm, p.steps_per_beat(), p.loop_steps());
     let age_steps = (1.0f64 - f64::from(x01.clamp(0.0, 1.0))) * window_ms as f64 / step_ms;
     let k = phase_steps - age_steps;
     let gen = p.gen_params();
-    let loop_len = gen.length.max(1.0 / 1024.0) as f64;
+    let loop_len = gen.steps.max(1) as f64;
     let wrapped = k.rem_euclid(loop_len);
     let step = (wrapped.floor() as usize).min(gen.steps.saturating_sub(1));
     Some((step, (wrapped - wrapped.floor()) as f32))
@@ -359,7 +357,7 @@ fn apply_mode_shape(c: &Arc<dyn GuiContext>, p: &MelodyParams, mode: Mode, steps
     let limit = pulse_limit(mode, cells);
     if p.pulses.value() > limit { set(c, &p.pulses, limit); }
     if p.rotate.value() >= cells { set(c, &p.rotate, cells - 1); }
-    let history_max = crate::history_bars_ceiling(ceiling, p.rate.value());
+    let history_max = crate::history_bars_ceiling(ceiling, cells as u32);
     if p.history_bars.value() > history_max { set(c, &p.history_bars, history_max); }
 }
 
@@ -383,13 +381,6 @@ fn apply_mode(c: &Arc<dyn GuiContext>, p: &MelodyParams, index: i32) {
     let mode = Mode::from_index(index.clamp(0, last) as usize);
     set(c, &p.mode, mode);
     apply_mode_shape(c, p, mode, p.steps.value());
-}
-
-/// Change clock rate and keep the history window inside the new pattern-length ceiling.
-fn apply_rate(c: &Arc<dyn GuiContext>, p: &MelodyParams, rate: Rate) {
-    set(c, &p.rate, rate);
-    let max = crate::history_bars_ceiling(p.step_ceiling(), rate);
-    if p.history_bars.value() > max { set(c, &p.history_bars, max); }
 }
 
 fn lfo_enabled_param(p: &MelodyParams, slot: i32) -> &BoolParam {
@@ -476,7 +467,7 @@ fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
         let limit = pulse_limit(p.mode.value(), cells);
         if p.pulses.value() > limit { set(c, &p.pulses, limit); }
         if p.rotate.value() >= cells { set(c, &p.rotate, cells - 1); }
-        let history_max = crate::history_bars_ceiling(cap as usize, p.rate.value());
+        let history_max = crate::history_bars_ceiling(cap as usize, cells as u32);
         if p.history_bars.value() > history_max { set(c, &p.history_bars, history_max); }
         return;
     }
@@ -514,6 +505,10 @@ fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
         23 => set(c, &p.history_bars, value.clamp(1.0, p.history_bars_ceiling())),
         24 => set(c, &p.gate, value.clamp(0.02, 1.0)),
         25 => set(c, &p.bend_range, (value.round() as i32).clamp(1, 24)),
+        26 => set(c, &p.voices, (value.round() as i32).clamp(1, MAX_VOICES as i32)),
+        27 => set(c, &p.voice_spread, value.clamp(0.0, 1.0)),
+        28 => set(c, &p.voice_mode, VoiceMode::from_index(value.max(0.0) as usize)),
+        29 => set(c, &p.voice_preview, (value.round() as i32).clamp(0, MAX_VOICES as i32 - 1)),
         _ => {},
     }
 }
@@ -521,8 +516,9 @@ fn set_opt(c: &Arc<dyn GuiContext>, p: &MelodyParams, key: i32, value: f32) {
 struct Cache {
     gen_key: Option<GenParams>,
     pattern: Pattern,
+    voice_preview: usize,
     /// Everything `view::build` reads besides the cached pattern.
-    view_key: Option<(GenParams, i32, i32, usize)>,
+    view_key: Option<(GenParams, i32, i32, usize, usize)>,
 }
 
 fn rgb(c: [u8; 3]) -> slint::Color { slint::Color::from_rgb_u8(c[0], c[1], c[2]) }
@@ -573,7 +569,6 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
     let symmetry = 1 + rng.below(8) as i32;
     let probability = crate::randomize::pick(crate::randomize::PROBABILITIES, &mut rng);
     let velocity = crate::randomize::pick(crate::randomize::VELOCITIES, &mut rng);
-    let rate = Rate::from_index(rng.below(<Rate as Enum>::variants().len()));
     let root = crate::randomize::pick(crate::randomize::ROOTS, &mut rng);
     let octaves = crate::randomize::pick(crate::randomize::OCTAVES, &mut rng);
     let edo = crate::randomize::pick(crate::randomize::EDOS, &mut rng);
@@ -599,11 +594,6 @@ fn randomize_parameters(p: &MelodyParams, ctx: &Arc<dyn GuiContext>) {
         set(ctx, &p.root_cents, root_cents);
         // NTS gates every microtonal bend, so it belongs with tuning, not the feel group.
         set(ctx, &p.nts, nts);
-    }
-    if scope_enabled(p, scope::CLOCK) {
-        set(ctx, &p.rate, rate);
-        let history_max = crate::history_bars_ceiling(p.step_ceiling(), rate);
-        if p.history_bars.value() > history_max { set(ctx, &p.history_bars, history_max); }
     }
     if scope_enabled(p, scope::PHASE) {
         set(ctx, &p.seed, seed);
@@ -648,11 +638,19 @@ fn write_midi_file(p: &MelodyParams, bpm: f64, folder: &str) -> Result<PathBuf, 
     let gen = p.gen_params();
     let mut edit_view = crate::edits::EditView::default();
     p.edit_overlay.fill(&mut edit_view);
-    let pattern = generate_with(&gen, &edit_view);
+    let voices: Vec<Pattern> = (0..p.voice_count())
+        .map(|voice| generate_with(&p.voice_params(gen, voice), &edit_view))
+        .collect();
+    let same_loop = voices.windows(2).all(|w| w[0].steps == w[1].steps);
     let settings = midi_export::ExportSettings {
         bpm,
-        steps_per_beat: p.rate.value().steps_per_beat(),
-        loop_steps: gen.length as f64,
+        steps_per_beat: p.steps_per_beat(),
+        loop_steps: p.loop_steps(),
+        meter: if same_loop {
+            crate::clock::meter_from_steps(voices[0].steps.max(1) as u32, p.step_unit())
+        } else {
+            None
+        },
         gate: p.gate.value() as f64,
         swing: p.swing.value() as f64,
         offsets: std::array::from_fn(|step| edit_view.offset_at(step).max(0.0)),
@@ -664,7 +662,7 @@ fn write_midi_file(p: &MelodyParams, bpm: f64, folder: &str) -> Result<PathBuf, 
         .map(|d| d.as_millis())
         .unwrap_or(0);
     let path = folder.join(format!("nelody-seq-{stamp}.mid"));
-    std::fs::write(&path, midi_export::smf(&pattern, p, &settings))
+    std::fs::write(&path, midi_export::smf_voices(&voices, p, &settings))
         .map_err(|e| format!("write {}: {e}", path.display()))?;
     Ok(path)
 }
@@ -704,10 +702,13 @@ fn push_view(ui: &AppWindow, v: &View) {
     ui.set_view_hand(SharedString::from(v.hand.as_str()));
 }
 
-/// Convert a history length in 4/4 bars to the editor-side millisecond window.
-fn history_window_ms(bars: f32, bpm: f32) -> u64 {
+/// Convert a history length in derived pattern loops to the editor-side millisecond window.
+fn history_window_ms(bars: f32, bpm: f32, steps_per_beat: f64, loop_steps: u32) -> u64 {
     let bpm = if bpm.is_finite() && bpm > 0.0 { bpm } else { 120.0 };
-    ((bars.clamp(1.0, MAX_STEPS as f32) * BEATS_PER_BAR * 60_000.0 / bpm).round() as u64).max(250)
+    let spb = if steps_per_beat.is_finite() && steps_per_beat > 0.0 { steps_per_beat } else { 4.0 };
+    let loop_len = loop_steps.max(1) as f64;
+    let step_ms = 60_000.0 / (bpm as f64 * spb);
+    ((bars.clamp(1.0, MAX_STEPS as f32) as f64 * loop_len * step_ms).round() as u64).max(250)
 }
 
 /// Note bars for the current-loop overlay, built through the same `pitch_for` path as playback.
@@ -752,7 +753,7 @@ fn overlay_clock<'a>(
     if notes.is_empty() { return None; }
     let bpm64 = bpm as f64;
     if !(bpm64.is_finite() && bpm64 > 0.0) { return None; }
-    let spb = p.rate.value().steps_per_beat();
+    let spb = p.steps_per_beat();
     Some(history::Overlay {
         notes,
         step_ms: (60_000.0 / (bpm64 * spb)) as f32,
@@ -774,7 +775,7 @@ fn push_history(
     loop_steps: f32,
     now_ms: u64,
 ) {
-    let window_ms = history_window_ms(bars, bpm);
+    let window_ms = history_window_ms(bars, bpm, p.steps_per_beat(), p.loop_steps());
     let mut events = shared.snapshot();
     let notes = if p.history_overlay.value() {
         overlay_notes(p, pattern, pitch)
@@ -782,11 +783,15 @@ fn push_history(
         Vec::new()
     };
     let overlay = overlay_clock(shared, p, bpm, now_ms, loop_steps, &notes);
-    let spb = p.rate.value().steps_per_beat();
+    let spb = p.steps_per_beat();
+    let loop_steps = p.loop_steps();
+    let unit = p.step_unit();
+    let meter = crate::clock::meter_from_steps(p.cell_count().max(1) as u32, unit);
     let grid = history::GridSpec {
         step_ms: (60_000.0 / (bpm as f64 * spb)) as f32,
         steps_per_beat: spb as f32,
-        beats_per_bar: 4.0,
+        // One bar is the generated pattern loop, expressed in quarter-note beats.
+        beats_per_bar: (loop_steps as f64 / spb) as f32,
     };
     let roll = history::build_with_grid(
         &mut events,
@@ -812,6 +817,11 @@ fn push_history(
         "{} – {}",
         note_label(roll.lo),
         note_label(roll.hi - 1)
+    )));
+    ui.set_history_timing(SharedString::from(crate::clock::meter_label(
+        meter,
+        unit,
+        loop_steps.max(1),
     )));
 }
 
@@ -1008,19 +1018,6 @@ impl Editor for SlintEditor {
             }
             {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_step_rate(move |delta| apply_rate(&c, &p, p.rate.value().stepped(delta)));
-                let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_set_rate(move |v| {
-                    let last = <Rate as Enum>::variants().len() as i32 - 1;
-                    apply_rate(&c, &p, Rate::from_index(v.clamp(0, last) as usize));
-                });
-                let (p, c) = (setup_params.clone(), setup_ctx.clone());
-                ui.on_rate_submitted(move |text| {
-                    if let Some(rate) = Rate::parse(text.as_str()) { apply_rate(&c, &p, rate); }
-                });
-            }
-            {
-                let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_set_osc_wave(move |v| {
                     set(&c, &p.osc_wave, OscWave::from_index(v.clamp(0, OscWave::variants().len() as i32 - 1) as usize));
                 });
@@ -1031,6 +1028,7 @@ impl Editor for SlintEditor {
                 let (p, shared) = (setup_params.clone(), setup_shared.clone());
                 let history = edit_history.clone();
                 ui.on_edit_overlay(move |x, mode| {
+                    if p.voice_mode.value() == VoiceMode::Polymeter { return; }
                     let hold = shared.history_hold_ms.load(Relaxed);
                     let now = if hold > 0 { hold } else { shared.epoch.elapsed().as_millis() as u64 };
                     let bpm = f32::from_bits(shared.tempo_bits.load(Relaxed));
@@ -1047,6 +1045,7 @@ impl Editor for SlintEditor {
                 // and its onset, so dragging one note never paints neighbouring steps.
                 let gate_origin = Arc::new(Mutex::new(None::<(usize, f32)>));
                 ui.on_edit_gate(move |x, snap, phase| {
+                    if p.voice_mode.value() == VoiceMode::Polymeter { return; }
                     if phase == 2 {
                         if let Ok(mut origin) = gate_origin.lock() { *origin = None; }
                         return;
@@ -1055,8 +1054,8 @@ impl Editor for SlintEditor {
                     let now = if hold > 0 { hold } else { shared.epoch.elapsed().as_millis() as u64 };
                     let bpm = f32::from_bits(shared.tempo_bits.load(Relaxed));
                     let bpm = if bpm.is_finite() && bpm > 0.0 { bpm } else { 120.0 };
-                    let spb = p.rate.value().steps_per_beat();
-                    let window_ms = history_window_ms(p.history_bars.value(), bpm);
+                    let spb = p.steps_per_beat();
+                    let window_ms = history_window_ms(p.history_bars.value(), bpm, p.steps_per_beat(), p.loop_steps());
                     let step_x = (60_000.0 / (bpm as f64 * spb)) as f32 / window_ms as f32;
                     if phase == 0 {
                         let Some((step, fraction)) = overlay_position(&p, &shared, bpm, now, x) else {
@@ -1321,9 +1320,6 @@ impl Editor for SlintEditor {
             ui.set_scale_names(ModelRc::new(VecModel::from(
                 <Tuning as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
             )));
-            ui.set_rate_names(ModelRc::new(VecModel::from(
-                <Rate as Enum>::variants().iter().map(|name| SharedString::from(*name)).collect::<Vec<_>>(),
-            )));
             ui.set_preset_names(ModelRc::new(VecModel::from(
                 PRESETS.iter().map(|preset| SharedString::from(preset.name)).collect::<Vec<_>>(),
             )));
@@ -1336,7 +1332,12 @@ impl Editor for SlintEditor {
             ui.set_credit_github(SharedString::from(crate::contact::GITHUB));
         };
 
-        let cache = Arc::new(Mutex::new(Cache { gen_key: None, pattern: Pattern::default(), view_key: None }));
+        let cache = Arc::new(Mutex::new(Cache {
+            gen_key: None,
+            pattern: Pattern::default(),
+            voice_preview: 0,
+            view_key: None,
+        }));
         let (update_params, update_shared, update_cache, update_context) =
             (self.params.clone(), self.shared.clone(), cache, context.clone());
         let update_scale_cell = self.scale.clone();
@@ -1390,6 +1391,13 @@ impl Editor for SlintEditor {
             // Show the value the generator will actually use, not one above a lowered ceiling.
             ui.set_steps(p.steps.value().min(ceiling));
             ui.set_round_steps(p.round_steps.value());
+            ui.set_voices(p.voice_count() as i32);
+            ui.set_voice_spread(p.voice_spread.value());
+            ui.set_voice_mode(p.voice_mode.value().to_index() as i32);
+            ui.set_voice_preview(p.voice_preview.value().clamp(0, MAX_VOICES as i32 - 1));
+            let timing_locked = p.voice_mode.value() == VoiceMode::Polymeter;
+            ui.set_timing_locked(timing_locked);
+            if timing_locked { ui.set_edit_mode(0); }
             ui.set_pulses(p.pulses.value() as f32);
             ui.set_rotate(p.rotate.value() as f32);
             ui.set_density(p.density.value());
@@ -1403,7 +1411,6 @@ impl Editor for SlintEditor {
             ui.set_scope_length(scope_enabled(p, scope::LENGTH));
             ui.set_scope_hits(scope_enabled(p, scope::HITS));
             ui.set_scope_tuning(scope_enabled(p, scope::TUNING));
-            ui.set_scope_clock(scope_enabled(p, scope::CLOCK));
             ui.set_scope_phase(scope_enabled(p, scope::PHASE));
             ui.set_scope_acid(scope_enabled(p, scope::ACID));
             ui.set_scope_feel(scope_enabled(p, scope::FEEL));
@@ -1414,8 +1421,15 @@ impl Editor for SlintEditor {
             ui.set_ca_rule(p.ca_rule.value() as f32);
             ui.set_symmetry(p.symmetry.value() as f32);
             ui.set_markov_bias(p.markov_bias.value() as f32);
-            ui.set_rate(p.rate.value().to_index() as i32);
-            ui.set_steps_per_beat(p.rate.value().steps_per_beat() as f32);
+            let loop_steps = p.loop_steps();
+            let unit = p.step_unit();
+            let meter = crate::clock::meter_from_steps(p.cell_count().max(1) as u32, unit);
+            ui.set_steps_per_bar((loop_steps as f64 / p.steps_per_beat()) as f32);
+            ui.set_timing_summary(SharedString::from(crate::clock::meter_label(
+                meter,
+                unit,
+                loop_steps.max(1),
+            )));
             let live_clock = update_shared.lfo_clock();
             let live_signals = p.lfo_signals(live_clock);
             let lfo_running = update_shared.lfo_running.load(Relaxed);
@@ -1544,10 +1558,14 @@ impl Editor for SlintEditor {
                 log_line("WARNING: update cache mutex was poisoned; recovering its inner state");
                 poisoned.into_inner()
             });
-            if c.gen_key != Some(gen_key) {
+            let preview_voice = (p.voice_preview.value().max(0) as usize)
+                .min(p.voice_count().saturating_sub(1));
+            if c.gen_key != Some(gen_key) || c.voice_preview != preview_voice {
                 let mut edit_view = crate::edits::EditView::default();
                 p.edit_overlay.fill(&mut edit_view);
-                c.pattern = generate_with(&gen_key, &edit_view);
+                let voice_key = p.voice_params(gen_key, preview_voice);
+                c.pattern = generate_with(&voice_key, &edit_view);
+                c.voice_preview = preview_voice;
                 ui.set_mode_math(SharedString::from(crate::help::math(&gen_key)));
                 if p.logging.value() {
                     log_line(&format!(
@@ -1564,7 +1582,7 @@ impl Editor for SlintEditor {
             update_shared.text_focus.store(text_focused, Relaxed);
             // Keep the host from acting on the same character keys Slint is inserting.
             h.set_prevent_key_event_propagation(text_focused);
-            let view_key = (gen_key, cur, preview_pitch.root, gen_key.osc_wave);
+            let view_key = (gen_key, cur, preview_pitch.root, gen_key.osc_wave, preview_voice);
             if c.view_key != Some(view_key) {
                 let v = view::build(gen_key.kind, &c.pattern, c.pattern.steps, cur, preview_pitch.root, gen_key.osc_wave);
                 push_view(&ui, &v);
@@ -1684,10 +1702,23 @@ mod tests {
     }
 
     #[test]
-    fn history_lengths_are_four_four_bars() {
-        assert_eq!(history_window_ms(4.0, 120.0), 8_000);
-        assert_eq!(history_window_ms(4.0, 60.0), 16_000);
-        assert_eq!(history_window_ms(1.0, 0.0), 2_000);
+    fn history_lengths_are_derived_pattern_loops() {
+        // 16 steps at 1/16 is a 4/4 loop: 4 * 16 * 125 ms = 8 s at 120 BPM.
+        assert_eq!(history_window_ms(4.0, 120.0, 4.0, 16), 8_000);
+        assert_eq!(history_window_ms(4.0, 60.0, 4.0, 16), 16_000);
+        assert_eq!(history_window_ms(1.0, 0.0, 4.0, 16), 2_000);
+        // 13 steps at 1/16 is a 13/16 loop: 4 * 13 * 125 ms.
+        assert_eq!(history_window_ms(4.0, 120.0, 4.0, 13), 6_500);
+        // 16 steps at 1/8: 4 * 16 * 250 ms.
+        assert_eq!(history_window_ms(4.0, 120.0, 2.0, 16), 16_000);
+    }
+
+    #[test]
+    fn history_bar_length_is_the_derived_loop() {
+        use crate::clock::{meter_from_steps, StepUnit};
+        assert_eq!(meter_from_steps(16, StepUnit::Sixteenth), Some(crate::clock::Meter::new(4, 4)));
+        assert_eq!(meter_from_steps(13, StepUnit::Sixteenth), Some(crate::clock::Meter::new(13, 16)));
+        assert_eq!(meter_from_steps(16, StepUnit::Eighth), Some(crate::clock::Meter::new(16, 8)));
     }
 
     #[test]

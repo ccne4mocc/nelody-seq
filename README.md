@@ -65,7 +65,7 @@ Enjoy :3
 
 - **30 generators**: 25 melodic algorithms plus 5 acid lines with accent, slide and octave-jump
   controls.
-- **One mono voice** with legato, retrigger, slide and accent behaviour.
+- **Up to six voices** with legato, retrigger, slide and accent behaviour. Voice 0 is the historic mono line; NTS voices use separate MIDI channels for independent bends.
 - **Microtonal tuning**: root pitch class, scale and just-intonation tables, root-cents fine tune,
   and any EDO up to 72. Non-12-TET pitch is sent as pitch bend.
 - **MIDI history / editor roll** with per-step hit, probability, accent, ratchet, timing and gate

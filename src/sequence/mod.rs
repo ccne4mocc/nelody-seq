@@ -54,7 +54,13 @@ use crate::edits::{EditView, HIT_OFF, HIT_ON};
 use crate::modes::Mode;
 
 /// Hard capacity for every pattern array; the host's `max_steps` ceiling can reach 1024.
-pub const MAX_STEPS: usize = 1024;
+/// Hard capacity for the melodic pattern. Six simultaneous voices share this ceiling, so the
+/// per-voice array is deliberately half the historic size.
+pub const MAX_STEPS: usize = 512;
+/// Playback/export cap for the LCM of independent voice loops.
+pub const MAX_LOOP_STEPS: usize = 512;
+/// Maximum simultaneous melodic voices. Six keeps six fixed-size patterns bounded.
+pub const MAX_VOICES: usize = 6;
 pub const MIN_MAX_STEPS: usize = 64;
 /// Default ceiling. Long-horizon modes raise it themselves through `Mode::min_steps`.
 pub const DEFAULT_MAX_STEPS: usize = 256;
@@ -642,6 +648,12 @@ mod tests {
     }
 
     #[test]
+    fn pattern_size_matches_the_six_voice_budget() {
+        // Pinned so a new array cannot silently grow the audio-thread copy.
+        assert_eq!(std::mem::size_of::<Pattern>(), 24_760);
+    }
+
+    #[test]
     fn all_modes_are_deterministic_and_bounded() {
         for kind in Mode::all() {
             let p = GenParams { kind, ..GenParams::default() };
@@ -889,7 +901,7 @@ mod tests {
     fn density_one_is_the_exact_fibonacci_word() {
         let a = fibonacci::alpha(1.0);
         assert!((a - PHI_INV).abs() < 1e-12);
-        let n = 610; // a Fibonacci number: the word has F(14) - 1 onsets over it
+        let n = 377; // a Fibonacci number within MAX_STEPS
         let out = generate(&GenParams { steps: n, length: n as f32, pulses: n, density: 1.0, seed: 0.0, phase: 0.0, ..base(Mode::Fibonacci) });
         let hits = (0..n).filter(|&i| out.hit[i]).count();
         assert!((hits as f64 - n as f64 * a).abs() <= 1.5, "{hits} onsets of {n}");
@@ -913,11 +925,11 @@ mod tests {
             w
         }
         for family in 0..4usize {
-            let g = GenParams { steps: 1024, length: 1024.0, pulses: 1024, density: 1.0, seed: family as f32 * 0.25 + 0.01, variation: 0, ..base(Mode::LSystem) };
+            let g = GenParams { steps: MAX_STEPS, length: MAX_STEPS as f32, pulses: MAX_STEPS, density: 1.0, seed: family as f32 * 0.25 + 0.01, variation: 0, ..base(Mode::LSystem) };
             let out = generate(&g);
-            let want = reference(family, 1024);
-            assert!((0..1024).all(|i| out.lsym[i] == want[i]), "family {family}: word differs from the reference rewrite");
-            let max_step = (1..1024).map(|i| (out.u[i] - out.u[i - 1]).abs()).fold(0.0f32, f32::max);
+            let want = reference(family, MAX_STEPS);
+            assert!((0..MAX_STEPS).all(|i| out.lsym[i] == want[i]), "family {family}: word differs from the reference rewrite");
+            let max_step = (1..MAX_STEPS).map(|i| (out.u[i] - out.u[i - 1]).abs()).fold(0.0f32, f32::max);
             assert!(max_step <= 0.32, "family {family}: contour jumps by {max_step}");
         }
     }
@@ -1063,7 +1075,7 @@ mod tests {
     #[test]
     fn all_modes_stay_finite_and_bounded_across_the_parameter_sweep() {
         for kind in Mode::all() {
-            for steps in [1usize, 2, 7, 16, 31, 64, 255, 1024] {
+            for steps in [1usize, 2, 7, 16, 31, 64, 255, MAX_STEPS] {
                 for density in [0.0f32, 0.5, 1.0] {
                     for variation in [0u32, 1] {
                         for rotate in [0usize, steps / 3] {

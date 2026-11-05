@@ -4,11 +4,12 @@ use crate::sequence::MAX_STEPS;
 use std::fmt::Write;
 
 /// Bit layout of a packed word, lowest field first:
-/// `note (7) | velocity (8) | kind (1) | valid (1) | detune (8) | ts_ms (38)`.
+/// `note (7) | velocity (7) | voice (3) | kind (1) | valid (1) | detune (8) | ts_ms (37)`.
 const NOTE_MASK: u64 = 0x7F;
-const VALID: u64 = 1 << 16;
+const VALID: u64 = 1 << 18;
 const DETUNE_BIAS: f32 = 128.0;
-const TS_SHIFT: u32 = 25;
+const TS_SHIFT: u32 = 27;
+const VOICE_SHIFT: u32 = 14;
 
 #[cfg(test)]
 pub fn pack(ts_ms: u64, note: u8, vel: u8, on: bool) -> u64 {
@@ -17,8 +18,19 @@ pub fn pack(ts_ms: u64, note: u8, vel: u8, on: bool) -> u64 {
 
 /// Packs one event into a single atomic word. `cents` is stored as a signed byte biased by 128.
 pub fn pack_detuned(ts_ms: u64, note: u8, vel: u8, on: bool, cents: f32) -> u64 {
+    pack_voice(ts_ms, note, vel, on, cents, 0)
+}
+
+/// Same layout with a voice id. Velocity is 7-bit because MIDI velocity is 0..=127.
+pub fn pack_voice(ts_ms: u64, note: u8, vel: u8, on: bool, cents: f32, voice: u8) -> u64 {
     let detune = ((cents.round() as i64 + DETUNE_BIAS as i64).clamp(0, 255)) as u64;
-    (ts_ms << TS_SHIFT) | VALID | (detune << 17) | ((on as u64) << 15) | ((vel as u64) << 7) | (note as u64 & NOTE_MASK)
+    (ts_ms << TS_SHIFT)
+        | VALID
+        | (detune << 19)
+        | ((on as u64) << 17)
+        | ((voice as u64 & 0x7) << VOICE_SHIFT)
+        | ((vel as u64 & 0x7F) << 7)
+        | (note as u64 & NOTE_MASK)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -26,6 +38,7 @@ pub struct Ev {
     pub t_ms: u64,
     pub note: u8,
     pub vel: u8,
+    pub voice: u8,
     pub on: bool,
     /// Microtonal offset in cents, -64..=63.
     pub cents: f32,
@@ -35,9 +48,10 @@ pub fn unpack(w: u64) -> Option<Ev> {
     (w & VALID != 0).then(|| Ev {
         t_ms: w >> TS_SHIFT,
         note: (w & NOTE_MASK) as u8,
-        vel: ((w >> 7) & 0xFF) as u8,
-        on: (w >> 15) & 1 == 1,
-        cents: ((w >> 17) & 0xFF) as f32 - DETUNE_BIAS,
+        vel: ((w >> 7) & 0x7F) as u8,
+        voice: ((w >> VOICE_SHIFT) & 0x7) as u8,
+        on: (w >> 17) & 1 == 1,
+        cents: ((w >> 19) & 0xFF) as f32 - DETUNE_BIAS,
     })
 }
 
@@ -131,23 +145,25 @@ pub fn build_with_grid(
     // Stable sort by time only: at the same millisecond an On must stay before its Off.
     events.sort_by_key(|e| e.t_ms);
     let mut segs: Vec<Seg> = Vec::new();
-    let mut open: [Option<(i64, f32, u8)>; 128] = [None; 128];
+    // Key by voice and note so simultaneous voices cannot steal each other's note-off.
+    let mut open: [Option<(i64, f32, u8)>; 128 * 8] = [None; 128 * 8];
     for e in events.iter() {
         let t = e.t_ms as i64;
         let n = (e.note & 0x7F) as usize;
+        let slot = (e.voice as usize & 0x7) * 128 + n;
         if e.on {
-            if let Some((s, c, v)) = open[n].take() {
+            if let Some((s, c, v)) = open[slot].take() {
                 segs.push(Seg { start: s, end: t, note: n as u8, vel: v, cents: c });
             }
-            open[n] = Some((t, e.cents, e.vel));
-        } else if let Some((s, c, v)) = open[n].take() {
+            open[slot] = Some((t, e.cents, e.vel));
+        } else if let Some((s, c, v)) = open[slot].take() {
             segs.push(Seg { start: s, end: t, note: n as u8, vel: v, cents: c });
         }
         // An Off with no matching On is a ring-wrap/stale event; skip it.
     }
-    for (n, o) in open.iter().enumerate() {
+    for (slot, o) in open.iter().enumerate() {
         if let Some((s, c, v)) = o {
-            segs.push(Seg { start: *s, end: now_ms as i64, note: n as u8, vel: *v, cents: *c });
+            segs.push(Seg { start: *s, end: now_ms as i64, note: (slot % 128) as u8, vel: *v, cents: *c });
         }
     }
     segs.retain(|s| s.end >= t_min && s.start <= now_ms as i64 + 50);
@@ -341,7 +357,7 @@ mod tests {
 
     #[test]
     fn pack_roundtrip_and_empty() {
-        let e = Ev { t_ms: 123_456_789, note: 60, vel: 100, on: true, cents: 0.0 };
+        let e = Ev { voice: 0, t_ms: 123_456_789, note: 60, vel: 100, on: true, cents: 0.0 };
         assert_eq!(unpack(pack(e.t_ms, e.note, e.vel, e.on)), Some(Ev { cents: 0.0, ..e }));
         assert_eq!(unpack(pack(5, 0, 0, false)).unwrap().on, false);
         assert_eq!(unpack(0), None);
@@ -359,8 +375,8 @@ mod tests {
         assert_eq!((over.t_ms, over.note, over.vel, over.on), (1_000, 62, 100, true));
         let at = |cents: f32| {
             let mut evs = vec![
-                Ev { t_ms: 900, note: 64, vel: 90, on: true, cents },
-                Ev { t_ms: 980, note: 64, vel: 0, on: false, cents },
+                Ev { voice: 0, t_ms: 900, note: 64, vel: 90, on: true, cents },
+                Ev { voice: 0, t_ms: 980, note: 64, vel: 0, on: false, cents },
             ];
             build(&mut evs, 1_000, 6_000, 600.0, 96.0, None).notes
         };
@@ -371,8 +387,8 @@ mod tests {
     #[test]
     fn pairs_notes_and_scrolls_right_to_left() {
         let mut evs = vec![
-            Ev { t_ms: 4_000, note: 60, vel: 90, on: true, cents: 0.0 },
-            Ev { t_ms: 4_500, note: 60, vel: 0, on: false, cents: 0.0 },
+            Ev { voice: 0, t_ms: 4_000, note: 60, vel: 90, on: true, cents: 0.0 },
+            Ev { voice: 0, t_ms: 4_500, note: 60, vel: 0, on: false, cents: 0.0 },
         ];
         let a = build(&mut evs.clone(), 5_000, 6_000, 600.0, 96.0, None);
         let b = build(&mut evs, 5_500, 6_000, 600.0, 96.0, None);
@@ -383,11 +399,11 @@ mod tests {
 
     #[test]
     fn open_note_extends_to_now_and_old_notes_drop_out() {
-        let mut open = vec![Ev { t_ms: 1_000, note: 64, vel: 90, on: true, cents: 0.0 }];
+        let mut open = vec![Ev { voice: 0, t_ms: 1_000, note: 64, vel: 90, on: true, cents: 0.0 }];
         assert!(build(&mut open, 2_000, 6_000, 600.0, 96.0, None).notes.len() > 4);
         let mut old = vec![
-            Ev { t_ms: 100, note: 64, vel: 90, on: true, cents: 0.0 },
-            Ev { t_ms: 200, note: 64, vel: 0, on: false, cents: 0.0 },
+            Ev { voice: 0, t_ms: 100, note: 64, vel: 90, on: true, cents: 0.0 },
+            Ev { voice: 0, t_ms: 200, note: 64, vel: 0, on: false, cents: 0.0 },
         ];
         assert_eq!(build(&mut old, 20_000, 6_000, 600.0, 96.0, None).notes.trim(), "M0 0");
     }
@@ -395,7 +411,7 @@ mod tests {
     #[test]
     fn stray_note_off_does_not_stretch_back_to_the_window_edge() {
         // A wrapped ring can leave an Off with no matching On.
-        let mut evs = vec![Ev { t_ms: 3_000, note: 60, vel: 0, on: false, cents: 0.0 }];
+        let mut evs = vec![Ev { voice: 0, t_ms: 3_000, note: 60, vel: 0, on: false, cents: 0.0 }];
         let r = build(&mut evs, 5_000, 6_000, 600.0, 96.0, None);
         assert_eq!(r.notes.trim(), "M0 0");
     }
@@ -404,8 +420,8 @@ mod tests {
     fn same_millisecond_on_and_off_pair_as_a_short_note() {
         // Short notes can land On and Off in the same millisecond; keep On first.
         let mut evs = vec![
-            Ev { t_ms: 4_000, note: 60, vel: 90, on: true, cents: 0.0 },
-            Ev { t_ms: 4_000, note: 60, vel: 0, on: false, cents: 0.0 },
+            Ev { voice: 0, t_ms: 4_000, note: 60, vel: 90, on: true, cents: 0.0 },
+            Ev { voice: 0, t_ms: 4_000, note: 60, vel: 0, on: false, cents: 0.0 },
         ];
         let r = build(&mut evs, 5_000, 6_000, 600.0, 96.0, None);
         assert!(r.notes.starts_with("M500.0"), "unexpected path: {}", r.notes);
@@ -415,10 +431,10 @@ mod tests {
     #[test]
     fn range_follows_notes_in_whole_octaves() {
         let mut evs = vec![
-            Ev { t_ms: 900, note: 38, vel: 90, on: true, cents: 0.0 },
-            Ev { t_ms: 950, note: 38, vel: 0, on: false, cents: 0.0 },
-            Ev { t_ms: 960, note: 77, vel: 90, on: true, cents: 0.0 },
-            Ev { t_ms: 990, note: 77, vel: 0, on: false, cents: 0.0 },
+            Ev { voice: 0, t_ms: 900, note: 38, vel: 90, on: true, cents: 0.0 },
+            Ev { voice: 0, t_ms: 950, note: 38, vel: 0, on: false, cents: 0.0 },
+            Ev { voice: 0, t_ms: 960, note: 77, vel: 90, on: true, cents: 0.0 },
+            Ev { voice: 0, t_ms: 990, note: 77, vel: 0, on: false, cents: 0.0 },
         ];
         let r = build(&mut evs, 1_000, 6_000, 600.0, 96.0, None);
         assert_eq!((r.lo, r.hi), (36, 84));
@@ -453,10 +469,10 @@ mod tests {
         let detuned = vec![note(0, 48, 0.0, 0.5), note(1, 84, -30.0, 0.5)];
         let plain = vec![note(0, 48, 0.0, 0.5), note(1, 84, 0.0, 0.5)];
         let mut evs = vec![
-            Ev { t_ms: 9_000, note: 48, vel: 90, on: true, cents: 0.0 },
-            Ev { t_ms: 9_100, note: 48, vel: 0, on: false, cents: 0.0 },
-            Ev { t_ms: 9_200, note: 84, vel: 90, on: true, cents: 0.0 },
-            Ev { t_ms: 9_300, note: 84, vel: 0, on: false, cents: 0.0 },
+            Ev { voice: 0, t_ms: 9_000, note: 48, vel: 90, on: true, cents: 0.0 },
+            Ev { voice: 0, t_ms: 9_100, note: 48, vel: 0, on: false, cents: 0.0 },
+            Ev { voice: 0, t_ms: 9_200, note: 84, vel: 90, on: true, cents: 0.0 },
+            Ev { voice: 0, t_ms: 9_300, note: 84, vel: 0, on: false, cents: 0.0 },
         ];
         let a = build(
             &mut evs.clone(),

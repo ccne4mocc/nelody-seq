@@ -4,6 +4,7 @@
 //! shown by the host. Generators and panels match the same variants, so there is no second enum
 //! or index mapping.
 
+use crate::clock::StepUnit;
 use crate::sequence::{MAX_STEPS, MIN_MAX_STEPS};
 use nice_plug::prelude::Enum;
 
@@ -104,6 +105,28 @@ impl ModeGroup {
 }
 
 impl Mode {
+    /// Step subdivision owned by this mode. There is no clock-rate setting: the mode decides
+    /// how long one grid cell lasts and the host tempo supplies the beat.
+    pub fn step_unit(self) -> StepUnit {
+        match self {
+            Mode::Logistic
+            | Mode::CircleMap
+            | Mode::Tonnetz
+            | Mode::Cellular
+            | Mode::Markov
+            | Mode::Oscillator
+            | Mode::LSystem
+            | Mode::Brownian
+            | Mode::LevyFlight
+            | Mode::TentMap
+            | Mode::HenonMap
+            | Mode::HilbertCurve
+            | Mode::UlamPrimes
+            | Mode::Life => StepUnit::Eighth,
+            _ => StepUnit::Sixteenth,
+        }
+    }
+
     /// The 303-style generators: single-octave contour + octave flag, accent and slide per step.
     pub fn is_acid(self) -> bool {
         matches!(
@@ -259,7 +282,7 @@ mod tests {
         // A ceiling below the floor is raised just enough.
         assert_eq!(Mode::UlamPrimes.steps_for_mode(16.0, 64), (64.0, 64));
         // Longer loops and higher ceilings are untouched.
-        assert_eq!(Mode::Logistic.steps_for_mode(128.0, 1024), (128.0, 1024));
+        assert_eq!(Mode::Logistic.steps_for_mode(128.0, 512), (128.0, 512));
         // Modes without a floor are identity, including fractional loops.
         assert_eq!(Mode::Euclidean.steps_for_mode(16.5, 256), (16.5, 256));
         assert_eq!(Mode::Euclidean.steps_for_mode(8.0, 64), (8.0, 64));

@@ -1,5 +1,6 @@
 //! nelody seq: algorithmic melodic MIDI sequence generation, emitted as MIDI.
 //! The plug-in intentionally has no audio renderer: route it to a mono / legato synth.
+mod clock;
 mod editor;
 mod edits;
 mod globals;
@@ -23,7 +24,8 @@ use modulation::{
 };
 use nice_plug::prelude::*;
 use sequence::{
-    generate_with, GenParams, Pattern, DEFAULT_MAX_STEPS, MAX_STEPS, MIN_MAX_STEPS,
+    generate_with, GenParams, Pattern, DEFAULT_MAX_STEPS, MAX_LOOP_STEPS, MAX_STEPS, MAX_VOICES,
+    MIN_MAX_STEPS,
 };
 #[cfg(test)]
 use sequence::generate;
@@ -75,101 +77,6 @@ impl Theme {
     }
 }
 
-/// Clock resolution. Existing ids are host state; append new divisions, never renumber.
-#[derive(Enum, PartialEq, Eq, Clone, Copy, Debug)]
-pub enum Rate {
-    #[id = "1_4"] #[name = "1/4"] Quarter,
-    #[id = "1_8"] #[name = "1/8"] Eighth,
-    #[id = "1_8t"] #[name = "1/8T"] EighthTriplet,
-    #[id = "1_16"] #[name = "1/16"] Sixteenth,
-    #[id = "1_16t"] #[name = "1/16T"] SixteenthTriplet,
-    #[id = "1_32"] #[name = "1/32"] ThirtySecond,
-    #[id = "1_4_dot"] #[name = "1/4."] QuarterDotted,
-    #[id = "1_8_dot"] #[name = "1/8."] EighthDotted,
-    #[id = "1_16_dot"] #[name = "1/16."] SixteenthDotted,
-    #[id = "1_32t"] #[name = "1/32T"] ThirtySecondTriplet,
-    #[id = "1_32_dot"] #[name = "1/32."] ThirtySecondDotted,
-    #[id = "1_64"] #[name = "1/64"] SixtyFourth,
-    #[id = "1_64t"] #[name = "1/64T"] SixtyFourthTriplet,
-    #[id = "1_64_dot"] #[name = "1/64."] SixtyFourthDotted,
-}
-impl Rate {
-    /// Musical display order; the enum's own order is host state and must not be used for stepping.
-    const RATE_ORDER: [Rate; 14] = [
-        Rate::Quarter, Rate::QuarterDotted,
-        Rate::Eighth, Rate::EighthDotted, Rate::EighthTriplet,
-        Rate::Sixteenth, Rate::SixteenthDotted, Rate::SixteenthTriplet,
-        Rate::ThirtySecond, Rate::ThirtySecondDotted, Rate::ThirtySecondTriplet,
-        Rate::SixtyFourth, Rate::SixtyFourthDotted, Rate::SixtyFourthTriplet,
-    ];
-
-    pub(crate) fn steps_per_beat(self) -> f64 {
-        match self {
-            Self::Quarter => 1.0,
-            Self::QuarterDotted => 1.0 / 1.5,
-            Self::Eighth => 2.0,
-            Self::EighthDotted => 2.0 / 1.5,
-            Self::EighthTriplet => 3.0,
-            Self::Sixteenth => 4.0,
-            Self::SixteenthDotted => 4.0 / 1.5,
-            Self::SixteenthTriplet => 6.0,
-            Self::ThirtySecond => 8.0,
-            Self::ThirtySecondDotted => 8.0 / 1.5,
-            Self::ThirtySecondTriplet => 12.0,
-            Self::SixtyFourth => 16.0,
-            Self::SixtyFourthDotted => 16.0 / 1.5,
-            Self::SixtyFourthTriplet => 24.0,
-        }
-    }
-
-    /// Next/previous rate in display order, clamped at the ends.
-    pub(crate) fn stepped(self, delta: i32) -> Rate {
-        let pos = Self::RATE_ORDER.iter().position(|r| *r == self).unwrap_or(0) as i32;
-        let last = Self::RATE_ORDER.len() as i32 - 1;
-        Self::RATE_ORDER[(pos + delta).clamp(0, last) as usize]
-    }
-
-    /// Parse a typed rate, accepting enum labels plus `T`/`t`/`.`/`d`/`dot` aliases.
-    pub(crate) fn parse(text: &str) -> Option<Rate> {
-        let mut s = text.trim().to_ascii_lowercase();
-        s.retain(|c| !c.is_whitespace());
-        if s.is_empty() { return None; }
-        for (i, name) in <Rate as Enum>::variants().iter().enumerate() {
-            if name.eq_ignore_ascii_case(&s) { return Some(Rate::from_index(i)); }
-        }
-        let (base, dotted, triplet) = if let Some(b) = s.strip_suffix("dotted") {
-            (b, true, false)
-        } else if let Some(b) = s.strip_suffix("dot") {
-            (b, true, false)
-        } else if let Some(b) = s.strip_suffix('.') {
-            (b, true, false)
-        } else if let Some(b) = s.strip_suffix('d') {
-            (b, true, false)
-        } else if let Some(b) = s.strip_suffix('t') {
-            (b, false, true)
-        } else {
-            (s.as_str(), false, false)
-        };
-        match (base, dotted, triplet) {
-            ("1/4", false, false) => Some(Rate::Quarter),
-            ("1/4", true, false) => Some(Rate::QuarterDotted),
-            ("1/8", false, false) => Some(Rate::Eighth),
-            ("1/8", true, false) => Some(Rate::EighthDotted),
-            ("1/8", false, true) => Some(Rate::EighthTriplet),
-            ("1/16", false, false) => Some(Rate::Sixteenth),
-            ("1/16", true, false) => Some(Rate::SixteenthDotted),
-            ("1/16", false, true) => Some(Rate::SixteenthTriplet),
-            ("1/32", false, false) => Some(Rate::ThirtySecond),
-            ("1/32", true, false) => Some(Rate::ThirtySecondDotted),
-            ("1/32", false, true) => Some(Rate::ThirtySecondTriplet),
-            ("1/64", false, false) => Some(Rate::SixtyFourth),
-            ("1/64", true, false) => Some(Rate::SixtyFourthDotted),
-            ("1/64", false, true) => Some(Rate::SixtyFourthTriplet),
-            _ => None,
-        }
-    }
-}
-
 /// Oscillator waveform. The ids are stable host state; new shapes are appended, never renumbered.
 #[derive(Enum, PartialEq, Eq, Clone, Copy, Debug)]
 pub enum OscWave {
@@ -208,6 +115,15 @@ pub enum LfoPolarity {
     #[id = "unipolar_neg"] #[name = "Unipolar Negative"] UnipolarNegative,
 }
 
+/// How the six voices share time.
+#[derive(Enum, PartialEq, Eq, Clone, Copy, Debug)]
+pub enum VoiceMode {
+    /// Every voice follows the same loop.
+    #[id = "shared"] #[name = "Shared Loop"] Shared,
+    /// Each voice has its own loop length; playback closes on their LCM (capped).
+    #[id = "polymeter"] #[name = "Polymeter"] Polymeter,
+}
+
 /// Which parameter groups RANDOMIZE is allowed to touch. One host parameter, five bits.
 pub mod scope {
     pub const MODE: i32 = 1 << 0;
@@ -215,6 +131,7 @@ pub mod scope {
     /// Mode-specific second option: pulses, degree, notes, dice per bar, …
     pub const HITS: i32 = 1 << 2;
     pub const TUNING: i32 = 1 << 3;
+    /// Retired: timing is derived from the mode. Kept so old masks keep their other bits.
     pub const CLOCK: i32 = 1 << 4;
     pub const PHASE: i32 = 1 << 5;
     pub const ACID: i32 = 1 << 6;
@@ -232,11 +149,18 @@ pub struct MelodyParams {
     #[persist = "edit_overlay"]
     pub edit_overlay: Arc<edits::EditStore>,
     #[id = "mode"] pub mode: EnumParam<Mode>,
-    /// Pattern length in steps; fractional values wrap between grid cells.
+    /// Pattern length in whole steps. Decimal input is rounded.
     #[id = "steps"] pub steps: FloatParam,
-    /// User-selected ceiling for `steps`/`pulses`/`rotate`, 64–1024.
+    /// User-selected ceiling for `steps`/`pulses`/`rotate`, 64–512.
     #[id = "max_steps"] pub max_steps: IntParam,
     #[id = "round_steps"] pub round_steps: BoolParam,
+    /// Simultaneous voices. Voice 0 is the historic single line.
+    #[id = "voices"] pub voices: IntParam,
+    /// Per-voice seed/phase separation.
+    #[id = "voice_spread"] pub voice_spread: FloatParam,
+    #[id = "voice_mode"] pub voice_mode: EnumParam<VoiceMode>,
+    /// Voice whose pattern is drawn in the editor preview.
+    #[id = "voice_preview"] pub voice_preview: IntParam,
     #[id = "pulses"] pub pulses: IntParam,
     #[id = "rotate"] pub rotate: IntParam,
     #[id = "density"] pub density: FloatParam,
@@ -254,7 +178,6 @@ pub struct MelodyParams {
     /// Markov transition bias: 2 bits each for rest, repeat, role and novelty.
     #[id = "markov_bias"] pub markov_bias: IntParam,
     #[id = "theme"] pub theme: EnumParam<Theme>,
-    #[id = "rate"] pub rate: EnumParam<Rate>,
     #[id = "gate"] pub gate: FloatParam,
     #[id = "swing"] pub swing: FloatParam,
     // --- LFO modulation (runtime overlay; targets affect scheduling, not project state) -----
@@ -382,6 +305,10 @@ impl Default for MelodyParams {
                 IntRange::Linear { min: MIN_MAX_STEPS as i32, max: MAX_STEPS as i32 },
             ),
             round_steps: BoolParam::new("Snap Steps To Whole Numbers", true),
+            voices: IntParam::new("Voices", 1, IntRange::Linear { min: 1, max: MAX_VOICES as i32 }),
+            voice_spread: FloatParam::new("Voice Spread", 0.25, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            voice_mode: EnumParam::new("Voice Timing", VoiceMode::Shared),
+            voice_preview: IntParam::new("Preview Voice", 0, IntRange::Linear { min: 0, max: MAX_VOICES as i32 - 1 }),
             pulses: IntParam::new("Pulses / Generation", 5, IntRange::Linear { min: 0, max: MAX_STEPS as i32 }),
             rotate: IntParam::new("Rotate", 0, IntRange::Linear { min: 0, max: MAX_STEPS as i32 - 1 }),
             density: percentage_param("Density", 0.65),
@@ -400,7 +327,6 @@ impl Default for MelodyParams {
             symmetry: IntParam::new("Crystallographic Symmetry", 4, IntRange::Linear { min: 1, max: 8 }),
             markov_bias: IntParam::new("Markov Transition Bias", 0, IntRange::Linear { min: 0, max: 255 }),
             theme: EnumParam::new("Theme", Theme::Forest),
-            rate: EnumParam::new("Rate", Rate::Sixteenth),
             gate: FloatParam::new("Gate", 0.12, FloatRange::Linear { min: 0.02, max: 1.0 }),
             swing: FloatParam::new("Swing", 0.0, FloatRange::Linear { min: 0.0, max: 0.5 }),
             lfo1_enabled: BoolParam::new("LFO 1 Enabled", true),
@@ -474,9 +400,9 @@ impl Default for MelodyParams {
     }
 }
 
-/// Note events kept for the piano-roll history. A full loop emits at most two per step, so 4096
-/// covers a dense 1024-step line with headroom.
-pub const HISTORY_LEN: usize = 4096;
+/// Note events kept for the piano-roll history. Six dense voices at 512 steps emit at most
+/// 3 events per note with NTS enabled, so 16_384 leaves headroom for retriggers.
+pub const HISTORY_LEN: usize = 16_384;
 
 /// Effective feel/scheduling values for one note or block.
 #[derive(Clone, Copy, Debug)]
@@ -509,19 +435,79 @@ impl MelodyParams {
         cell_count_for(self.steps.value(), self.round_steps.value(), self.step_ceiling())
     }
 
-    /// Longest history window the current pattern ceiling can fill, in 4/4 bars.
+    /// Step subdivision owned by the selected mode.
+    pub(crate) fn step_unit(&self) -> crate::clock::StepUnit {
+        self.mode.value().step_unit()
+    }
+
+    /// Steps per quarter note for the selected mode.
+    pub(crate) fn steps_per_beat(&self) -> f64 {
+        self.step_unit().steps_per_quarter()
+    }
+
+    /// Number of active voices.
+    pub(crate) fn voice_count(&self) -> usize {
+        self.voices.value().clamp(1, MAX_VOICES as i32) as usize
+    }
+
+    /// Voice loop length in whole cells. Voice 0 always follows the base pattern.
+    pub(crate) fn voice_steps(&self, base_steps: usize, voice: usize) -> usize {
+        if voice == 0 || self.voice_mode.value() == VoiceMode::Shared {
+            return base_steps.max(1);
+        }
+        const RATIOS: [crate::clock::Frac; MAX_VOICES] = [
+            crate::clock::Frac::new(1, 1),
+            crate::clock::Frac::new(3, 2),
+            crate::clock::Frac::new(2, 1),
+            crate::clock::Frac::new(5, 4),
+            crate::clock::Frac::new(4, 3),
+            crate::clock::Frac::new(3, 4),
+        ];
+        let ratio = RATIOS[voice.min(MAX_VOICES - 1)];
+        (((base_steps * ratio.num as usize + ratio.den as usize / 2) / ratio.den as usize).max(1))
+            .min(MAX_STEPS)
+    }
+
+    /// Per-voice snapshot. Voice 0 is exactly the base snapshot, so mono behaviour is unchanged.
+    pub(crate) fn voice_params(&self, base: GenParams, voice: usize) -> GenParams {
+        let spread = self.voice_spread.value().clamp(0.0, 1.0);
+        let v = voice as f32;
+        let mut out = base;
+        out.steps = self.voice_steps(base.steps, voice);
+        out.length = out.steps as f32;
+        out.seed = (base.seed + v * 0.37 * spread).fract();
+        out.phase = (base.phase + v * 0.113 * spread).fract();
+        out
+    }
+
+    /// Generated playback loop length in steps. Polymeter voices close on their capped LCM.
+    pub(crate) fn loop_steps(&self) -> u32 {
+        let base = self.gen_params().steps;
+        if self.voice_mode.value() == VoiceMode::Shared || self.voice_count() == 1 {
+            return base as u32;
+        }
+        let count = self.voice_count();
+        let mut lengths = [1u16; MAX_VOICES];
+        for voice in 0..count {
+            lengths[voice] = self.voice_steps(base, voice).min(MAX_STEPS) as u16;
+        }
+        let (lcm, capped) = crate::clock::lcm_capped(&lengths[..count], MAX_LOOP_STEPS as u64);
+        if capped { MAX_LOOP_STEPS as u32 } else { lcm.max(1) as u32 }
+    }
+
+    /// Longest history window the current pattern ceiling can fill, in derived pattern loops.
     pub(crate) fn history_bars_ceiling(&self) -> f32 {
-        history_bars_ceiling(self.step_ceiling(), self.rate.value())
+        history_bars_ceiling(self.step_ceiling(), self.loop_steps())
     }
 
     pub(crate) fn gen_params(&self) -> GenParams {
         let cap = self.step_ceiling();
         let raw = self.steps.value().clamp(1.0, cap as f32);
-        let cells = cell_count_for(raw, self.round_steps.value(), cap) as f32;
+        let cells = cell_count_for(raw, true, cap) as f32;
         GenParams {
             kind: self.mode.value(),
             steps: cells as usize,
-            length: if self.round_steps.value() { cells } else { raw },
+            length: cells,
             pulses: self.pulses.value().clamp(0, cap as i32) as usize,
             rotate: self.rotate.value().clamp(0, cap as i32) as usize,
             density: self.density.value(),
@@ -722,12 +708,11 @@ impl MelodyParams {
             .round()
             .clamp(MIN_MAX_STEPS as f32, MAX_STEPS as f32) as usize;
         let raw = self.target_value(ModTarget::Steps, &signals).clamp(1.0, cap as f32);
-        let snap = self.round_steps.value();
-        let cells = cell_count_for(raw, snap, cap);
+        let cells = cell_count_for(raw, true, cap);
         let max_rotate = (cells - 1).max(0) as f32;
         let mut out = self.gen_params();
         out.steps = cells as usize;
-        out.length = if snap { cells as f32 } else { raw };
+        out.length = cells as f32;
         out.pulses = self
             .target_value(ModTarget::Pulses, &signals)
             .round()
@@ -822,16 +807,14 @@ pub(crate) fn bend_value(cents: f32, range_cents: f32) -> f32 {
 }
 
 /// Grid cells a raw `steps` value covers under the user-selected ceiling.
-fn cell_count_for(raw: f32, snap: bool, ceiling: usize) -> i32 {
+fn cell_count_for(raw: f32, _snap: bool, ceiling: usize) -> i32 {
     let cap = ceiling.clamp(MIN_MAX_STEPS, MAX_STEPS) as f32;
-    let raw = raw.clamp(1.0, cap);
-    (if snap { raw.round() } else { raw.ceil() }).clamp(1.0, cap) as i32
+    raw.clamp(1.0, cap).round().clamp(1.0, cap) as i32
 }
 
-/// Longest history window in 4/4 bars that the current ceiling can fill.
-pub(crate) fn history_bars_ceiling(max_steps: usize, rate: Rate) -> f32 {
-    let steps_per_bar = (rate.steps_per_beat() * 4.0).max(0.001);
-    (max_steps as f64 / steps_per_bar).max(1.0) as f32
+/// Longest history window, in derived pattern loops, that the ceiling can fill.
+pub(crate) fn history_bars_ceiling(max_steps: usize, loop_steps: u32) -> f32 {
+    (max_steps as f64 / loop_steps.max(1) as f64).max(1.0) as f32
 }
 
 /// Lock-free signals shared between the audio scheduler and the editor.
@@ -908,9 +891,13 @@ impl Shared {
 
     /// Append one packed note event. Lock-free and allocation-free; called from `process`.
     fn record(&self, on: bool, note: u8, velocity: f32, cents: f32) {
+        self.record_voice(on, note, velocity, cents, 0);
+    }
+
+    fn record_voice(&self, on: bool, note: u8, velocity: f32, cents: f32, voice: u8) {
         let t_ms = self.epoch.elapsed().as_millis() as u64;
         let vel = (velocity.clamp(0.0, 1.0) * 127.0).round() as u8;
-        let packed = history::pack_detuned(t_ms, note, vel, on, cents);
+        let packed = history::pack_voice(t_ms, note, vel, on, cents, voice);
         let i = self.widx.fetch_add(1, Relaxed);
         self.ring[i % HISTORY_LEN].store(packed, Relaxed);
     }
@@ -945,9 +932,9 @@ impl Shared {
     }
 }
 
-fn regeneration_cycle_at(step_index: i64, loop_length: f64, every: i64, last: Option<i64>) -> Option<i64> {
-    if !loop_length.is_finite() || loop_length <= 0.0 || every <= 0 { return None; }
-    let cycle = (step_index as f64 / loop_length).floor() as i64;
+fn regeneration_cycle_at(step_index: i64, loop_length: i64, every: i64, last: Option<i64>) -> Option<i64> {
+    if loop_length <= 0 || every <= 0 { return None; }
+    let cycle = step_index.div_euclid(loop_length);
     if cycle > 0 && cycle.rem_euclid(every) == 0 && last != Some(cycle) { Some(cycle) } else { None }
 }
 
@@ -957,9 +944,9 @@ fn automatic_interval(base: i32, modulated: i32) -> i64 {
     if base <= 0 { 0 } else { modulated.max(0) as i64 }
 }
 
-/// Grid cell for step `k` in a loop of `length` steps; fractional lengths wrap mid-cell.
-fn step_index(k: i64, length: f64) -> i64 {
-    if length >= 1.0 && length.fract() == 0.0 { k.rem_euclid(length as i64) } else { (k as f64).rem_euclid(length).floor() as i64 }
+/// Grid cell for step `k` in an integer loop.
+fn step_index(k: i64, length: i64) -> i64 {
+    k.rem_euclid(length.max(1))
 }
 
 /// Where the step cursor resumes; a carried cursor is trusted only when it is plausibly next.
@@ -977,6 +964,7 @@ struct Active {
     note: u8,
     cents: f32,
     off_beat: f64,
+    channel: u8,
     /// Started by a sliding step: held until the next note arrives instead of being released.
     slide: bool,
 }
@@ -1009,7 +997,10 @@ pub struct NelodySeq {
     last_key: Option<GenParams>,
     /// Unmodulated snapshot used to detect manual parameter edits.
     last_base_key: Option<GenParams>,
-    pattern: Pattern,
+    last_voice_count: usize,
+    last_voice_spread: f32,
+    last_voice_mode: VoiceMode,
+    patterns: [Pattern; MAX_VOICES],
     /// Plain snapshot of the manual edit overlay, refreshed when its revision changes.
     edit_view: edits::EditView,
     last_edit_rev: u32,
@@ -1017,14 +1008,16 @@ pub struct NelodySeq {
     subdivisions: u32,
     /// Step-wide microtiming delay in beats, carried across substeps.
     step_delay: f64,
-    /// Loop length in steps, from the same snapshot as `pattern`.
-    loop_length: f64,
+    /// Loop length in steps for each voice.
+    loop_lengths: [u32; MAX_VOICES],
+    /// Global playback loop: LCM of the active voice loops, capped at MAX_LOOP_STEPS.
+    loop_length: u32,
     last_generate: Option<bool>,
-    active: Option<Active>,
-    /// A non-centre pitch bend is outstanding and must be reset when the voice stops.
-    bent: bool,
-    /// Bend range last announced through RPN 0; re-sent when the parameter or the session changes.
-    bend_range_sent: Option<i32>,
+    active: [Option<Active>; MAX_VOICES],
+    /// A non-centre pitch bend is outstanding per voice and must be reset when it stops.
+    bent: [bool; MAX_VOICES],
+    /// Bend range last announced per voice; re-sent when the parameter or session changes.
+    bend_range_sent: [Option<i32>; MAX_VOICES],
     expected_beat: Option<f64>,
     /// Next step index to schedule, carried across blocks so swing cannot drop a step.
     next_step: Option<i64>,
@@ -1047,16 +1040,20 @@ impl Default for NelodySeq {
             shared: Arc::new(Shared::default()),
             last_key: None,
             last_base_key: None,
-            pattern: Pattern::default(),
+            last_voice_count: 1,
+            last_voice_spread: 0.25,
+            last_voice_mode: VoiceMode::Shared,
+            patterns: std::array::from_fn(|_| Pattern::default()),
             edit_view: edits::EditView::default(),
             last_edit_rev: 0,
             subdivisions: 1,
             step_delay: 0.0,
-            loop_length: 16.0,
+            loop_lengths: [16; MAX_VOICES],
+            loop_length: 16,
             last_generate: None,
-            active: None,
-            bent: false,
-            bend_range_sent: None,
+            active: [None; MAX_VOICES],
+            bent: [false; MAX_VOICES],
+            bend_range_sent: [None; MAX_VOICES],
             expected_beat: None,
             next_step: None,
             next_sub: 0,
@@ -1071,21 +1068,43 @@ impl Default for NelodySeq {
 }
 
 impl NelodySeq {
-    fn send_off(&self, ctx: &mut impl ProcessContext<Self>, timing: u32, a: Active, cents: f32) {
-        self.shared.record(false, a.note, 0.0, cents);
-        ctx.send_event(NoteEvent::NoteOff { timing, voice_id: None, channel: 0, note: a.note, velocity: 0.0 });
+    /// Generate every active voice from one snapshot. Voice 0 is bit-identical to the mono path.
+    fn regenerate_voices(&mut self, base: GenParams) {
+        let count = self.params.voice_count();
+        for voice in 0..count {
+            let params = self.params.voice_params(base, voice);
+            self.patterns[voice] = generate_with(&params, &self.edit_view);
+            self.loop_lengths[voice] = MAX_LOOP_STEPS.min(self.patterns[voice].steps) as u32;
+        }
+        let lengths: [u16; MAX_VOICES] = std::array::from_fn(|i| self.loop_lengths[i].min(u16::MAX as u32) as u16);
+        let (lcm, capped) = crate::clock::lcm_capped(&lengths[..count], MAX_LOOP_STEPS as u64);
+        self.loop_length = if capped { MAX_LOOP_STEPS as u32 } else { lcm.max(1) as u32 };
+        self.last_voice_count = count;
+        self.last_voice_spread = self.params.voice_spread.value();
+        self.last_voice_mode = self.params.voice_mode.value();
     }
 
-    fn send_bend(&mut self, ctx: &mut impl ProcessContext<Self>, timing: u32, cents: f32) {
+    fn send_off(&self, ctx: &mut impl ProcessContext<Self>, timing: u32, a: Active, cents: f32) {
+        self.shared.record_voice(false, a.note, 0.0, cents, a.channel);
+        ctx.send_event(NoteEvent::NoteOff {
+            timing,
+            voice_id: None,
+            channel: a.channel,
+            note: a.note,
+            velocity: 0.0,
+        });
+    }
+
+    fn send_bend(&mut self, ctx: &mut impl ProcessContext<Self>, timing: u32, cents: f32, channel: u8) {
         let range = self.params.bend_range.value().clamp(1, 24) as f32 * 100.0;
         let value = bend_value(cents, range);
-        self.bent = (value - 0.5).abs() > 1e-4;
-        ctx.send_event(NoteEvent::MidiPitchBend { timing, channel: 0, value });
+        self.bent[channel as usize % MAX_VOICES] = (value - 0.5).abs() > 1e-4;
+        ctx.send_event(NoteEvent::MidiPitchBend { timing, channel, value });
     }
 
     /// Emit RPN 0 (pitch-bend sensitivity) so a synth that honours it matches this range, then
     /// deselect the RPN so later CC data-entry does not keep writing to it.
-    fn send_bend_range(&self, ctx: &mut impl ProcessContext<Self>, timing: u32, semitones: i32) {
+    fn send_bend_range(&self, ctx: &mut impl ProcessContext<Self>, timing: u32, semitones: i32, channel: u8) {
         let v = |raw: u8| f32::from(raw) / 127.0;
         for (cc, raw) in [
             (101, 0),
@@ -1095,18 +1114,20 @@ impl NelodySeq {
             (101, 127),
             (100, 127),
         ] {
-            ctx.send_event(NoteEvent::MidiCC { timing, channel: 0, cc, value: v(raw) });
+            ctx.send_event(NoteEvent::MidiCC { timing, channel, cc, value: v(raw) });
         }
     }
 
     fn stop_all(&mut self, ctx: &mut impl ProcessContext<Self>, nts: bool) {
-        if let Some(a) = self.active.take() {
-            let cents = if nts { a.cents } else { 0.0 };
-            self.send_off(ctx, 0, a, cents);
-        }
-        if self.bent {
-            self.bent = false;
-            ctx.send_event(NoteEvent::MidiPitchBend { timing: 0, channel: 0, value: 0.5 });
+        for voice in 0..MAX_VOICES {
+            if let Some(a) = self.active[voice].take() {
+                let cents = if nts { a.cents } else { 0.0 };
+                self.send_off(ctx, 0, a, cents);
+            }
+            if self.bent[voice] {
+                self.bent[voice] = false;
+                ctx.send_event(NoteEvent::MidiPitchBend { timing: 0, channel: voice as u8, value: 0.5 });
+            }
         }
     }
 }
@@ -1145,8 +1166,8 @@ impl Plugin for NelodySeq {
     }
     fn reset(&mut self) {
         // `reset` gets no ProcessContext, so NoteOffs flush at the top of the next `process`.
-        self.pending_reset = self.active.is_some();
-        self.bend_range_sent = None;
+        self.pending_reset = self.active.iter().any(|a| a.is_some());
+        self.bend_range_sent = [None; MAX_VOICES];
         self.expected_beat = None;
         self.next_step = None;
         self.free_beat = 0.0;
@@ -1155,7 +1176,8 @@ impl Plugin for NelodySeq {
         self.last_mod_cycle = None;
         self.last_key = None;
         self.last_base_key = None;
-        self.loop_length = 16.0;
+        self.loop_lengths = [16; MAX_VOICES];
+        self.loop_length = 16;
         self.last_generate = None;
         self.shared.current_step.store(-1, Relaxed);
         self.shared.lfo_running.store(false, Relaxed);
@@ -1165,15 +1187,25 @@ impl Plugin for NelodySeq {
         let p = self.params.clone();
         let nts = p.nts.value();
         let bend_range = p.bend_range.value().clamp(1, 24);
-        if self.bend_range_sent != Some(bend_range) {
-            // Announce the sensitivity before any bend, so the first detuned note is already right.
-            self.send_bend_range(context, 0, bend_range);
-            self.bend_range_sent = Some(bend_range);
+        let voice_count = p.voice_count();
+        for voice in 0..voice_count {
+            if self.bend_range_sent[voice] != Some(bend_range) {
+                let channel = if nts { voice as u8 } else { 0 };
+                self.send_bend_range(context, 0, bend_range, channel);
+                self.bend_range_sent[voice] = Some(bend_range);
+            }
         }
-        if !nts && self.bent {
-            // NTS switched off while a bend is outstanding: nothing else would ever recentre it.
-            self.bent = false;
-            context.send_event(NoteEvent::MidiPitchBend { timing: 0, channel: 0, value: 0.5 });
+        if !nts {
+            for voice in 0..MAX_VOICES {
+                if self.bent[voice] {
+                    self.bent[voice] = false;
+                    context.send_event(NoteEvent::MidiPitchBend {
+                        timing: 0,
+                        channel: voice as u8,
+                        value: 0.5,
+                    });
+                }
+            }
         }
         if self.pending_reset {
             self.pending_reset = false;
@@ -1232,13 +1264,22 @@ impl Plugin for NelodySeq {
         let base_key = p.gen_params();
         if self.last_base_key != Some(base_key) {
             let initial_key = p.gen_params_at(clock_start);
-            self.pattern = generate_with(&initial_key, &self.edit_view);
-            self.loop_length = initial_key.length as f64;
+            self.regenerate_voices(initial_key);
             self.last_key = Some(initial_key);
             self.last_base_key = Some(base_key);
             self.last_regen_cycle = None;
             self.last_randomize_cycle = None;
             self.last_mod_cycle = None;
+            self.shared.pattern_beat.store(start.to_bits(), Relaxed);
+        }
+        if self.last_voice_count != p.voice_count()
+            || (self.last_voice_spread - p.voice_spread.value()).abs() > 1e-6
+            || self.last_voice_mode != p.voice_mode.value()
+        {
+            let key = p.gen_params_at(clock_start);
+            self.regenerate_voices(key);
+            self.last_key = Some(key);
+            self.last_base_key = Some(p.gen_params());
             self.shared.pattern_beat.store(start.to_bits(), Relaxed);
         }
 
@@ -1258,7 +1299,7 @@ impl Plugin for NelodySeq {
         let timing = |beat: f64| -> u32 {
             (((beat - start) / beats_per_sample).round().max(0.0) as usize).min(n_samples.saturating_sub(1)) as u32
         };
-        let spb = p.rate.value().steps_per_beat();
+        let spb = p.mode.value().step_unit().steps_per_quarter();
         let step_len = 1.0 / spb;
         let s1 = end * spb;
         let carried_step = self.next_step;
@@ -1270,7 +1311,7 @@ impl Plugin for NelodySeq {
         let randomize_every =
             automatic_interval(p.randomize_after_lengths.value(), schedule_start.randomize_after);
         if self.last_mod_cycle.is_none() {
-            self.last_mod_cycle = Some((k as f64 / self.loop_length).floor() as i64);
+            self.last_mod_cycle = Some(k.div_euclid(self.loop_length as i64));
         }
 
         loop {
@@ -1281,8 +1322,8 @@ impl Plugin for NelodySeq {
             let swing = swing_value.clamp(0.0, 0.5) as f64 * step_len;
             let sub_len = step_len / self.subdivisions.max(1) as f64;
             if sub == 0 {
-                let idx = step_index(k, self.loop_length) as usize;
-                let idx = idx.min(self.pattern.steps.saturating_sub(1));
+                let idx = step_index(k, self.loop_lengths[0] as i64) as usize;
+                let idx = idx.min(self.patterns[0].steps.saturating_sub(1));
                 // Microtiming is step-wide and positive-only; negative offsets are stored but
                 // need a lookahead scheduler to fire early.
                 let offset = self.edit_view.offset_at(idx).max(0.0) as f64;
@@ -1296,31 +1337,38 @@ impl Plugin for NelodySeq {
             } else {
                 f64::INFINITY
             };
-            let next_off = self.active.map(|a| a.off_beat).unwrap_or(f64::INFINITY);
+            let next_off = self
+                .active
+                .iter()
+                .flatten()
+                .map(|a| a.off_beat)
+                .fold(f64::INFINITY, f64::min);
             let at = next_step.min(next_off);
             if !at.is_finite() || at >= end - 1e-9 { break; }
 
             // Note-offs precede any retrigger at the same timeline position.
-            if let Some(a) = self.active {
-                if a.off_beat <= at + 1e-9 {
-                    let cents = if nts { a.cents } else { 0.0 };
-                    let t = timing(a.off_beat);
-                    self.send_off(context, t, a, cents);
-                    self.active = None;
+            for voice in 0..MAX_VOICES {
+                if let Some(a) = self.active[voice] {
+                    if a.off_beat <= at + 1e-9 {
+                        let cents = if nts { a.cents } else { 0.0 };
+                        let t = timing(a.off_beat);
+                        self.send_off(context, t, a, cents);
+                        self.active[voice] = None;
+                    }
                 }
             }
 
             if next_step <= at + 1e-9 && next_step < end - 1e-9 {
                 if sub == 0 {
-                if let Some(cycle) = regeneration_cycle_at(k, self.loop_length, randomize_every, self.last_randomize_cycle) {
+                if let Some(cycle) = regeneration_cycle_at(k, self.loop_length as i64, randomize_every, self.last_randomize_cycle) {
                     self.shared.randomize_request.fetch_add(1, Relaxed);
                     self.last_randomize_cycle = Some(cycle);
                 }
 
                 // Sample pattern-shaping LFO links once per loop, using the current loop length.
-                let mod_cycle = (k as f64 / self.loop_length).floor() as i64;
+                let mod_cycle = k.div_euclid(self.loop_length as i64);
                 let mod_due = p.has_generation_links() && self.last_mod_cycle != Some(mod_cycle);
-                let regen_cycle = regeneration_cycle_at(k, self.loop_length, every, self.last_regen_cycle);
+                let regen_cycle = regeneration_cycle_at(k, self.loop_length as i64, every, self.last_regen_cycle);
                 if mod_due || regen_cycle.is_some() {
                     if let Some(cycle) = regen_cycle {
                         p.variation.fetch_add(1, Relaxed);
@@ -1329,17 +1377,16 @@ impl Plugin for NelodySeq {
                     }
                     // `variation` is already bumped for regenerate-after-N; this is the next block's base key.
                     let next_key = p.gen_params_at(nominal_clock);
-                    self.pattern = generate_with(&next_key, &self.edit_view);
-                    self.loop_length = next_key.length as f64;
+                    self.regenerate_voices(next_key);
                     self.last_key = Some(next_key);
                     // Refresh the base snapshot to avoid a false manual change next block.
                     self.last_base_key = Some(p.gen_params());
-                    self.last_mod_cycle = Some((k as f64 / self.loop_length).floor() as i64);
+                    self.last_mod_cycle = Some(k.div_euclid(self.loop_length as i64));
                     self.shared.pattern_beat.store(nominal_beat.to_bits(), Relaxed);
                 }
                 }
-                let idx = step_index(k, self.loop_length) as usize;
-                let idx = idx.min(self.pattern.steps.saturating_sub(1));
+                let idx = step_index(k, self.loop_lengths[0] as i64) as usize;
+                let idx = idx.min(self.patterns[0].steps.saturating_sub(1));
                 if sub == 0 {
                     self.shared.current_step.store(idx as i32, Relaxed);
                     // Read this step's ratchet count once; 12 subdivisions divide 1..4 evenly.
@@ -1349,19 +1396,20 @@ impl Plugin for NelodySeq {
                 let ratchet = self.edit_view.ratchet_at(idx);
                 let spacing = 12 / ratchet as u32;
                 let trigger = ratchet == 1 || sub % spacing == 0;
-                if self.pattern.hit[idx] && trigger {
+                let note_clock = LfoClock::from_beat(next_step, bpm);
+                let schedule_note = p.schedule_at(note_clock);
+                let pitch_values = p.pitch_values_at(note_clock);
+                for voice in 0..p.voice_count() {
+                    let v_idx = step_index(k, self.loop_lengths[voice] as i64) as usize;
+                    let pattern = &self.patterns[voice];
+                    if v_idx >= pattern.steps || !pattern.hit[v_idx] || !trigger { continue; }
+                    let channel = if nts { voice as u8 } else { 0 };
                     let t = timing(next_step);
-                    let note_clock = LfoClock::from_beat(next_step, bpm);
-                    let (note, cents) = p.pitch_for_values(
-                        &self.pattern,
-                        idx,
-                        &p.pitch_values_at(note_clock),
-                    );
-                    let schedule_note = p.schedule_at(note_clock);
-                    let velocity = (schedule_note.velocity * self.pattern.acc[idx]).clamp(0.01, 1.0);
+                    let (note, cents) = p.pitch_for_values(pattern, v_idx, &pitch_values);
+                    let velocity = (schedule_note.velocity * pattern.acc[v_idx]).clamp(0.01, 1.0);
                     // A per-step length replaces the global gate. A ratchet gate is still capped
                     // to its own substep spacing, so a retrigger cannot overlap the next substep.
-                    let gate_frac = self.edit_view.length_at(idx).unwrap_or(schedule_note.gate);
+                    let gate_frac = self.edit_view.length_at(v_idx).unwrap_or(schedule_note.gate);
                     let lane_len = step_len / self.subdivisions.max(1) as f64;
                     let gate_beats = if ratchet > 1 {
                         (gate_frac as f64 * step_len).min(lane_len * 0.9)
@@ -1369,42 +1417,42 @@ impl Plugin for NelodySeq {
                         gate_frac as f64 * step_len
                     };
                     let last_substep = ratchet == 1 || sub >= 12 - spacing;
-                    let hold = if self.pattern.slide[idx] && last_substep {
-                        next_hit_after(&self.pattern.hit, idx, self.pattern.steps)
-                            .map(|next| ((next + self.pattern.steps - idx) % self.pattern.steps) as f64 + SLIDE_OVERLAP)
+                    let hold = if pattern.slide[v_idx] && last_substep {
+                        next_hit_after(&pattern.hit, v_idx, pattern.steps)
+                            .map(|next| ((next + pattern.steps - v_idx) % pattern.steps) as f64 + SLIDE_OVERLAP)
                     } else {
                         None
                     };
                     let off_beat = next_step + hold.unwrap_or(gate_beats);
-                    let next = Active { note, cents, off_beat, slide: hold.is_some() };
-                    let tr = transition(self.active.as_ref(), note);
+                    let next = Active { note, cents, off_beat, channel, slide: hold.is_some() };
+                    let tr = transition(self.active[voice].as_ref(), note);
                     match tr {
                         Transition::Fresh => {
-                            if nts { self.send_bend(context, t, cents); }
-                            self.shared.record(true, note, velocity, if nts { cents } else { 0.0 });
-                            context.send_event(NoteEvent::NoteOn { timing: t, voice_id: None, channel: 0, note, velocity });
+                            if nts { self.send_bend(context, t, cents, channel); }
+                            self.shared.record_voice(true, note, velocity, if nts { cents } else { 0.0 }, voice as u8);
+                            context.send_event(NoteEvent::NoteOn { timing: t, voice_id: None, channel, note, velocity });
                         }
                         Transition::Retrigger => {
-                            if let Some(a) = self.active.take() {
+                            if let Some(a) = self.active[voice].take() {
                                 let c = if nts { a.cents } else { 0.0 };
                                 self.send_off(context, t, a, c);
                             }
-                            if nts { self.send_bend(context, t, cents); }
-                            self.shared.record(true, note, velocity, if nts { cents } else { 0.0 });
-                            context.send_event(NoteEvent::NoteOn { timing: t, voice_id: None, channel: 0, note, velocity });
+                            if nts { self.send_bend(context, t, cents, channel); }
+                            self.shared.record_voice(true, note, velocity, if nts { cents } else { 0.0 }, voice as u8);
+                            context.send_event(NoteEvent::NoteOn { timing: t, voice_id: None, channel, note, velocity });
                         }
                         Transition::Legato => {
-                            if nts { self.send_bend(context, t, cents); }
-                            self.shared.record(true, note, velocity, if nts { cents } else { 0.0 });
-                            context.send_event(NoteEvent::NoteOn { timing: t, voice_id: None, channel: 0, note, velocity });
-                            if let Some(a) = self.active.take() {
+                            if nts { self.send_bend(context, t, cents, channel); }
+                            self.shared.record_voice(true, note, velocity, if nts { cents } else { 0.0 }, voice as u8);
+                            context.send_event(NoteEvent::NoteOn { timing: t, voice_id: None, channel, note, velocity });
+                            if let Some(a) = self.active[voice].take() {
                                 let c = if nts { a.cents } else { 0.0 };
                                 self.send_off(context, t, a, c);
                             }
                         }
                         Transition::Tie => {}
                     }
-                    self.active = Some(next);
+                    self.active[voice] = Some(next);
                 }
                 // Advance one substep, then one step once every subdivision has fired.
                 if sub + 1 < self.subdivisions {
@@ -1417,12 +1465,14 @@ impl Plugin for NelodySeq {
         }
 
         // Note-off that lands inside this block after the last step start.
-        if let Some(a) = self.active {
-            if a.off_beat < end {
-                let cents = if nts { a.cents } else { 0.0 };
-                let t = timing(a.off_beat);
-                self.send_off(context, t, a, cents);
-                self.active = None;
+        for voice in 0..MAX_VOICES {
+            if let Some(a) = self.active[voice] {
+                if a.off_beat < end {
+                    let cents = if nts { a.cents } else { 0.0 };
+                    let t = timing(a.off_beat);
+                    self.send_off(context, t, a, cents);
+                    self.active[voice] = None;
+                }
             }
         }
         self.next_step = Some(k);
@@ -1573,6 +1623,45 @@ mod tests {
         (plugin, MockContext::new(44_100.0))
     }
 
+    #[test]
+    fn six_voices_play_on_separate_channels_with_nts() {
+        let (mut plugin, mut ctx) = every_step_plugin();
+        set_param(&plugin.params.voices, 6);
+        set_param(&plugin.params.nts, true);
+        run_playing(&mut plugin, &mut ctx, 4, 512);
+        let mut channels = [false; MAX_VOICES];
+        for (_, event) in &ctx.events {
+            if let NoteEvent::NoteOn { channel, .. } = event {
+                channels[*channel as usize] = true;
+            }
+        }
+        assert!(channels.iter().all(|&used| used), "not every voice emitted: {channels:?}");
+        assert!(!ctx.note_ons().is_empty());
+    }
+
+    #[test]
+    fn polymeter_voices_close_on_the_lcm() {
+        let p = MelodyParams::default();
+        set_param(&p.voices, 3);
+        set_param(&p.voice_mode, VoiceMode::Polymeter);
+        assert_eq!(p.voice_steps(16, 0), 16);
+        assert_eq!(p.voice_steps(16, 1), 24);
+        assert_eq!(p.voice_steps(16, 2), 32);
+        assert_eq!(p.loop_steps(), 96);
+    }
+
+    #[test]
+    fn six_voices_process_never_allocates() {
+        let (mut plugin, mut ctx) = every_step_plugin();
+        set_param(&plugin.params.voices, 6);
+        set_param(&plugin.params.nts, true);
+        ctx.set_recording(false);
+        run_playing(&mut plugin, &mut ctx, 1, 64);
+        crate::test_alloc::reset();
+        run_playing(&mut plugin, &mut ctx, 8, 64);
+        assert_eq!(crate::test_alloc::count(), 0, "six-voice process allocated");
+    }
+
     fn run_playing(plugin: &mut NelodySeq, ctx: &mut MockContext, blocks: usize, block_samples: usize) {
         let bpm = ctx.transport.tempo.unwrap();
         let sr = ctx.transport.sample_rate as f64;
@@ -1591,10 +1680,10 @@ mod tests {
         let map = params.param_map();
         let ids: Vec<&str> = map.iter().map(|(id, _, _)| id.as_str()).collect();
         for expected in [
-            "mode", "steps", "max_steps", "round_steps", "pulses", "rotate", "density",
+            "mode", "steps", "max_steps", "round_steps", "voices", "voice_spread", "voice_mode", "voice_preview", "pulses", "rotate", "density",
             "probability", "velocity", "regenerate_every", "randomize_after_lengths",
             "randomize_scope", "theme", "seed", "phase", "osc_rate", "osc_wave", "ca_rule",
-            "symmetry", "markov_bias", "rate", "gate", "swing", "lfo1_enabled", "lfo1_wave", "lfo1_rate_mode", "lfo1_freq",
+            "symmetry", "markov_bias", "gate", "swing", "lfo1_enabled", "lfo1_wave", "lfo1_rate_mode", "lfo1_freq",
             "lfo1_rate", "lfo1_depth", "lfo1_phase", "lfo1_polarity", "lfo1_target",
             "lfo2_enabled", "lfo2_wave", "lfo2_rate_mode", "lfo2_freq", "lfo2_rate", "lfo2_depth", "lfo2_phase",
             "lfo2_polarity", "lfo2_target", "lfo3_enabled", "lfo3_wave", "lfo3_rate_mode", "lfo3_freq",
@@ -1796,84 +1885,33 @@ mod tests {
 
     #[test]
     fn regeneration_cycle_respects_interval_and_last_cycle() {
-        assert_eq!(regeneration_cycle_at(0, 16.0, 1, None), None);
-        assert_eq!(regeneration_cycle_at(16, 16.0, 1, None), Some(1));
-        assert_eq!(regeneration_cycle_at(32, 16.0, 1, Some(1)), Some(2));
-        assert_eq!(regeneration_cycle_at(16, 16.0, 1, Some(1)), None);
-        assert_eq!(regeneration_cycle_at(32, 16.0, 2, None), Some(2));
-        assert_eq!(regeneration_cycle_at(48, 16.0, 2, None), None);
-        assert_eq!(regeneration_cycle_at(16, 16.0, 0, None), None);
-        assert_eq!(regeneration_cycle_at(16, 0.0, 1, None), None);
-        assert_eq!(regeneration_cycle_at(16, f64::NAN, 1, None), None);
+        assert_eq!(regeneration_cycle_at(0, 16, 1, None), None);
+        assert_eq!(regeneration_cycle_at(16, 16, 1, None), Some(1));
+        assert_eq!(regeneration_cycle_at(32, 16, 1, Some(1)), Some(2));
+        assert_eq!(regeneration_cycle_at(16, 16, 1, Some(1)), None);
+        assert_eq!(regeneration_cycle_at(32, 16, 2, None), Some(2));
+        assert_eq!(regeneration_cycle_at(48, 16, 2, None), None);
+        assert_eq!(regeneration_cycle_at(16, 16, 0, None), None);
+        assert_eq!(regeneration_cycle_at(16, 0, 1, None), None);
     }
 
     #[test]
-    fn rate_grid_covers_dotted_triplet_and_sixtyfourth_values() {
-        for (rate, spb) in [
-            (Rate::Quarter, 1.0),
-            (Rate::QuarterDotted, 1.0 / 1.5),
-            (Rate::Eighth, 2.0),
-            (Rate::EighthDotted, 2.0 / 1.5),
-            (Rate::EighthTriplet, 3.0),
-            (Rate::Sixteenth, 4.0),
-            (Rate::SixteenthDotted, 4.0 / 1.5),
-            (Rate::SixteenthTriplet, 6.0),
-            (Rate::ThirtySecond, 8.0),
-            (Rate::ThirtySecondDotted, 8.0 / 1.5),
-            (Rate::ThirtySecondTriplet, 12.0),
-            (Rate::SixtyFourth, 16.0),
-            (Rate::SixtyFourthDotted, 16.0 / 1.5),
-            (Rate::SixtyFourthTriplet, 24.0),
-        ] {
-            assert!((rate.steps_per_beat() - spb).abs() < 1e-12, "{rate:?}");
+    fn every_mode_declares_a_step_unit() {
+        use crate::clock::StepUnit;
+        for mode in Mode::all() {
+            assert!(mode.step_unit().steps_per_quarter() > 0.0, "{mode:?}");
         }
+        assert_eq!(Mode::Euclidean.step_unit(), StepUnit::Sixteenth);
+        assert_eq!(Mode::Markov.step_unit(), StepUnit::Eighth);
+        assert_eq!(Mode::AcidEuclid.step_unit(), StepUnit::Sixteenth);
     }
 
     #[test]
-    fn history_ceiling_tracks_the_pattern_length_in_bars() {
-        assert_eq!(history_bars_ceiling(1024, Rate::Sixteenth), 64.0);
-        assert_eq!(history_bars_ceiling(64, Rate::Sixteenth), 4.0);
-        assert_eq!(history_bars_ceiling(1024, Rate::Quarter), 256.0);
-        assert_eq!(history_bars_ceiling(1024, Rate::QuarterDotted), 384.0);
-    }
-
-    #[test]
-    fn hz_formatter_and_parser_are_hz_only() {
-        assert_eq!(format_hz(0.5), "0.50 Hz");
-        assert_eq!(format_hz(7.5), "7.50 Hz");
-        assert_eq!(format_hz(10.0), "10.0 Hz");
-        assert_eq!(format_hz(1_500.0), "10.0 Hz");
-        assert_eq!(parse_hz("0.5"), Some(0.5));
-        assert_eq!(parse_hz(" 10 hz "), Some(10.0));
-        assert_eq!(parse_hz("20000"), Some(10.0));
-        assert_eq!(parse_hz("nope"), None);
-    }
-
-    #[test]
-    fn rate_parser_accepts_display_names_and_aliases() {
-        for (i, name) in <Rate as Enum>::variants().iter().enumerate() {
-            assert_eq!(Rate::parse(name), Some(Rate::from_index(i)), "{name}");
-        }
-        assert_eq!(Rate::parse(" 1/8T "), Some(Rate::EighthTriplet));
-        assert_eq!(Rate::parse("1/16t"), Some(Rate::SixteenthTriplet));
-        assert_eq!(Rate::parse("1/16."), Some(Rate::SixteenthDotted));
-        assert_eq!(Rate::parse("1/16d"), Some(Rate::SixteenthDotted));
-        assert_eq!(Rate::parse("1/16dot"), Some(Rate::SixteenthDotted));
-        assert_eq!(Rate::parse("1/64"), Some(Rate::SixtyFourth));
-        assert_eq!(Rate::parse("1/64t"), Some(Rate::SixtyFourthTriplet));
-        assert_eq!(Rate::parse("1/64."), Some(Rate::SixtyFourthDotted));
-        for invalid in ["", "1/128", "16", "quarter", "1/4tt", "1/4dottedd"] {
-            assert_eq!(Rate::parse(invalid), None, "{invalid:?}");
-        }
-    }
-
-    #[test]
-    fn rate_wheel_walks_musical_order_and_clamps() {
-        assert_eq!(Rate::Quarter.stepped(1), Rate::QuarterDotted);
-        assert_eq!(Rate::QuarterDotted.stepped(1), Rate::Eighth);
-        assert_eq!(Rate::Eighth.stepped(-1), Rate::QuarterDotted);
-        assert_eq!(Rate::Quarter.stepped(-1), Rate::Quarter);
-        assert_eq!(Rate::SixtyFourthTriplet.stepped(1), Rate::SixtyFourthTriplet);
+    fn history_ceiling_tracks_the_pattern_loop() {
+        assert_eq!(history_bars_ceiling(512, 16), 32.0);
+        assert_eq!(history_bars_ceiling(64, 16), 4.0);
+        assert_eq!(history_bars_ceiling(512, 4), 128.0);
+        assert!((history_bars_ceiling(512, 13) - 39.384_617).abs() < 1e-4);
     }
 
     #[test]
@@ -1997,7 +2035,7 @@ mod tests {
 
     #[test]
     fn slides_choose_the_right_note_transition() {
-        let held = |note, slide| Active { note, cents: 0.0, off_beat: 1.0, slide };
+        let held = |note, slide| Active { note, cents: 0.0, off_beat: 1.0, channel: 0, slide };
         assert_eq!(transition(None, 60), Transition::Fresh);
         assert_eq!(transition(Some(&held(60, false)), 60), Transition::Retrigger);
         assert_eq!(transition(Some(&held(60, false)), 64), Transition::Retrigger);
@@ -2008,7 +2046,7 @@ mod tests {
     #[test]
     fn history_ring_holds_a_dense_full_length_line() {
         assert!(HISTORY_LEN >= 2 * MAX_STEPS, "a full loop emits at most two events per step");
-        assert_eq!(HISTORY_LEN, 4096);
+        assert_eq!(HISTORY_LEN, 16_384);
     }
 
     #[test]
@@ -2043,10 +2081,10 @@ mod tests {
     fn cell_count_never_leaves_the_selected_ceiling() {
         assert_eq!(cell_count_for(16.0, true, 64), 16);
         assert_eq!(cell_count_for(16.4, true, 64), 16);
-        assert_eq!(cell_count_for(16.4, false, 64), 17);
+        assert_eq!(cell_count_for(16.4, false, 64), 16);
         assert_eq!(cell_count_for(0.0, true, 64), 1);
         assert_eq!(cell_count_for(999.0, true, 64), 64);
-        assert_eq!(cell_count_for(999.0, false, 1024), 999);
+        assert_eq!(cell_count_for(999.0, false, 512), 512);
     }
 
     #[test]

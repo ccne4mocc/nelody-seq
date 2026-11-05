@@ -38,7 +38,7 @@ This is a working reference for changing mode calculations. It separates **what 
 | `invert` | `invert` | After rotation: fills resting contour for non-absolute lines, then flips every hit/rest. | Post-transform |
 | `mirror` | `mirror` | After invert: reverses every per-step array; sets `Pattern.mirrored`. | Post-transform |
 | `edit_overlay` | `edit_rev` | Revision is part of the cache key. `EditView` controls hit/accent/probability in display space; length/ratchet/offset are scheduler-only. | Generation + scheduler |
-| `rate` | — | `steps_per_beat`: 1/4=1, 1/8=2, 1/16=4, 1/32=8, 1/64=16; dotted `/1.5`; triplet ×1.5. `step_len = 1 / steps_per_beat` beats. | Scheduler |
+| `mode` | — | `Mode::step_unit()` owns the subdivision: most modes 1/16, textural/Slowcat modes 1/8. `step_len = 1 / steps_per_quarter` beats. There is no rate parameter. | Scheduler, editor, MIDI export |
 | `gate` (.02..1) | — | Fraction of a step. Per-step edit length overrides; ratchet gate capped to substep spacing. | Scheduler |
 | `swing` (0..0.5) | — | Only odd steps are delayed, by `swing × step_len`. | Scheduler |
 | `regenerate_every` (0..256) | — | Counted in complete loop lengths, not grid cells. `automatic_interval` makes base `0` a hard off: an LFO cannot switch it on. | Scheduler |
