@@ -684,132 +684,6 @@ component NumBox inherits Rectangle {
     }
 }
 
-// One LFO in the 2x2 rack; its drag handle links the LFO to a numeric control.
-component LfoCell inherits Rectangle {
-    in property <int> index: 1;
-    in property <bool> enabled: true;
-    in property <int> wave: 0;
-    in property <int> rate-mode: 0; // 0 = Hz, 1 = beats
-    in property <float> freq: 0.5;
-    in property <float> beats: 4;
-    in property <float> depth: 0;
-    in property <float> phase: 0;
-    in property <int> polarity: 0; // 0 = bipolar, 1 = unipolar up, 2 = unipolar down
-    in property <float> anim-phase: 0;
-    in property <float> dot-y: 20;
-    in property <bool> running: true;
-    in property <[string]> wave-paths;
-    in property <[string]> wave-names;
-    callback wave-selected(int);
-    callback wave-opened(length, length);
-    callback enabled-toggled();
-    callback rate-mode-toggled();
-    callback speed-changed(float);
-    callback depth-changed(float);
-    callback phase-changed(float);
-    callback polarity-toggled();
-
-    property <color> accent: root.index == 1 ? Theme.c1 : (root.index == 2 ? Theme.c2 : (root.index == 3 ? Theme.c3 : Theme.hi));
-    function format-hz(v: float) -> string {
-        if (v >= 100) { return "\{Math.round(v)} Hz"; }
-        if (v >= 10) { return "\{Math.round(v * 10) / 10} Hz"; }
-        return "\{Math.round(v * 100) / 100} Hz";
-    }
-
-    height: 28px;
-    HorizontalLayout {
-        // 2px keeps the 28x26 drag points inside the 822px rack width.
-        spacing: 2px;
-        alignment: center;
-        Rectangle {
-            width: 28px; height: 28px; background: transparent;
-            Rectangle {
-                y: 1px; width: 28px; height: 26px; border-radius: 4px;
-                background: root.accent;
-                Text { text: "\{root.index}"; color: Theme.on-accent; font-size: Type.value; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-                handle-touch := TipTouch {
-                    hint: "Drag this LFO point onto a numeric parameter to link it";
-                    pointer-event(e) => {
-                        // Slint reports move events with button = Other; do not gate moves on the left button.
-                        if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
-                            ModDrag.lfo = root.index;
-                            ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
-                            ModDrag.y = handle-touch.absolute-position.y + handle-touch.mouse-y;
-                        } else if (e.kind == PointerEventKind.move && ModDrag.lfo == root.index) {
-                            ModDrag.x = handle-touch.absolute-position.x + handle-touch.mouse-x;
-                            ModDrag.y = handle-touch.absolute-position.y + handle-touch.mouse-y;
-                        } else if (e.kind == PointerEventKind.up && ModDrag.lfo == root.index) {
-                            ModDrag.dropped(root.index, ModDrag.x, ModDrag.y);
-                            ModDrag.lfo = 0;
-                        } else if (e.kind == PointerEventKind.cancel) {
-                            ModDrag.lfo = 0;
-                        }
-                    }
-                }
-            }
-        }
-        Rectangle {
-            width: 34px; height: 28px; background: transparent;
-            Text {
-                x: 3px; width: parent.width - 3px; height: parent.height;
-                text: "LFO \{root.index}";
-                color: root.enabled ? root.accent : Theme.text-muted;
-                opacity: root.enabled ? 1.0 : 0.65;
-                font-size: Type.caption; font-weight: 700;
-                vertical-alignment: center; overflow: elide;
-            }
-            name-touch := TipTouch { hint: "Click the LFO name to enable or disable it"; clicked => { root.enabled-toggled(); } }
-        }
-        WavePicker {
-            width: 76px; height: 28px;
-            paths: root.wave-paths; names: root.wave-names; current: root.wave;
-            anim-phase: root.anim-phase; dot-y: root.dot-y; show-dot: true; running: root.running;
-            hint: "Select the LFO waveform";
-            selected(i) => { root.wave-selected(i); }
-            opened(x, y) => { root.wave-opened(x, y); }
-        }
-        TuningChip {
-            width: 28px; label: ""; value: root.rate-mode == 0 ? "Hz" : "BT"; centered: true;
-            active: false; hint: "Rate mode: Hz (free-running) or BT (beat-synced)";
-            cycled => { root.rate-mode-toggled(); }
-        }
-        OptSlider {
-            width: 84px; height: 25px; index: root.index + 23;
-            hint: "LFO speed in the selected clock mode";
-            opt: {
-                label: "Rate",
-                min: root.rate-mode == 0 ? 0.01 : 0.25,
-                max: root.rate-mode == 0 ? 10 : 16,
-                value: root.rate-mode == 0 ? root.freq : root.beats,
-                text: root.rate-mode == 0 ? root.format-hz(root.freq) : "\{Math.round(root.beats * 100) / 100}",
-                step: root.rate-mode == 0 ? 0.01 : 0.25,
-                number: root.rate-mode == 0 ? "\{Math.round(root.freq * 100) / 100}" : "\{Math.round(root.beats * 100) / 100}",
-                scale: 1
-            };
-            changed(v) => { root.speed-changed(v); }
-        }
-        OptSlider {
-            width: 58px; height: 25px; index: root.index + 27;
-            hint: "Depth: 0-200% of the target range; 100% is a full sweep";
-            opt: { label: "Dep", min: 0, max: 2, value: root.depth, text: "\{Math.round(root.depth * 100)}%", step: 0.01, number: "\{Math.round(root.depth * 100)}", scale: 0.01 };
-            changed(v) => { root.depth-changed(v); }
-        }
-        OptSlider {
-            width: 52px; height: 25px; index: root.index + 31;
-            hint: "Phase offset of this LFO";
-            opt: { label: "Phs", min: 0, max: 1, value: root.phase, text: "\{Math.round(root.phase * 360)}°", step: 0.01, number: "\{Math.round(root.phase * 360)}", scale: 1.0 / 360.0 };
-            changed(v) => { root.phase-changed(v); }
-        }
-        TuningChip {
-            width: 30px; label: "";
-            value: root.polarity == 0 ? "±" : (root.polarity == 1 ? "+" : "−");
-            centered: true; text-size: Type.value; active: root.polarity == 0;
-            hint: "Polarity: click to cycle bipolar, positive-only and negative-only";
-            cycled => { root.polarity-toggled(); }
-        }
-    }
-}
-
 // Grouped two-column mode picker. Headers are full-width; host indices stay in ModeRow.left/right.
 component ModeDropdown inherits Rectangle {
     in property <[ModeRow]> rows;
@@ -953,9 +827,6 @@ export component AppWindow inherits Window {
     in property <float> regenerate-every: 0;
     in property <float> randomize-after-lengths: 0;
     in property <float> swing: 0;
-    // Rack and modulation matrix are hidden while the LFO UI is reworked. Parameters, links and
-    // the audio path stay live, so presets keep modulating; see docs/LFO_SYSTEM.md.
-    in property <bool> lfo-ui: false;
     in property <bool> lfo1-enabled: true;
     in property <int> lfo1-wave: 0;
     in property <int> lfo1-rate-mode: 0;
@@ -1379,6 +1250,9 @@ export component AppWindow inherits Window {
         if (r == 4) { return "Dense"; }
         return "Life";
     }
+    pure function regen-label(mode: int) -> string {
+        return "Regenerate after (lengths, 0=off)";
+    }
     property <[string]> mode-names: [
         "Euclidean", "Golomb Ruler", "Logistic Map", "Eulerian Walk", "Arnold Circle Map",
         "Mozart Dice", "Tonnetz Walk", "Cellular Automaton", "Markov Walk", "Oscillator / Phase",
@@ -1432,9 +1306,9 @@ export component AppWindow inherits Window {
         { label: root.ca-label(root.mode), min: 0, max: 255, value: root.ca-rule, text: root.mode == 29 ? root.life-rule-name(root.ca-rule) : (root.mode == 16 ? "\{Math.round(root.ca-rule / 255 * 100)}%" : "\{Math.round(root.ca-rule)}"), step: 1, number: root.mode == 16 ? "\{Math.round(root.ca-rule / 255 * 100)}" : "\{Math.round(root.ca-rule)}", scale: root.mode == 16 ? 2.55 : 1 },
         { label: "Probability", min: 0, max: 1, value: root.probability, text: "\{Math.round(root.probability * 100)}%", step: 0.01, number: "\{Math.round(root.probability * 100)}", scale: 0.01 },
         { label: "Velocity", min: 0.01, max: 1, value: root.velocity, text: "\{Math.round(root.velocity * 100)}%", step: 0.01, number: "\{Math.round(root.velocity * 100)}", scale: 0.01 },
-        { label: "Regenerate after", min: 0, max: 256, value: root.regenerate-every, text: root.regenerate-every > 0 ? "\{Math.round(root.regenerate-every)}" : "OFF", step: 1, number: "\{Math.round(root.regenerate-every)}", scale: 1 },
+        { label: root.regen-label(root.mode), min: 0, max: 256, value: root.regenerate-every, text: "\{Math.round(root.regenerate-every)}", step: 1, number: "\{Math.round(root.regenerate-every)}", scale: 1 },
         { label: root.symmetry-label(root.mode), min: 1, max: 8, value: root.symmetry, text: root.symmetry-text(root.mode, root.symmetry), step: 1, number: "\{Math.round(root.symmetry)}", scale: 1 },
-        { label: "Randomize after", min: 0, max: 256, value: root.randomize-after-lengths, text: root.randomize-after-lengths > 0 ? "\{Math.round(root.randomize-after-lengths)}" : "OFF", step: 1, number: "\{Math.round(root.randomize-after-lengths)}", scale: 1 },
+        { label: "Randomize after lengths", min: 0, max: 256, value: root.randomize-after-lengths, text: "\{Math.round(root.randomize-after-lengths)}", step: 1, number: "\{Math.round(root.randomize-after-lengths)}", scale: 1 },
         { label: "Swing", min: 0, max: 0.5, value: root.swing, text: "\{Math.round(root.swing * 300)}%", step: 0.01, number: "\{Math.round(root.swing * 300)}", scale: 1.0 / 300.0 },
         // Index 14 is the max-steps box in Settings, not a slider.
         { label: "Max steps", min: 64, max: 1024, value: root.max-steps, text: "\{Math.round(root.max-steps)}", step: 1, number: "\{Math.round(root.max-steps)}", scale: 1 },
@@ -1491,7 +1365,8 @@ export component AppWindow inherits Window {
             Text { visible: root.track-name != ""; text: "· \{root.track-name}"; color: Theme.text-muted; font-size: Type.caption; vertical-alignment: center; overflow: elide; }
             // Hover descriptions live in the bottom status strip, clear of the pointer.
             Rectangle { horizontal-stretch: 1; }
-            Rectangle { width: 108px; height: 24px; border-radius: 4px; background: root.free-run ? Theme.c1.with-alpha(0.22) : Theme.control; Text { text: root.free-run ? "SYNC: FREE-RUN" : "SYNC: HOST"; color: root.free-run ? Theme.c1 : Theme.text-muted; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; } free-touch := TipTouch { hint: "Run the internal clock while the host transport is stopped"; clicked => { root.toggle-free-run(); } } }
+            Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.free-run ? Theme.c1.with-alpha(0.22) : Theme.control; Text { text: "free-run"; color: Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; } free-touch := TipTouch { hint: "Run the internal clock while the host transport is stopped"; clicked => { root.toggle-free-run(); } } }
+            Text { text: root.free-run ? "FREE-RUN CLOCK: ON" : "SYNC: HOST TRANSPORT"; color: root.free-run ? Theme.c1 : Theme.text-muted; font-size: Type.caption; vertical-alignment: center; }
             Text { text: root.timing-summary; color: Theme.text-muted; font-size: Type.caption; vertical-alignment: center; overflow: elide; }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: Theme.hi; border-width: generate-touch.has-hover ? 2px : 0px; border-color: Theme.c1; Text { text: root.generate-on ? "RE-GENERATE ↻" : "GENERATE ↻"; color: Theme.on-accent; font-size: Type.value; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } generate-touch := TipTouch { hint: "Create a new deterministic variation of the current line"; clicked => { root.generate-pressed(); } } }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: randomize-touch.has-hover ? Theme.control-hover : Theme.control; Text { text: "RANDOMIZE ⚄"; color: Theme.text; font-size: Type.value; horizontal-alignment: center; vertical-alignment: center; } randomize-touch := TipTouch { hint: "Randomize the parameter groups enabled in RANDOMIZE SCOPE"; clicked => { root.randomize-pressed(); } } }
@@ -1554,6 +1429,10 @@ export component AppWindow inherits Window {
                         changed(v) => { root.set-opt(24, v); }
                     }
                     OptSlider { width: 100px; opt: root.opts[13]; index: 13; mod-target: 9; changed(v) => { root.set-opt(13, v); } }
+                }
+                // Symmetry is not in nelody's ModTarget list, so it registers no modulation target.
+                if root.shows-param(root.mode, 11): HorizontalLayout { spacing: 5px;
+                    OptSlider { opt: root.opts[11]; index: 11; mod-target: -1; changed(v) => { root.set-opt(11, v); } }
                 }
                 if root.mode == 9: HorizontalLayout {
                     WavePicker {
@@ -1981,111 +1860,6 @@ export component AppWindow inherits Window {
             }
 
         }
-        // Four runtime LFOs in a 2x2 rack; drop a colored point on a numeric control to link it.
-        Rectangle {
-            visible: root.lfo-ui;
-            height: root.lfo-ui ? 88px : 0px; border-radius: 4px;
-            background: Theme.surface; border-width: 1px; border-color: Theme.border;
-            VerticalLayout {
-                padding: 5px; spacing: 3px;
-                HorizontalLayout {
-                    height: 16px; spacing: 5px;
-                    Text { text: "LFO MODULATION"; color: Theme.text-muted; font-size: Type.caption; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
-                    Text {
-                        horizontal-stretch: 1;
-                        text: root.mod-status != "" ? root.mod-status : "drag a colored point onto a parameter · drag again to unlink";
-                        color: root.mod-status != "" ? Theme.c2 : Theme.text-muted;
-                        font-size: Type.caption; horizontal-alignment: right; vertical-alignment: center; overflow: elide;
-                    }
-                    Rectangle {
-                        width: 58px; height: 15px; border-radius: 3px;
-                        background: root.matrix-open ? Theme.c2.with-alpha(0.55) : (matrix-touch.has-hover ? Theme.control-hover : Theme.control);
-                        Text { text: "MATRIX ▤"; color: root.matrix-open ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
-                        matrix-touch := TipTouch {
-                            hint: "Show or hide the LFO modulation matrix";
-                            clicked => {
-                                root.matrix-open = !root.matrix-open;
-                                root.mode-menu-open = false;
-                                root.tuning-open = false;
-                                root.scope-menu-open = false;
-                                root.wave-menu-target = -1;
-                                root.settings-open = false;
-                            }
-                        }
-                    }
-                }
-                HorizontalLayout {
-                    height: 28px; spacing: 5px;
-                    LfoCell {
-                        horizontal-stretch: 1;
-                        index: 1; enabled: root.lfo1-enabled; wave: root.lfo1-wave; rate-mode: root.lfo1-rate-mode;
-                        freq: root.lfo1-freq; beats: root.lfo1-rate; depth: root.lfo1-depth;
-                        phase: root.lfo1-phase; polarity: root.lfo1-polarity;
-                        anim-phase: root.lfo1-anim-phase; dot-y: root.lfo1-dot-y; running: root.lfo-running;
-                        wave-paths: root.wave-paths; wave-names: root.wave-names;
-                        wave-selected(i) => { root.set-lfo-wave(1, i); }
-                        wave-opened(x, y) => { root.wave-menu-target = 1; root.wave-menu-x = x; root.wave-menu-y = y - (root.wave-paths.length * 26px + 36px); }
-                        enabled-toggled => { root.set-lfo-enabled(1, !root.lfo1-enabled); }
-                        rate-mode-toggled => { root.set-lfo-rate-mode(1, root.lfo1-rate-mode == 0 ? 1 : 0); }
-                        speed-changed(v) => { root.set-lfo-speed(1, v); }
-                        depth-changed(v) => { root.set-lfo-depth(1, v); }
-                        phase-changed(v) => { root.set-lfo-phase(1, v); }
-                        polarity-toggled => { root.set-lfo-polarity(1, Math.mod(root.lfo1-polarity + 1, 3)); }
-                    }
-                    LfoCell {
-                        horizontal-stretch: 1;
-                        index: 2; enabled: root.lfo2-enabled; wave: root.lfo2-wave; rate-mode: root.lfo2-rate-mode;
-                        freq: root.lfo2-freq; beats: root.lfo2-rate; depth: root.lfo2-depth;
-                        phase: root.lfo2-phase; polarity: root.lfo2-polarity;
-                        anim-phase: root.lfo2-anim-phase; dot-y: root.lfo2-dot-y; running: root.lfo-running;
-                        wave-paths: root.wave-paths; wave-names: root.wave-names;
-                        wave-selected(i) => { root.set-lfo-wave(2, i); }
-                        wave-opened(x, y) => { root.wave-menu-target = 2; root.wave-menu-x = x; root.wave-menu-y = y - (root.wave-paths.length * 26px + 36px); }
-                        enabled-toggled => { root.set-lfo-enabled(2, !root.lfo2-enabled); }
-                        rate-mode-toggled => { root.set-lfo-rate-mode(2, root.lfo2-rate-mode == 0 ? 1 : 0); }
-                        speed-changed(v) => { root.set-lfo-speed(2, v); }
-                        depth-changed(v) => { root.set-lfo-depth(2, v); }
-                        phase-changed(v) => { root.set-lfo-phase(2, v); }
-                        polarity-toggled => { root.set-lfo-polarity(2, Math.mod(root.lfo2-polarity + 1, 3)); }
-                    }
-                }
-                HorizontalLayout {
-                    height: 28px; spacing: 5px;
-                    LfoCell {
-                        horizontal-stretch: 1;
-                        index: 3; enabled: root.lfo3-enabled; wave: root.lfo3-wave; rate-mode: root.lfo3-rate-mode;
-                        freq: root.lfo3-freq; beats: root.lfo3-rate; depth: root.lfo3-depth;
-                        phase: root.lfo3-phase; polarity: root.lfo3-polarity;
-                        anim-phase: root.lfo3-anim-phase; dot-y: root.lfo3-dot-y; running: root.lfo-running;
-                        wave-paths: root.wave-paths; wave-names: root.wave-names;
-                        wave-selected(i) => { root.set-lfo-wave(3, i); }
-                        wave-opened(x, y) => { root.wave-menu-target = 3; root.wave-menu-x = x; root.wave-menu-y = y - (root.wave-paths.length * 26px + 36px); }
-                        enabled-toggled => { root.set-lfo-enabled(3, !root.lfo3-enabled); }
-                        rate-mode-toggled => { root.set-lfo-rate-mode(3, root.lfo3-rate-mode == 0 ? 1 : 0); }
-                        speed-changed(v) => { root.set-lfo-speed(3, v); }
-                        depth-changed(v) => { root.set-lfo-depth(3, v); }
-                        phase-changed(v) => { root.set-lfo-phase(3, v); }
-                        polarity-toggled => { root.set-lfo-polarity(3, Math.mod(root.lfo3-polarity + 1, 3)); }
-                    }
-                    LfoCell {
-                        horizontal-stretch: 1;
-                        index: 4; enabled: root.lfo4-enabled; wave: root.lfo4-wave; rate-mode: root.lfo4-rate-mode;
-                        freq: root.lfo4-freq; beats: root.lfo4-rate; depth: root.lfo4-depth;
-                        phase: root.lfo4-phase; polarity: root.lfo4-polarity;
-                        anim-phase: root.lfo4-anim-phase; dot-y: root.lfo4-dot-y; running: root.lfo-running;
-                        wave-paths: root.wave-paths; wave-names: root.wave-names;
-                        wave-selected(i) => { root.set-lfo-wave(4, i); }
-                        wave-opened(x, y) => { root.wave-menu-target = 4; root.wave-menu-x = x; root.wave-menu-y = y - (root.wave-paths.length * 26px + 36px); }
-                        enabled-toggled => { root.set-lfo-enabled(4, !root.lfo4-enabled); }
-                        rate-mode-toggled => { root.set-lfo-rate-mode(4, root.lfo4-rate-mode == 0 ? 1 : 0); }
-                        speed-changed(v) => { root.set-lfo-speed(4, v); }
-                        depth-changed(v) => { root.set-lfo-depth(4, v); }
-                        phase-changed(v) => { root.set-lfo-phase(4, v); }
-                        polarity-toggled => { root.set-lfo-polarity(4, Math.mod(root.lfo4-polarity + 1, 3)); }
-                    }
-                }
-            }
-        }
         HorizontalLayout {
             height: 30px; padding-top: 5px; spacing: 5px;
             HorizontalLayout {
@@ -2230,73 +2004,6 @@ export component AppWindow inherits Window {
         }
     }
 
-    // Read-only modulation matrix; the scrim follows the animated position so parked means gone.
-    if root.lfo-ui && root.matrix-y < root.base-height: Rectangle {
-        x: 0px; y: 0px; width: root.base-width; height: root.base-height;
-        background: #00000055;
-        TouchArea { clicked => { root.matrix-open = false; } }
-    }
-    Rectangle {
-        visible: root.lfo-ui;
-        x: 0px; y: root.matrix-y; width: root.base-width; height: 300px;
-        background: Theme.surface; border-width: 1px; border-color: Theme.border;
-        drop-shadow-blur: 16px; drop-shadow-color: #00000055; drop-shadow-offset-y: -4px;
-        animate y { duration: root.reduce-motion ? 0ms : 150ms; easing: ease-in-out; }
-        VerticalLayout {
-            padding: 10px; spacing: 6px;
-            HorizontalLayout {
-                height: 24px;
-                Text { text: "MODULATION MATRIX"; color: Theme.c1; font-size: Type.title; font-weight: 700; vertical-alignment: center; }
-                Text { horizontal-stretch: 1; text: "drag an LFO point onto a parameter to link · × removes a link"; color: Theme.text-muted; font-size: Type.value; horizontal-alignment: right; vertical-alignment: center; }
-                Rectangle {
-                    width: 62px; height: 24px; border-radius: 4px;
-                    background: matrix-close.has-hover ? Theme.hi : Theme.control;
-                    Text { text: "CLOSE"; color: matrix-close.has-hover ? Theme.on-accent : Theme.text; font-size: Type.value; horizontal-alignment: center; vertical-alignment: center; }
-                    matrix-close := TipTouch { hint: "Close the modulation matrix"; clicked => { root.matrix-open = false; } }
-                }
-            }
-            HorizontalLayout {
-                height: 18px; spacing: 6px;
-                Text { width: 38px; text: "LFO"; color: Theme.text-muted; font-size: Type.caption; font-weight: 700; letter-spacing: 0.5px; }
-                Text { width: 220px; text: "SOURCE"; color: Theme.text-muted; font-size: Type.caption; font-weight: 700; letter-spacing: 0.5px; }
-                Text { width: 150px; text: "TARGET"; color: Theme.text-muted; font-size: Type.caption; font-weight: 700; letter-spacing: 0.5px; }
-                Text { width: 70px; text: "BASE"; color: Theme.text-muted; font-size: Type.caption; horizontal-alignment: right; }
-                Text { width: 70px; text: "VALUE"; color: Theme.text-muted; font-size: Type.caption; horizontal-alignment: right; }
-                Text { width: 70px; text: "DELTA"; color: Theme.text-muted; font-size: Type.caption; horizontal-alignment: right; }
-                Text { width: 24px; text: ""; }
-            }
-            if root.mod-rows.length == 0: Text {
-                text: "No links yet. Drag a colored LFO point onto any numeric parameter.";
-                color: Theme.text-muted; font-size: Type.body; wrap: word-wrap;
-            }
-            ScrollView {
-                vertical-stretch: 1;
-                vertical-scrollbar-policy: as-needed;
-                VerticalLayout {
-                    spacing: 2px;
-                    for row in root.mod-rows: Rectangle {
-                        height: 28px; border-radius: 3px;
-                        background: row.lfo == 1 ? Theme.c1.with-alpha(0.08) : (row.lfo == 2 ? Theme.c2.with-alpha(0.08) : (row.lfo == 3 ? Theme.c3.with-alpha(0.08) : Theme.hi.with-alpha(0.05)));
-                        HorizontalLayout {
-                            padding-left: 6px; padding-right: 6px; spacing: 6px;
-                            Text { width: 38px; text: "\{row.lfo}"; color: row.lfo == 1 ? Theme.c1 : (row.lfo == 2 ? Theme.c2 : (row.lfo == 3 ? Theme.c3 : Theme.hi)); font-size: Type.value; font-weight: 700; vertical-alignment: center; }
-                            Text { width: 220px; text: row.source; color: Theme.text-muted; font-size: Type.value; vertical-alignment: center; overflow: elide; }
-                            Text { width: 150px; text: row.target; color: Theme.text; font-size: Type.value; vertical-alignment: center; overflow: elide; }
-                            Text { width: 70px; text: row.base; color: Theme.text-muted; font-size: Type.value; horizontal-alignment: right; vertical-alignment: center; }
-                            Text { width: 70px; text: row.value; color: Theme.c2; font-size: Type.value; horizontal-alignment: right; vertical-alignment: center; }
-                            Text { width: 70px; text: row.delta; color: Theme.text-muted; font-size: Type.value; horizontal-alignment: right; vertical-alignment: center; }
-                            Rectangle {
-                                width: 24px; height: 28px; border-radius: 3px;
-                                background: delete-touch.has-hover ? Theme.c3.with-alpha(0.65) : transparent;
-                                Text { width: parent.width; height: parent.height; text: "×"; color: delete-touch.has-hover ? Theme.on-accent : Theme.text-muted; font-size: Type.glyph-large; horizontal-alignment: center; vertical-alignment: center; }
-                                delete-touch := TipTouch { hint: "Remove this LFO-to-parameter link"; clicked => { root.delete-mod(row.lfo, row.target-id); } }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     // Parked off-screen when closed so the closing animation can play. Tie the scrim to the
     // animated position, not the boolean, so it cannot swallow clicks while the panel travels out.
@@ -2371,6 +2078,7 @@ export component AppWindow inherits Window {
                 Text { x: 8px; width: parent.width - 16px; text: root.reduce-motion ? "REDUCE MOTION: ON" : "REDUCE MOTION: OFF"; color: root.reduce-motion ? Theme.on-accent : Theme.text; font-size: Type.caption; vertical-alignment: center; }
                 motion-touch := TipTouch { hint: "Skip panel slides and note tweens"; clicked => { root.toggle-reduce-motion(); } }
             }
+            Text { text: "Stops the drawing-panel tweens, the register flash and the panel slides."; color: Theme.text-muted; font-size: Type.value; wrap: word-wrap; }
             Text { text: "TECHNICAL SUPPORT"; color: Theme.text-muted; font-size: Type.caption; font-weight: 700; letter-spacing: 0.5px; }
             Rectangle {
                 height: 26px; border-radius: 4px;
@@ -2378,6 +2086,7 @@ export component AppWindow inherits Window {
                 Text { x: 8px; width: parent.width - 16px; text: root.logging-on ? "LOGGING: ON (nelody-seq.log)" : "LOGGING: OFF"; color: root.logging-on ? Theme.on-accent : Theme.text; font-size: Type.caption; vertical-alignment: center; }
                 logging-touch := TipTouch { hint: "Write mode and parameter snapshots to nelody-seq.log"; clicked => { root.toggle-logging(); } }
             }
+            Text { text: "Writes mode and parameter snapshots to nelody-seq.log in your home folder."; color: Theme.text-muted; font-size: Type.value; wrap: word-wrap; }
             Text { text: "MIDI EXPORT FOLDER"; color: Theme.text-muted; font-size: Type.caption; font-weight: 700; letter-spacing: 0.5px; }
             Rectangle {
                 height: 26px; border-radius: 4px;
