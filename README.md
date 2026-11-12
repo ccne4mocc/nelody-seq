@@ -146,7 +146,7 @@ I highly recommend to work with your LFOs in your DAW.
 
 ## Build
 
-Requirements: Rust 1.88 or newer, a C/C++ build toolchain, and the usual Slint windowing
+Requirements: Rust 1.90 or newer, a C/C++ build toolchain, and the usual Slint windowing
 dependencies on Linux.
 
 ```sh

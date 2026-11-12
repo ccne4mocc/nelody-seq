@@ -51,7 +51,7 @@ jobs:
         run: cargo test --lib --locked
 
   msrv:
-    name: MSRV (1.88)
+    name: MSRV (1.90)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -70,7 +70,7 @@ jobs:
             libfontconfig1-dev \
             libgl1-mesa-dev
 
-      - uses: dtolnay/rust-toolchain@1.88
+      - uses: dtolnay/rust-toolchain@1.90
 
       - uses: Swatinem/rust-cache@v2
 

@@ -2,7 +2,7 @@
 name = "nelody-seq"
 version = "1.0.1"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.90"
 description = "Algorithmic melodic MIDI sequencer plug-in (CLAP/VST3), Rust-based"
 license = "GPL-3.0-or-later"
 authors = ["ccne4mocc / feN"]
