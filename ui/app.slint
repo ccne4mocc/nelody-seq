@@ -1368,7 +1368,18 @@ export component AppWindow inherits Window {
             Rectangle { width: 74px; height: 24px; border-radius: 4px; background: root.free-run ? Theme.c1.with-alpha(0.22) : Theme.control; Text { text: "free-run"; color: Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; } free-touch := TipTouch { hint: "Run the internal clock while the host transport is stopped"; clicked => { root.toggle-free-run(); } } }
             Text { text: root.free-run ? "FREE-RUN CLOCK: ON" : "SYNC: HOST TRANSPORT"; color: root.free-run ? Theme.c1 : Theme.text-muted; font-size: Type.caption; vertical-alignment: center; }
             Text { text: root.timing-summary; color: Theme.text-muted; font-size: Type.caption; vertical-alignment: center; overflow: elide; }
-            Rectangle { width: 112px; height: 30px; border-radius: 5px; background: Theme.hi; border-width: generate-touch.has-hover ? 2px : 0px; border-color: Theme.c1; Text { text: root.generate-on ? "RE-GENERATE ↻" : "GENERATE ↻"; color: Theme.on-accent; font-size: Type.value; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } generate-touch := TipTouch { hint: "Create a new deterministic variation of the current line"; clicked => { root.generate-pressed(); } } }
+            Rectangle {
+                width: 112px; height: 30px; border-radius: 5px; background: Theme.hi;
+                border-width: generate-touch.has-hover ? 2px : 0px; border-color: Theme.c1;
+                Text { text: root.generate-on ? "RE-GENERATE ↻" : "GENERATE ↻"; color: Theme.on-accent; font-size: Type.value; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                // The shared focus ring is the same hue as this fill, so the primary action carries
+                // its own contrasting inset ring.
+                if generate-touch.has-focus: Rectangle {
+                    x: 2px; y: 2px; width: parent.width - 4px; height: parent.height - 4px;
+                    border-radius: 3px; border-width: 1px; border-color: Theme.on-accent; background: transparent;
+                }
+                generate-touch := TipTouch { hint: "Create a new deterministic variation of the current line"; clicked => { root.generate-pressed(); } }
+            }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: randomize-touch.has-hover ? Theme.control-hover : Theme.control; Text { text: "RANDOMIZE ⚄"; color: Theme.text; font-size: Type.value; horizontal-alignment: center; vertical-alignment: center; } randomize-touch := TipTouch { hint: "Randomize the parameter groups enabled in RANDOMIZE SCOPE"; clicked => { root.randomize-pressed(); } } }
             Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: Type.glyph-large; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TipTouch { hint: "Open settings: theme, presets, limits, export and credits"; clicked => { root.tuning-open = false; root.settings-open = !root.settings-open; if (root.settings-open) { root.matrix-open = false; } } } }
         }
@@ -2013,6 +2024,9 @@ export component AppWindow inherits Window {
         TouchArea { clicked => { root.settings-open = false; } }
     }
     Rectangle {
+        // Parked off-window, so it must leave the tab order and the AT tree entirely; tying
+        // visibility to the animated position keeps the slide-out playable.
+        visible: root.settings-x < root.base-width;
         x: root.settings-x; y: 0px; width: 300px; height: root.base-height;
         background: Theme.surface; border-width: 1px; border-color: Theme.border;
         drop-shadow-blur: 16px; drop-shadow-color: #00000055; drop-shadow-offset-y: 4px;

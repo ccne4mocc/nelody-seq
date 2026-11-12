@@ -1875,6 +1875,20 @@ mod tests {
             2,
             "the r shortcut did not survive Tab moving focus into a control"
         );
+
+        // A closed drawer is parked off-window; it must also leave the tab order, or Tab walks
+        // into its MIDI folder field and starts typing into a panel nobody can see.
+        for _ in 0..150 {
+            window
+                .try_dispatch_event(slint::platform::WindowEvent::KeyPressed {
+                    text: slint::platform::Key::Tab.into(),
+                })
+                .unwrap();
+            assert!(
+                !ui.get_text_focused(),
+                "a closed Settings drawer must not take keyboard focus"
+            );
+        }
     }
 
     #[test]
