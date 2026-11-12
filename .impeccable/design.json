@@ -1,0 +1,400 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-12T21:30:09+00:00",
+  "title": "Design System: nelody seq",
+  "extensions": {
+    "colorMeta": {
+      "lime-signal": {
+        "role": "primary",
+        "displayName": "Lime Signal",
+        "canonical": "#bef264",
+        "tonalRamp": [
+          "#2c3b12",
+          "#507019",
+          "#77ab1b",
+          "#9de81c",
+          "#b4eb57",
+          "#cbeb93",
+          "#e3f2ca",
+          "#f4f9eb"
+        ]
+      },
+      "chord-green": {
+        "role": "primary",
+        "displayName": "Chord Green",
+        "canonical": "#22c55e",
+        "tonalRamp": [
+          "#153822",
+          "#21693b",
+          "#27a054",
+          "#2dd76c",
+          "#63de90",
+          "#9ae4b6",
+          "#cdefd9",
+          "#ecf8f1"
+        ]
+      },
+      "teal-third": {
+        "role": "primary",
+        "displayName": "Teal Third",
+        "canonical": "#0d9488",
+        "tonalRamp": [
+          "#123b37",
+          "#1a7068",
+          "#1cab9e",
+          "#1de7d5",
+          "#57eadd",
+          "#93ebe3",
+          "#caf2ee",
+          "#ebf9f8"
+        ]
+      },
+      "focus-orange": {
+        "role": "primary",
+        "displayName": "Focus Orange",
+        "canonical": "#fb923c",
+        "tonalRamp": [
+          "#3e240f",
+          "#764013",
+          "#b55b12",
+          "#f6770e",
+          "#f5984d",
+          "#f1ba8d",
+          "#f5dcc7",
+          "#faf1ea"
+        ]
+      },
+      "chamber-deep": {
+        "role": "neutral",
+        "displayName": "Chamber Deep",
+        "canonical": "#0d1712",
+        "tonalRamp": [
+          "#1f2d26",
+          "#375345",
+          "#4c7b63",
+          "#61a482",
+          "#88b9a1",
+          "#b1cebf",
+          "#d7e4de",
+          "#f0f5f2"
+        ]
+      },
+      "chamber-moss": {
+        "role": "neutral",
+        "displayName": "Chamber Moss",
+        "canonical": "#111b15",
+        "tonalRamp": [
+          "#212c25",
+          "#395143",
+          "#507760",
+          "#679d7d",
+          "#8db59d",
+          "#b3cbbd",
+          "#d8e3dd",
+          "#f0f4f2"
+        ]
+      },
+      "chamber-teal": {
+        "role": "neutral",
+        "displayName": "Chamber Teal",
+        "canonical": "#0e1b19",
+        "tonalRamp": [
+          "#1e2e2c",
+          "#355550",
+          "#487e76",
+          "#5ca89c",
+          "#85bcb4",
+          "#afd0cb",
+          "#d6e5e3",
+          "#f0f5f4"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "canonical": "#101e17",
+        "tonalRamp": [
+          "#1f2e26",
+          "#355545",
+          "#4a7d63",
+          "#5da782",
+          "#86bba1",
+          "#afcfbf",
+          "#d7e5de",
+          "#f0f5f2"
+        ]
+      },
+      "control": {
+        "role": "neutral",
+        "displayName": "Control",
+        "canonical": "#1b2c23",
+        "tonalRamp": [
+          "#202c26",
+          "#395144",
+          "#4f7862",
+          "#659f80",
+          "#8cb69f",
+          "#b3ccbf",
+          "#d8e4de",
+          "#f0f4f2"
+        ]
+      },
+      "control-hover": {
+        "role": "neutral",
+        "displayName": "Control Hover",
+        "canonical": "#2b4033",
+        "tonalRamp": [
+          "#212b25",
+          "#3b4f42",
+          "#53745f",
+          "#6a9a7c",
+          "#8fb29d",
+          "#b5cabd",
+          "#d9e2dd",
+          "#f1f4f2"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "canonical": "#e3ece5",
+        "tonalRamp": [
+          "#222b24",
+          "#3b4f3f",
+          "#53745a",
+          "#6b9975",
+          "#90b197",
+          "#b5c9ba",
+          "#d9e2db",
+          "#f1f4f1"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Text Muted",
+        "canonical": "#93a89b",
+        "tonalRamp": [
+          "#242926",
+          "#3f4a44",
+          "#5a6d61",
+          "#758f7f",
+          "#97aa9e",
+          "#bac5be",
+          "#dbe0dd",
+          "#f1f3f2"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "canonical": "#354b3e",
+        "tonalRamp": [
+          "#222a25",
+          "#3c4e43",
+          "#557261",
+          "#6d977e",
+          "#92b09e",
+          "#b6c8be",
+          "#dae2dd",
+          "#f1f4f2"
+        ]
+      },
+      "cell-off": {
+        "role": "neutral",
+        "displayName": "Cell Off",
+        "canonical": "#16261d",
+        "tonalRamp": [
+          "#202d25",
+          "#375343",
+          "#4d7a61",
+          "#62a27e",
+          "#89b89e",
+          "#b1cdbe",
+          "#d8e4dd",
+          "#f0f4f2"
+        ]
+      },
+      "on-accent": {
+        "role": "neutral",
+        "displayName": "On Accent",
+        "canonical": "#0b0f14",
+        "tonalRamp": [
+          "#1f252d",
+          "#364354",
+          "#4b617c",
+          "#5f7ea5",
+          "#879eba",
+          "#b0bece",
+          "#d7dde5",
+          "#f0f2f5"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Wordmark only."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel headings and the active generator name."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Generator description and settings prose."
+      },
+      "value": {
+        "displayName": "Value",
+        "purpose": "Parameter values, option labels, primary actions."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Chips, controls, status, column headers."
+      },
+      "dense": {
+        "displayName": "Dense",
+        "purpose": "Axis labels inside geometry that cannot grow."
+      }
+    },
+    "shadows": [
+      {
+        "name": "popover",
+        "value": "drop-shadow(0 3px 12px #00000055)",
+        "purpose": "Anchored menus and pickers."
+      },
+      {
+        "name": "drawer",
+        "value": "drop-shadow(0 4px 16px #00000055)",
+        "purpose": "Settings and edge-anchored surfaces."
+      }
+    ],
+    "motion": [
+      {
+        "name": "panel-slide",
+        "value": "140ms ease-in-out",
+        "purpose": "Settings drawer travel."
+      },
+      {
+        "name": "matrix-slide",
+        "value": "150ms ease-in-out",
+        "purpose": "Overlay panel travel."
+      },
+      {
+        "name": "regen-pulse",
+        "value": "180ms",
+        "purpose": "One-shot feedback after Generate."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Action Primary",
+      "kind": "button",
+      "refersTo": "action-primary",
+      "description": "The single primary action on screen; accent fill, darkest text.",
+      "html": "<button class=\"ds-action-primary\">GENERATE \u21bb</button>",
+      "css": ".ds-action-primary { background: #fb923c; color: #0b0f14; border: 0; border-radius: 5px;\n  width: 112px; height: 30px; font: 700 11px system-ui, sans-serif; letter-spacing: 0.02em; cursor: pointer; }\n.ds-action-primary:hover { box-shadow: 0 0 0 2px {c1} inset; }\n.ds-action-primary:focus-visible { outline: 1px solid #fb923c; outline-offset: 3px; }"
+    },
+    {
+      "name": "Action Secondary",
+      "kind": "button",
+      "refersTo": "action-secondary",
+      "description": "Quiet sibling beside the primary; control fill, full-tone text.",
+      "html": "<button class=\"ds-action-secondary\">RANDOMIZE</button>",
+      "css": ".ds-action-secondary { background: #1b2c23; color: #e3ece5; border: 0; border-radius: 5px;\n  width: 112px; height: 30px; font: 400 11px system-ui, sans-serif; cursor: pointer; }\n.ds-action-secondary:hover { background: #2b4033; }\n.ds-action-secondary:focus-visible { outline: 1px solid #fb923c; outline-offset: 3px; }"
+    },
+    {
+      "name": "Toggle Chip",
+      "kind": "chip",
+      "refersTo": "chip-toggle",
+      "description": "State chip: neutral fill when off, tinted fill with on-accent text when on.",
+      "html": "<button class=\"ds-chip ds-chip--on\">FOLLOW: ON</button>",
+      "css": ".ds-chip { background: #1b2c23; color: #e3ece5; border: 0; border-radius: 3px;\n  height: 24px; padding: 0 12px; font: 400 10px system-ui, sans-serif; cursor: pointer; }\n.ds-chip:hover { background: #2b4033; }\n.ds-chip--on { background: {c1}; color: #0b0f14; }\n.ds-chip:focus-visible { outline: 1px solid #fb923c; outline-offset: 2px; }"
+    },
+    {
+      "name": "Parameter Row",
+      "kind": "custom",
+      "refersTo": "slider-row",
+      "description": "The signature control: a 25px slot with a left-anchored fill and label/value printed on top.",
+      "html": "<div class=\"ds-param\"><span>Density</span><span>65%</span><i style=\"width:65%\"></i></div>",
+      "css": ".ds-param { position: relative; display: flex; align-items: center; justify-content: space-between;\n  height: 25px; padding: 0 8px; border-radius: 4px; background: #1b2c23; overflow: hidden;\n  font: 400 11px system-ui, sans-serif; color: #e3ece5; }\n.ds-param i { position: absolute; inset: 0 auto 0 0; background: {c1}; opacity: 0.3; }\n.ds-param span { position: relative; }\n.ds-param:hover { box-shadow: 0 0 0 1px #354b3e inset; }"
+    },
+    {
+      "name": "Panel Card",
+      "kind": "card",
+      "refersTo": "card-panel",
+      "description": "Scrollable or grouped surface one step above the chamber.",
+      "html": "<div class=\"ds-card\"><strong>MODULATION</strong><p>Card body text sits at 11px muted.</p></div>",
+      "css": ".ds-card { background: #101e17; color: #e3ece5; border: 1px solid #354b3e; border-radius: 4px; padding: 8px; }\n.ds-card strong { display: block; font: 700 10px system-ui, sans-serif; letter-spacing: 0.5px; color: #93a89b; }\n.ds-card p { margin: 6px 0 0; font: 400 11px system-ui, sans-serif; color: #93a89b; }"
+    },
+    {
+      "name": "Numeric Field",
+      "kind": "input",
+      "refersTo": "field-input",
+      "description": "Typed value entry; replaces the row interior while active.",
+      "html": "<input class=\"ds-input\" value=\"256\" />",
+      "css": ".ds-input { background: #1b2c23; color: #e3ece5; border: 1px solid #354b3e; border-radius: 4px;\n  height: 25px; padding: 0 8px; font: 400 11px system-ui, sans-serif; text-align: right; width: 120px; }\n.ds-input:focus { outline: none; border-color: #fb923c; box-shadow: 0 0 0 1px #fb923c inset; }"
+    },
+    {
+      "name": "Tuning Chip",
+      "kind": "custom",
+      "refersTo": "tuning-chip",
+      "description": "One slot of the tuning strip: label above, value centred, three-part grammar.",
+      "html": "<div class=\"ds-tune\"><span>SCALE</span><strong>Minor</strong></div>",
+      "css": ".ds-tune { display: flex; flex-direction: column; justify-content: center; height: 28px;\n  padding: 0 8px; border-radius: 4px; background: #1b2c23; color: #e3ece5; font: 400 11px system-ui, sans-serif; }\n.ds-tune span { font: 700 9px system-ui, sans-serif; letter-spacing: 0.5px; color: #93a89b; }\n.ds-tune:hover { background: #2b4033; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Signal Observatory",
+    "overview": "nelody seq watches a melody walk. The Tonnetz diamond, the pitch roll and the tuning strip are the observable objects; the surrounding chrome is the housing that keeps them readable. Where its percussive sibling draws a rosette of pulses, this one draws a path through harmonic space and a history of the notes it produced. Both share one chamber, one type system and one control language, because they are two instruments in the same rack. The surface is sparser than nrum seq by geometry: a fixed 860x697 window, one drawing, six parameter rows, a tuning strip and a roll that is allowed to hold real air. That air is intentional. The roll is where the user reads the melody, so it gets the largest single region and the fewest marks inside it.",
+    "keyCharacteristics": [
+      "Green chamber with a three-hue signal ramp and a single warm focus accent.",
+      "Fixed 860x697 coordinate space; the roll is the largest region and stays uncluttered.",
+      "The same job-named type scale as nrum seq, 9-14px, weight and tone carrying hierarchy.",
+      "Flat surfaces; depth from tonal layering, shadows only on overlays.",
+      "Two authored differentiators: the Tonnetz drawing and the tuning strip."
+    ],
+    "rules": [
+      {
+        "name": "The One Reading Rule",
+        "section": "colors",
+        "body": "At rest, a screen carries the roll in lime, the drawing in green and teal, and one primary action in focus orange. Everything else is neutral."
+      },
+      {
+        "name": "The Signal Not Decor Rule",
+        "section": "colors",
+        "body": "A saturated colour encodes a note, a harmonic relationship, or a state the user can act on. Otherwise it is a bug."
+      },
+      {
+        "name": "The Two-Tone Rule",
+        "section": "typography",
+        "body": "A label and its value share a row and differ in tone, not size."
+      },
+      {
+        "name": "The 9px Floor Rule",
+        "section": "typography",
+        "body": "9px is for labels inside geometry that cannot grow \u2014 the pitch ruler above all. A control label at 9px is a layout failure."
+      },
+      {
+        "name": "The Flat-At-Rest Rule",
+        "section": "elevation",
+        "body": "No surface inside the panel carries a shadow."
+      }
+    ],
+    "dos": [
+      "Do keep saturated colour for notes, harmonic relationships and state only.",
+      "Do place controls in the fixed 860x697 space rather than adding breakpoints to the main panel.",
+      "Do use 3-4px radii, 1px low-contrast borders, and fills to indicate identity.",
+      "Do let the roll hold real air; it is read, not filled.",
+      "Do keep the tuning strip's four controls on one height and one label tone."
+    ],
+    "donts": [
+      "Don't use gradients as fills, glows, or glass. The only gradient is the three-stop accent fill inside a parameter row, and it is being retired.",
+      "Don't build a dark web dashboard: no purple, no translucent cards, no pills, no emoji labels.",
+      "Don't imitate a generic DAW: no brushed metal, no knobs, no tabbed preferences, no stock widget styling.",
+      "Don't build a sci-fi HUD: no scanlines, no neon wireframes, no hex grids, no idle telemetry.",
+      "Don't raise functional labels above 11px to create hierarchy; use weight and tone, and if that fails the layout is wrong."
+    ]
+  }
+}
