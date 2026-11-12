@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-12T21:30:09+00:00",
+  "generatedAt": "2026-11-12T21:57:05+00:00",
   "title": "Design System: nelody seq",
   "extensions": {
     "colorMeta": {
@@ -380,6 +380,11 @@
         "name": "The Flat-At-Rest Rule",
         "section": "elevation",
         "body": "No surface inside the panel carries a shadow."
+      },
+      {
+        "name": "The Solid State Rule",
+        "section": "colors",
+        "body": "A state fill is the accent at full opacity. A tint behind a label drops it below 4.5:1 in at least one theme; the tint is the defect, not the hue."
       }
     ],
     "dos": [
@@ -390,7 +395,7 @@
       "Do keep the tuning strip's four controls on one height and one label tone."
     ],
     "donts": [
-      "Don't use gradients as fills, glows, or glass. The only gradient is the three-stop accent fill inside a parameter row, and it is being retired.",
+      "Don't use gradients as fills, glows, or glass. The one gradient is the accent ramp that marks a selected row, parameter or tuning chip; it never appears as decoration.",
       "Don't build a dark web dashboard: no purple, no translucent cards, no pills, no emoji labels.",
       "Don't imitate a generic DAW: no brushed metal, no knobs, no tabbed preferences, no stock widget styling.",
       "Don't build a sci-fi HUD: no scanlines, no neon wireframes, no hex grids, no idle telemetry.",

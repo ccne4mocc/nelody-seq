@@ -153,6 +153,9 @@ and one primary action in focus orange. Everything else is neutral.
 **The Signal Not Decor Rule.** A saturated colour encodes a note, a harmonic relationship, or a
 state the user can act on. Otherwise it is a bug.
 
+**The Solid State Rule.** A state fill is the accent at full opacity. A tint behind a label drops
+it below 4.5:1 in at least one theme; the tint is the defect, not the hue.
+
 ## Typography
 
 **Display Font:** system UI sans (no font asset ships; the family deliberately falls back)
@@ -227,7 +230,8 @@ that holds a drawing and nothing else.
 ### Chips
 - **Style:** 24px high, 3px radius, control fill, caption text. Toggle chips fill with the state
   colour and switch text to on-accent.
-- **State:** off is neutral; on is tinted. State is never shown with a border alone.
+- **State:** off is neutral; on is a solid accent fill at full opacity with on-accent text.
+  State is never shown with a border alone.
 
 ### Cards / Containers
 - **Corner Style:** 4px.
@@ -262,8 +266,9 @@ The roll is where the melody is read; keep its ground empty.
 - **Do** keep the tuning strip's four controls on one height and one label tone.
 
 ### Don't:
-- **Don't** use gradients as fills, glows, or glass. The only gradient is the three-stop accent
-  fill inside a parameter row, and it is being retired.
+- **Don't** use gradients as fills, glows, or glass. The one gradient is the accent ramp
+  (Lime → Chord Green → Teal) that marks a selected row, parameter or tuning chip; it never
+  appears as decoration.
 - **Don't** build a dark web dashboard: no purple, no translucent cards, no pills, no emoji labels.
 - **Don't** imitate a generic DAW: no brushed metal, no knobs, no tabbed preferences, no stock
   widget styling.

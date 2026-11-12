@@ -155,7 +155,7 @@ component ScopeChip inherits Rectangle {
     in property <string> hint: "Toggle this RANDOMIZE group";
     callback toggled();
     height: 24px; border-radius: 4px;
-    background: root.active ? Theme.c1.with-alpha(0.8) : (ta.has-hover ? Theme.control-hover : Theme.control);
+    background: root.active ? Theme.c1 : (ta.has-hover ? Theme.control-hover : Theme.control);
     Text { text: root.label; color: root.active ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
     ta := TipTouch { hint: root.hint; clicked => { root.toggled(); } }
 }
@@ -1381,7 +1381,7 @@ export component AppWindow inherits Window {
                 generate-touch := TipTouch { hint: "Create a new deterministic variation of the current line"; clicked => { root.generate-pressed(); } }
             }
             Rectangle { width: 112px; height: 30px; border-radius: 5px; background: randomize-touch.has-hover ? Theme.control-hover : Theme.control; Text { text: "RANDOMIZE ⚄"; color: Theme.text; font-size: Type.value; horizontal-alignment: center; vertical-alignment: center; } randomize-touch := TipTouch { hint: "Randomize the parameter groups enabled in RANDOMIZE SCOPE"; clicked => { root.randomize-pressed(); } } }
-            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2.with-alpha(0.5) : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: Type.glyph-large; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TipTouch { hint: "Open settings: theme, presets, limits, export and credits"; clicked => { root.tuning-open = false; root.settings-open = !root.settings-open; if (root.settings-open) { root.matrix-open = false; } } } }
+            Rectangle { width: 40px; height: 30px; border-radius: 5px; background: settings-touch.has-hover ? Theme.c2 : Theme.control; Text { text: "⚙"; color: settings-touch.has-hover ? Theme.on-accent : Theme.text; font-size: Type.glyph-large; horizontal-alignment: center; vertical-alignment: center; } settings-touch := TipTouch { hint: "Open settings: theme, presets, limits, export and credits"; clicked => { root.tuning-open = false; root.settings-open = !root.settings-open; if (root.settings-open) { root.matrix-open = false; } } } }
         }
         HorizontalLayout {
             // 300px fits the description and live math line without squeezing the sliders.
@@ -1657,7 +1657,7 @@ export component AppWindow inherits Window {
             // Edit toolbar sits above the roll, so it never consumes layout height.
             if !root.timing-locked && root.edit-mode == 0: Rectangle {
                 x: 8px; y: 8px; width: 50px; height: 24px; border-radius: 3px;
-                background: edit-open-touch.has-hover ? Theme.c2.with-alpha(0.7) : Theme.control.with-alpha(0.92);
+                background: edit-open-touch.has-hover ? Theme.c2 : Theme.control.with-alpha(0.92);
                 border-width: 1px; border-color: Theme.border;
                 Text { width: parent.width; height: parent.height; text: "EDIT"; color: edit-open-touch.has-hover ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
                 edit-open-touch := TipTouch {
@@ -1668,14 +1668,14 @@ export component AppWindow inherits Window {
             // Performance edits sit under the EDIT button with the same compact button design.
             Rectangle {
                 x: 8px; y: 36px; width: 50px; height: 24px; border-radius: 3px;
-                background: root.mirror-on ? Theme.c3.with-alpha(0.45) : (mirror-touch.has-hover ? Theme.c2.with-alpha(0.7) : Theme.control.with-alpha(0.92));
+                background: root.mirror-on ? Theme.c3 : (mirror-touch.has-hover ? Theme.control-hover : Theme.control.with-alpha(0.92));
                 border-width: 1px; border-color: Theme.border;
                 Text { width: parent.width; height: parent.height; text: "MIRROR"; color: root.mirror-on ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
                 mirror-touch := TipTouch { hint: "Mirror the finished line backwards"; clicked => { root.toggle-mirror(); } }
             }
             Rectangle {
                 x: 8px; y: 64px; width: 50px; height: 24px; border-radius: 3px;
-                background: root.invert-on ? Theme.c2.with-alpha(0.45) : (invert-touch.has-hover ? Theme.c2.with-alpha(0.7) : Theme.control.with-alpha(0.92));
+                background: root.invert-on ? Theme.c2 : (invert-touch.has-hover ? Theme.control-hover : Theme.control.with-alpha(0.92));
                 border-width: 1px; border-color: Theme.border;
                 Text { width: parent.width; height: parent.height; text: "INVERT"; color: root.invert-on ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
                 invert-touch := TipTouch { hint: "Invert every hit and rest in the finished line"; clicked => { root.toggle-invert(); } }
@@ -1684,43 +1684,43 @@ export component AppWindow inherits Window {
                 x: 8px; y: 6px; height: 22px; spacing: 3px;
                 Rectangle {
                     width: 44px; height: 24px; border-radius: 3px;
-                    background: root.edit-mode == 1 ? Theme.c1.with-alpha(0.8) : Theme.control.with-alpha(0.92);
+                    background: root.edit-mode == 1 ? Theme.c1 : Theme.control.with-alpha(0.92);
                     Text { width: parent.width; height: parent.height; text: "NOTES"; color: root.edit-mode == 1 ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
                     notes-edit := TipTouch { hint: "Tap to toggle a hit; drag to resize its gate"; clicked => { root.edit-mode = root.edit-mode == 1 ? 0 : 1; } }
                 }
                 Rectangle {
                     width: 30px; height: 24px; border-radius: 3px;
-                    background: root.edit-advanced ? Theme.c2.with-alpha(0.75) : Theme.control.with-alpha(0.92);
+                    background: root.edit-advanced ? Theme.c2 : Theme.control.with-alpha(0.92);
                     Text { width: parent.width; height: parent.height; text: "ADV"; color: root.edit-advanced ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
                     adv-edit := TipTouch { hint: "Show probability, accent, ratchet, timing and clear modes"; clicked => { root.edit-advanced = !root.edit-advanced; } }
                 }
                 if root.edit-advanced: Rectangle {
                     width: 34px; height: 24px; border-radius: 3px;
-                    background: root.edit-mode == 2 ? Theme.c2.with-alpha(0.8) : Theme.control.with-alpha(0.92);
+                    background: root.edit-mode == 2 ? Theme.c2 : Theme.control.with-alpha(0.92);
                     Text { width: parent.width; height: parent.height; text: "PROB"; color: root.edit-mode == 2 ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
                     prob-edit := TipTouch { hint: "Cycle this step's hit probability"; clicked => { root.edit-mode = root.edit-mode == 2 ? 1 : 2; } }
                 }
                 if root.edit-advanced: Rectangle {
                     width: 34px; height: 24px; border-radius: 3px;
-                    background: root.edit-mode == 3 ? Theme.c3.with-alpha(0.8) : Theme.control.with-alpha(0.92);
+                    background: root.edit-mode == 3 ? Theme.c3 : Theme.control.with-alpha(0.92);
                     Text { width: parent.width; height: parent.height; text: "ACC"; color: root.edit-mode == 3 ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
                     acc-edit := TipTouch { hint: "Cycle this step's accent"; clicked => { root.edit-mode = root.edit-mode == 3 ? 1 : 3; } }
                 }
                 if root.edit-advanced: Rectangle {
                     width: 30px; height: 24px; border-radius: 3px;
-                    background: root.edit-mode == 5 ? Theme.c1.with-alpha(0.8) : Theme.control.with-alpha(0.92);
+                    background: root.edit-mode == 5 ? Theme.c1 : Theme.control.with-alpha(0.92);
                     Text { width: parent.width; height: parent.height; text: "RAT"; color: root.edit-mode == 5 ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
                     rat-edit := TipTouch { hint: "Cycle 1-4 ratchet substeps on this step"; clicked => { root.edit-mode = root.edit-mode == 5 ? 1 : 5; } }
                 }
                 if root.edit-advanced: Rectangle {
                     width: 34px; height: 24px; border-radius: 3px;
-                    background: root.edit-mode == 6 ? Theme.c3.with-alpha(0.8) : Theme.control.with-alpha(0.92);
+                    background: root.edit-mode == 6 ? Theme.c3 : Theme.control.with-alpha(0.92);
                     Text { width: parent.width; height: parent.height; text: "TIME"; color: root.edit-mode == 6 ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
                     time-edit := TipTouch { hint: "Delay this step by 0, 1/8, 1/4 or 1/2 step"; clicked => { root.edit-mode = root.edit-mode == 6 ? 1 : 6; } }
                 }
                 if root.edit-advanced: Rectangle {
                     width: 30px; height: 24px; border-radius: 3px;
-                    background: root.edit-mode == 4 ? Theme.hi.with-alpha(0.8) : Theme.control.with-alpha(0.92);
+                    background: root.edit-mode == 4 ? Theme.hi : Theme.control.with-alpha(0.92);
                     Text { width: parent.width; height: parent.height; text: "CLR"; color: root.edit-mode == 4 ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; }
                     clr-edit := TipTouch { hint: "Clear every manual edit on this step"; clicked => { root.edit-mode = root.edit-mode == 4 ? 1 : 4; } }
                 }
@@ -1878,8 +1878,8 @@ export component AppWindow inherits Window {
                 OptSlider { width: 168px; opt: root.opts[12]; index: 12; mod-target: 13; changed(v) => { root.set-opt(12, v); } }
                 scope-gear := Rectangle {
                     width: 25px; height: 25px; border-radius: 4px;
-                    background: root.scope-menu-open ? Theme.c2.with-alpha(0.5) : (scope-touch.has-hover ? Theme.control-hover : Theme.control);
-                    Text { text: "⚙"; color: Theme.text; font-size: Type.glyph-small; horizontal-alignment: center; vertical-alignment: center; }
+                    background: root.scope-menu-open ? Theme.c2 : (scope-touch.has-hover ? Theme.control-hover : Theme.control);
+                    Text { text: "⚙"; color: root.scope-menu-open ? Theme.on-accent : Theme.text; font-size: Type.glyph-small; horizontal-alignment: center; vertical-alignment: center; }
                     scope-touch := TipTouch {
                         hint: "Choose which groups RANDOMIZE may change";
                         clicked => {
@@ -2050,7 +2050,7 @@ export component AppWindow inherits Window {
                 height: 26px; spacing: 4px;
                 for i in root.preset-names.length: Rectangle {
                     horizontal-stretch: 1; border-radius: 4px;
-                    background: preset-touch.has-hover ? Theme.c2.with-alpha(0.7) : Theme.control;
+                    background: preset-touch.has-hover ? Theme.c2 : Theme.control;
                     Text { width: parent.width; height: parent.height; text: root.preset-names[i]; color: preset-touch.has-hover ? Theme.on-accent : Theme.text; font-size: Type.caption; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
                     preset-touch := TipTouch { hint: "Load this starting point into the host parameters"; clicked => { root.apply-preset(i); } }
                 }
@@ -2080,7 +2080,7 @@ export component AppWindow inherits Window {
             hist-box := NumBox { label: "History Length (Bars)"; value: root.history-bars; minimum: 1; maximum: root.history-max-bars; step: 1; mod-target: 23; changed(v) => { root.set-opt(23, v); } }
             Rectangle {
                 height: 26px; border-radius: 4px;
-                background: root.history-overlay-on ? Theme.c1.with-alpha(0.8) : (overlay-touch.has-hover ? Theme.control-hover : Theme.control);
+                background: root.history-overlay-on ? Theme.c1 : (overlay-touch.has-hover ? Theme.control-hover : Theme.control);
                 Text { x: 8px; width: parent.width - 16px; text: root.history-overlay-on ? "PATTERN OVERLAY: ON" : "PATTERN OVERLAY: OFF"; color: root.history-overlay-on ? Theme.on-accent : Theme.text; font-size: Type.caption; vertical-alignment: center; }
                 overlay-touch := TipTouch { hint: "Draw the current loop over the recorded history"; clicked => { root.toggle-history-overlay(); } }
             }
@@ -2088,7 +2088,7 @@ export component AppWindow inherits Window {
             Text { text: "INTERFACE"; color: Theme.text-muted; font-size: Type.caption; font-weight: 700; letter-spacing: 0.5px; }
             Rectangle {
                 height: 26px; border-radius: 4px;
-                background: root.reduce-motion ? Theme.c1.with-alpha(0.8) : (motion-touch.has-hover ? Theme.control-hover : Theme.control);
+                background: root.reduce-motion ? Theme.c1 : (motion-touch.has-hover ? Theme.control-hover : Theme.control);
                 Text { x: 8px; width: parent.width - 16px; text: root.reduce-motion ? "REDUCE MOTION: ON" : "REDUCE MOTION: OFF"; color: root.reduce-motion ? Theme.on-accent : Theme.text; font-size: Type.caption; vertical-alignment: center; }
                 motion-touch := TipTouch { hint: "Skip panel slides and note tweens"; clicked => { root.toggle-reduce-motion(); } }
             }
@@ -2096,7 +2096,7 @@ export component AppWindow inherits Window {
             Text { text: "TECHNICAL SUPPORT"; color: Theme.text-muted; font-size: Type.caption; font-weight: 700; letter-spacing: 0.5px; }
             Rectangle {
                 height: 26px; border-radius: 4px;
-                background: root.logging-on ? Theme.c1.with-alpha(0.8) : (logging-touch.has-hover ? Theme.control-hover : Theme.control);
+                background: root.logging-on ? Theme.c1 : (logging-touch.has-hover ? Theme.control-hover : Theme.control);
                 Text { x: 8px; width: parent.width - 16px; text: root.logging-on ? "LOGGING: ON (nelody-seq.log)" : "LOGGING: OFF"; color: root.logging-on ? Theme.on-accent : Theme.text; font-size: Type.caption; vertical-alignment: center; }
                 logging-touch := TipTouch { hint: "Write mode and parameter snapshots to nelody-seq.log"; clicked => { root.toggle-logging(); } }
             }
