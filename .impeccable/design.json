@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-12T21:57:05+00:00",
+  "generatedAt": "2026-11-12T22:16:20+00:00",
   "title": "Design System: nelody seq",
   "extensions": {
     "colorMeta": {
@@ -280,9 +280,19 @@
         "purpose": "Overlay panel travel."
       },
       {
-        "name": "regen-pulse",
-        "value": "180ms",
-        "purpose": "One-shot feedback after Generate."
+        "name": "generate-bloom-in",
+        "value": "70ms ease-out",
+        "purpose": "Generate's accent bloom arriving over the drawing."
+      },
+      {
+        "name": "generate-bloom-out",
+        "value": "450ms ease-in-out",
+        "purpose": "The same bloom leaving."
+      },
+      {
+        "name": "node-tween",
+        "value": "120ms",
+        "purpose": "Panel nodes easing between pattern positions."
       }
     ],
     "breakpoints": []
@@ -385,6 +395,11 @@
         "name": "The Solid State Rule",
         "section": "colors",
         "body": "A state fill is the accent at full opacity. A tint behind a label drops it below 4.5:1 in at least one theme; the tint is the defect, not the hue."
+      },
+      {
+        "name": "The One Bloom Rule",
+        "section": "elevation",
+        "body": "Motion has exactly one moment. Generate answers with a single accent bloom across the panel: 70ms to arrive, 450ms to leave. Nothing else in the chrome eases; state changes land on contact."
       }
     ],
     "dos": [

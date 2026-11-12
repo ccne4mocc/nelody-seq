@@ -208,6 +208,10 @@ inside the panel. Overlays float on one of two shadow sizes.
 ### Named Rules
 **The Flat-At-Rest Rule.** No surface inside the panel carries a shadow.
 
+**The One Bloom Rule.** Motion has exactly one moment. Generate answers with a single accent bloom
+across the panel: 70ms to arrive, 450ms to leave. Nothing else in the chrome eases; state changes
+land on contact, because an instrument confirms by touch.
+
 ## Shapes
 
 1px for ticks, 3px for chips and cells, 4px for rows, inputs and cards, 5px for the two primary
