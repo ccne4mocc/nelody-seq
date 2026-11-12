@@ -17,6 +17,9 @@ pub(crate) struct GlobalSettings {
     /// Last folder used for MIDI export. `None` means the host process working directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub midi_dir: Option<String>,
+    /// Suppress panel slides and drawing tweens. `None` follows the default (motion on).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reduce_motion: Option<bool>,
 }
 
 fn config_path() -> Option<PathBuf> {
@@ -76,13 +79,16 @@ mod tests {
 
     #[test]
     fn settings_round_trip_through_json() {
-        let s = GlobalSettings { theme: Some(2), scale: Some(1.25), midi_dir: None };
+        let s = GlobalSettings { theme: Some(2), scale: Some(1.25), midi_dir: None, reduce_motion: None };
         let json = serde_json::to_string(&s).unwrap();
         assert_eq!(json, r#"{"theme":2,"scale":1.25}"#);
         let back: GlobalSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(back.theme, Some(2));
         assert_eq!(back.scale, Some(1.25));
         assert_eq!(back.midi_dir, None);
+        assert_eq!(back.reduce_motion, None);
+        let motion: GlobalSettings = serde_json::from_str(r#"{"reduce_motion":true}"#).unwrap();
+        assert_eq!(motion.reduce_motion, Some(true));
         assert_eq!(serde_json::from_str::<GlobalSettings>(r#"{"theme":0,"sequencer_scale":1}"#).unwrap().theme, Some(0));
     }
 

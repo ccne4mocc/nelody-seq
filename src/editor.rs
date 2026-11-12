@@ -143,6 +143,8 @@ fn global_settings(
         theme: Some(p.theme.value().to_index()),
         scale: if scale > 0.0 { Some(scale) } else { None },
         midi_dir: midi_dir.lock().ok().map(|d| d.clone()).filter(|d| !d.trim().is_empty()),
+        // Rounded out from disk so a theme change cannot reset the motion preference.
+        reduce_motion: globals::load().reduce_motion,
     }
 }
 struct SlintEditorHandle {
@@ -813,6 +815,14 @@ fn push_history(
     ui.set_history_notes_hard(SharedString::from(roll.notes_hard.as_str()));
     ui.set_history_pattern(SharedString::from(roll.pattern.as_str()));
     ui.set_history_pattern_slides(SharedString::from(roll.pattern_slides.as_str()));
+    ui.set_history_lo(roll.lo);
+    ui.set_history_hi(roll.hi);
+    ui.set_history_ruler(ModelRc::new(VecModel::from(
+        (roll.lo..roll.hi)
+            .step_by(12)
+            .map(|note| SharedString::from(note_label(note)))
+            .collect::<Vec<_>>(),
+    )));
     ui.set_history_range(SharedString::from(format!(
         "{} – {}",
         note_label(roll.lo),
@@ -968,6 +978,7 @@ impl Editor for SlintEditor {
     fn spawn(&self, parent: ParentWindowHandle, context: Arc<dyn GuiContext>) -> Box<dyn std::any::Any + Send> {
         // User-global preferences load before the host's project state is shown.
         let stored = globals::load();
+        let reduce_motion = stored.reduce_motion.unwrap_or(false);
         self.shared.text_focus.store(false, Relaxed);
         if let Ok(mut queue) = self.shared.key_queue.lock() { queue.clear(); }
         let scale = stored.scale.filter(|s| *s > 0.0).unwrap_or_else(|| f32::from_bits(self.scale.load(Relaxed)));
@@ -1003,6 +1014,7 @@ impl Editor for SlintEditor {
         let setup_mod_rects = mod_rects.clone();
         let setup = move |h: &slint_baseview::SlintWindowHandler<AppWindow>, _w: &mut slint_baseview::Window| {
             let ui = h.component();
+            ui.set_reduce_motion(reduce_motion);
             let folder = setup_midi_dir.lock().map(|d| d.clone()).unwrap_or_default();
             ui.set_midi_folder(SharedString::from(folder.as_str()));
             {
@@ -1260,6 +1272,18 @@ impl Editor for SlintEditor {
                 ui.on_toggle_mirror(move || set(&c, &p.mirror, !p.mirror.value()));
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_toggle_logging(move || set(&c, &p.logging, !p.logging.value()));
+                {
+                    // User-global, not project state: persist next to the theme and window scale.
+                    let weak = ui.as_weak();
+                    ui.on_toggle_reduce_motion(move || {
+                        let Some(ui) = weak.upgrade() else { return };
+                        let next = !ui.get_reduce_motion();
+                        ui.set_reduce_motion(next);
+                        let mut settings = globals::load();
+                        settings.reduce_motion = Some(next);
+                        globals::save(&settings);
+                    });
+                }
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_toggle_history_overlay(move || {
                     set(&c, &p.history_overlay, !p.history_overlay.value())
@@ -1383,6 +1407,7 @@ impl Editor for SlintEditor {
                 palette.set_surface(rgb(colors[7])); palette.set_control(rgb(colors[8])); palette.set_control_hover(rgb(colors[9]));
                 palette.set_text(rgb(colors[10])); palette.set_text_muted(rgb(colors[11])); palette.set_border(rgb(colors[12]));
                 palette.set_cell_off(rgb(colors[13])); palette.set_on_accent(rgb(colors[14]));
+                ui.global::<FocusRing>().set_color(rgb(colors[3]));
                 ui.set_theme_index(theme_index);
                 globals::save(&global_settings(p, update_scale, &update_midi_dir));
             }
@@ -1826,6 +1851,30 @@ mod tests {
             ModTarget::Steps.index() as i32,
             "hover timer did not report the parameter under the pointer"
         );
+
+        // Keyboard path: a window shortcut fires with no control focused, and keeps firing after
+        // Tab moves focus into one, whose key handler rejects it so it bubbles to the scope.
+        let randomizes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = randomizes.clone();
+        ui.on_randomize_pressed(move || {
+            counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        });
+        window
+            .try_dispatch_event(slint::platform::WindowEvent::KeyPressed { text: "r".into() })
+            .unwrap();
+        window
+            .try_dispatch_event(slint::platform::WindowEvent::KeyPressed {
+                text: slint::platform::Key::Tab.into(),
+            })
+            .unwrap();
+        window
+            .try_dispatch_event(slint::platform::WindowEvent::KeyPressed { text: "r".into() })
+            .unwrap();
+        assert_eq!(
+            randomizes.load(std::sync::atomic::Ordering::Relaxed),
+            2,
+            "the r shortcut did not survive Tab moving focus into a control"
+        );
     }
 
     #[test]
@@ -1948,5 +1997,143 @@ mod tests {
             assert!((0.0..=1.0).contains(&preset.probability), "{}", preset.name);
             assert!((0.0..=1.0).contains(&preset.seed), "{}", preset.name);
         }
+    }
+
+    /// Render one history window to PPM frames so the README GIF can be regenerated.
+    /// `cargo test --lib write_ui_frames -- --ignored`, then `magick -delay 12 -loop 0 *.ppm out.gif`.
+    #[test]
+    #[ignore = "writes an animation frame sequence"]
+    fn write_ui_frames() {
+        use nice_plug::params::InternalParamMut;
+        use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
+        use slint::platform::{Platform, WindowAdapter};
+        use std::io::Write as _;
+        use std::rc::Rc;
+        use std::time::{Duration, Instant};
+
+        struct TestPlatform { window: Rc<MinimalSoftwareWindow>, start: Instant }
+        impl Platform for TestPlatform {
+            fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
+                Ok(self.window.clone())
+            }
+            fn duration_since_start(&self) -> Duration { self.start.elapsed() }
+        }
+
+        let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+        slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), start: Instant::now() })).unwrap();
+        window.set_size(slint::PhysicalSize::new(WIDTH, HEIGHT));
+        let ui = AppWindow::new().unwrap();
+
+        let p = MelodyParams::default();
+        unsafe {
+            p.mode._internal_set_plain_value(Mode::Euclidean);
+            p.steps._internal_set_plain_value(16.0);
+            p.pulses._internal_set_plain_value(5);
+            p.density._internal_set_plain_value(0.7);
+            p.velocity._internal_set_plain_value(0.85);
+            p.gate._internal_set_plain_value(0.35);
+        }
+        let gen_key = p.gen_params();
+        let pattern = crate::sequence::generate(&gen_key);
+
+        ui.set_mode(p.mode.value().to_index() as i32);
+        ui.set_steps(16.0);
+        ui.set_pulses(5.0);
+        ui.set_density(0.7);
+        ui.set_probability(p.probability.value());
+        ui.set_velocity(0.85);
+        ui.set_gate(0.35);
+        ui.set_seed(p.seed.value());
+        ui.set_phase(p.phase.value());
+        ui.set_osc_rate(p.osc_rate.value());
+        ui.set_voices(1);
+        ui.set_tuning_name("Minor".into());
+        ui.set_root_pc(0);
+        ui.set_octaves(2);
+        ui.set_nts_on(false);
+        ui.set_edo_active(false);
+        ui.set_app_version(crate::contact::VERSION.into());
+        let colors = p.theme.value().colors();
+        let palette = ui.global::<Theme>();
+        palette.set_c1(rgb(colors[0])); palette.set_c2(rgb(colors[1])); palette.set_c3(rgb(colors[2]));
+        palette.set_hi(rgb(colors[3])); palette.set_bg1(rgb(colors[4])); palette.set_bg2(rgb(colors[5])); palette.set_bg3(rgb(colors[6]));
+        palette.set_surface(rgb(colors[7])); palette.set_control(rgb(colors[8])); palette.set_control_hover(rgb(colors[9]));
+        palette.set_text(rgb(colors[10])); palette.set_text_muted(rgb(colors[11])); palette.set_border(rgb(colors[12]));
+        palette.set_cell_off(rgb(colors[13])); palette.set_on_accent(rgb(colors[14]));
+        ui.global::<FocusRing>().set_color(rgb(colors[3]));
+        ui.set_theme_index(p.theme.value().to_index() as i32);
+        ui.set_history_bars(4.0);
+        ui.set_history_overlay_on(false);
+        ui.set_steps_per_bar(16.0);
+        ui.set_mode_math(crate::help::math(&gen_key).into());
+        ui.show().unwrap();
+
+        let mut events = Vec::new();
+        let mut t = 0u64;
+        for i in 0..40u64 {
+            let note = 48 + [0u8, 4, 7, 12, 7, 4][(i % 6) as usize];
+            events.push(crate::history::Ev { t_ms: t, note, vel: 40 + (i % 5) as u8 * 20, voice: 0, on: true, cents: 0.0 });
+            events.push(crate::history::Ev { t_ms: t + 190, note, vel: 0, voice: 0, on: false, cents: 0.0 });
+            t += 260;
+        }
+        let window_ms = 4000u64;
+        let dir = std::env::temp_dir().join("nelody-seq-frames");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut buffer = vec![slint::Rgb8Pixel::new(0, 0, 0); (WIDTH * HEIGHT) as usize];
+        // One 6-note phrase (1560 ms) over 12 frames keeps the loop seamless.
+        let frames = 12u64;
+        for frame in 0..frames {
+            let now = 260 * 6 + frame * 130;
+            let mut ev = events.clone();
+            let roll = crate::history::build_with_grid(&mut ev, now, window_ms, 800.0, 200.0, None, None);
+            ui.set_history_bg(roll.bg.as_str().into());
+            ui.set_history_bg_bars(roll.bg_bars.as_str().into());
+            ui.set_history_grid(roll.grid.as_str().into());
+            ui.set_history_grid_steps(roll.grid_steps.as_str().into());
+            ui.set_history_grid_beats(roll.grid_beats.as_str().into());
+            ui.set_history_grid_bars(roll.grid_bars.as_str().into());
+            ui.set_history_notes(roll.notes.as_str().into());
+            ui.set_history_notes_mid(roll.notes_mid.as_str().into());
+            ui.set_history_notes_hard(roll.notes_hard.as_str().into());
+            ui.set_history_lo(roll.lo);
+            ui.set_history_hi(roll.hi);
+            ui.set_history_ruler(ModelRc::new(VecModel::from(
+                (roll.lo..roll.hi)
+                    .step_by(12)
+                    .map(|note| SharedString::from(note_label(note)))
+                    .collect::<Vec<_>>(),
+            )));
+            ui.set_history_range(
+                format!("{} – {}", note_label(roll.lo), note_label(roll.hi - 1)).into(),
+            );
+            ui.set_history_timing("4/4".into());
+            let cur = (frame % 16) as i32;
+            let view = view::build(gen_key.kind, &pattern, pattern.steps, cur, p.root.value(), gen_key.osc_wave);
+            push_view(&ui, &view);
+            slint::platform::update_timers_and_animations();
+            window.draw_if_needed(|renderer| { renderer.render(&mut buffer, WIDTH as usize); });
+            let path = dir.join(format!("frame-{frame:03}.ppm"));
+            let mut out = std::io::BufWriter::new(std::fs::File::create(&path).unwrap());
+            write!(out, "P6\n{WIDTH} {HEIGHT}\n255\n").unwrap();
+            for px in &buffer { out.write_all(&[px.r, px.g, px.b]).unwrap(); }
+        }
+        println!("wrote {frames} frames to {}", dir.display());
+    }
+
+    /// `ui/shared.slint` is duplicated verbatim in nrum seq and nelody seq. Editing it must be a
+    /// deliberate act: change it, copy it to the sibling repository, then update both hashes.
+    #[test]
+    fn the_shared_ui_matches_its_pinned_hash() {
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/shared.slint"))
+            .expect("ui/shared.slint is missing");
+        let mut hash = 0xcbf29ce484222325u64;
+        for byte in text.bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        assert_eq!(
+            hash, 0xeba7569c8fb94ad5,
+            "ui/shared.slint changed: copy it to the sibling repository and update both pins"
+        );
     }
 }

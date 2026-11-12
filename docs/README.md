@@ -29,3 +29,25 @@ research.
 The superseded `MODES_RESEARCH.md` implementation plan was removed in 1.0.0; its shipped behaviour
 is documented in `REFERENCE_MAPPING.md` and `ARCHITECTURE.md`. Historical detail lives in Git
 history.
+
+## Demo capture
+
+`assets/` holds the README GIF. It is rendered headlessly from the real Slint UI, not screen-captured:
+
+```sh
+cargo test --lib write_ui_frames -- --ignored --nocapture   # writes PPM frames to the temp dir
+magick -delay 13 -loop 0 <tmp>/nelody-seq-frames/frame-*.ppm assets/nelody-seq.gif
+```
+
+The frame test feeds the UI a fixture pattern and a synthetic melody, then advances the playhead one
+step per frame. Keep the frame count and delay so the loop closes seamlessly.
+
+## Shared UI
+
+`ui/shared.slint` holds the control and data definitions both products must agree on: `TipTouch`,
+`HoverTip`, `FocusRing`, the modulation globals and their view structs, `Opt` and `ModeRow`.
+`ui/app.slint` imports it and re-exports it, so Rust bindings stay generated from one file.
+
+The file is copied verbatim into both repositories. `the_shared_ui_matches_its_pinned_hash`
+fails when it changes, so the order is: edit, run the test, copy to the sibling repository, then
+update the pin in both tests.

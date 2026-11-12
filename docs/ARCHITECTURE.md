@@ -350,6 +350,9 @@ variation comes from Generate, Randomize and the knobs.
   the host while a field is focused.
 - Technical logging writes `~/nelody-seq.log` from the editor thread only, when `logging` is on.
 
+- Reduced motion is a user-global preference (`reduce_motion` in `settings.json`), not project state, and is not a host parameter. It zeroes the drawing tweens, the register flash and the settings/matrix slides; `ModePanel` takes the flag as a property so the component keeps no global state.
+- The history roll draws its pitch ruler from `history-lo`/`history-hi` and a `history-ruler` label model, so the labels follow zoom and pan without a second geometry pass in Slint. Note rectangles have a minimum height in `history.rs` so a wide pitch range still reads as notes.
+
 ## Extension points
 
 A polyphonic voice count or any per-step expression layer changes the NoteOff/voice bookkeeping

@@ -13,12 +13,7 @@ fn is_prime(n: usize) -> bool {
 
 /// Ulam spiral primes: the spiral is walked from the integer `1 + offset`, cells whose number is
 /// prime become onsets (thinned evenly when fewer are wanted), and the spiral coordinates feed the
-/// pitch and the 2-D view.
-///
-/// Earlier version: no parameter changed the line (phase, seed and variation were all ignored, so
-/// Generate only rotated it), the coordinates were divided by 2·side so the contour used half of
-/// the range, and the thinning favoured cells by `cell % 7`, leaving the last quarter silent.
-/// `offset = round(64·phase) + 5·variation` starts the spiral at another integer: the primes then
+/// pitch and the 2-D view. `phase`, `seed` and `variation` shift the starting integer, so the primes
 /// fall on different diagonals, as in Ulam's own spirals started at 41 or 17.
 pub(super) fn generate(p: &GenParams) -> Pattern {
     let mut out = Pattern { steps: p.steps, ..Pattern::default() };

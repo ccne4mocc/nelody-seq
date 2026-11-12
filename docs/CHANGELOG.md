@@ -8,6 +8,25 @@
 - The history window is measured in generated pattern loops, and its grid bars use the loop
   instead of a hardcoded 4/4 assumption.
 - MIDI export writes the implied time signature when the loop has an exact one.
+- The LFO rack and modulation matrix are hidden pending a rework of that UI. The LFO parameters,
+  links and audio path are unchanged, and existing project links keep modulating.
+- Sketch and Lava palette values were corrected so composed text pairs pass WCAG AA: Sketch's
+  first and third accents and its muted text are darker, Lava's third accent is lighter. A unit
+  test now checks the pairs the UI actually composes.
+- The UI is operable by keyboard: Tab and Shift+Tab move focus, the focused control draws a ring,
+  and Space or Enter activates it. `G`, `R`, `S` and `Esc` are window shortcuts, ignored while a
+  text field has focus.
+- Screen readers remain unsupported because the vendored backend exposes no accessibility tree;
+  see `docs/ACCESSIBILITY.md`.
+- Type sizes lost their 7-8px floor: dense labels are now 9px and buttons, headers and settings
+  copy 10px. Edit, zoom and numeric controls are at least 24x24.
+- The history roll's three velocity layers are brighter, so the quietest one clears 3:1 against
+  the roll background in every theme.
+- The tuning strip drops the `SCALE` label while EDO is active, so the scale name stays readable.
+- A focused control shows its hint in the status strip, so the instructions no longer require a
+  mouse.
+- The history roll draws a playhead at the newest edge, and note heights have a floor so wide
+  pitch ranges and short windows still read as notes.
 
 ## 1.0.1 — Documentation release
 
@@ -120,3 +139,16 @@ provenance.
 
 See the release notes for the four-LFO rack, drag links, modulation matrix, three-state polarity,
 pitch-bend-range RPN 0, 13 extra scale tables, and the MIDI history pattern overlay.
+- The README demo GIF is regenerated from the real UI: an ignored test renders the window
+  headlessly frame by frame. See `docs/README.md` for the command.
+- GENERATE is the only accent-filled action in the header; RANDOMIZE is a secondary button.
+- The shared control set (`TipTouch`, `HoverTip`, `FocusRing`, the modulation globals and their
+  view structs) now lives in `ui/shared.slint`, with a pinned hash so the two products cannot
+  drift silently.
+- The roll has a pitch ruler in its left gutter; labels follow the zoom and pan, and are hidden
+  where the edit buttons cover the gutter.
+- Reduced motion is a new user-global setting. It stops the drawing tweens, the register flash and
+  the settings/matrix slides.
+- Controls declare accessibility roles and labels (button, slider, spinbox, with values and
+  increment/decrement actions) so a future backend tree is correct from day one. Screen readers
+  remain a decided gap; see `docs/ACCESSIBILITY.md`.

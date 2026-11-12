@@ -102,7 +102,6 @@ pub struct GridSpec {
 /// One pattern loop projected onto the history time axis.
 pub struct Overlay<'a> {
     pub notes: &'a [Note],
-    /// One grid step in milliseconds.
     pub step_ms: f32,
     /// Continuous position inside the loop at the right edge of the roll.
     pub phase_steps: f32,
@@ -131,7 +130,6 @@ pub fn build(events: &mut Vec<Ev>, now_ms: u64, window_ms: u64, w: f32, h: f32, 
     build_with_grid(events, now_ms, window_ms, w, h, overlay, None)
 }
 
-/// Build the roll with an optional musical time grid.
 pub fn build_with_grid(
     events: &mut Vec<Ev>,
     now_ms: u64,
@@ -168,7 +166,7 @@ pub fn build_with_grid(
     }
     segs.retain(|s| s.end >= t_min && s.start <= now_ms as i64 + 50);
 
-    // octave-aligned pitch range
+    // Snap the drawn range outward to whole octaves.
     let (mut lo, mut hi) = (48, 72);
     if !segs.is_empty() {
         let mn = segs.iter().map(|s| s.note as i32).min().unwrap();
@@ -203,14 +201,17 @@ pub fn build_with_grid(
         let y = (hi - 1 - n) as f32 * rh - s.cents / 100.0 * rh;
         let (x0, x1) = (x_of(s.start), x_of(s.end));
         let x1 = x1.max(x0 + 2.0);
-        rect(&mut roll.notes, x0, y + 0.5, x1, y + rh - 0.5);
+        // Floor the note height so wide pitch ranges and short windows still read as notes.
+        let note_h = (rh - 1.0).max(3.6);
+        let top = y + (rh - note_h) * 0.5;
+        rect(&mut roll.notes, x0, top, x1, top + note_h);
         // Velocity is packed with the event; split it into two brighter overlay layers so the UI
         // can shade notes without a per-note model.
         if s.vel >= 64 {
-            rect(&mut roll.notes_mid, x0, y + 0.5, x1, y + rh - 0.5);
+            rect(&mut roll.notes_mid, x0, top, x1, top + note_h);
         }
         if s.vel >= 100 {
-            rect(&mut roll.notes_hard, x0, y + 0.5, x1, y + rh - 0.5);
+            rect(&mut roll.notes_hard, x0, top, x1, top + note_h);
         }
     }
 

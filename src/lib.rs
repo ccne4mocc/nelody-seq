@@ -46,10 +46,10 @@ impl Theme {
     pub(crate) fn colors(self) -> [[u8; 3]; 15] {
         match self {
             Self::Sketchbook => [
-                [0xa6,0x7c,0x00],[0x3f,0x65,0x91],[0x9c,0x4f,0x43],[0xa9,0x32,0x26],
+                [0x75,0x56,0x00],[0x3f,0x65,0x91],[0x94,0x48,0x3e],[0xa9,0x32,0x26],
                 [0xf3,0xee,0xe2],[0xee,0xe7,0xd8],[0xe8,0xdf,0xcd],
                 [0xfa,0xf5,0xe9],[0xe5,0xdc,0xc9],[0xd7,0xcc,0xb5],
-                [0x2f,0x2b,0x25],[0x7a,0x70,0x61],[0xc7,0xbc,0xa8],
+                [0x2f,0x2b,0x25],[0x65,0x5c,0x4d],[0xc7,0xbc,0xa8],
                 [0xde,0xd5,0xc3],[0xfd,0xf9,0xf0],
             ],
             Self::Neon => [
@@ -60,7 +60,7 @@ impl Theme {
                 [0x1a,0x20,0x38],[0x0b,0x0f,0x14],
             ],
             Self::Lava => [
-                [0xfd,0xe0,0x47],[0xf9,0x73,0x16],[0xdc,0x26,0x26],[0x38,0xbd,0xf8],
+                [0xfd,0xe0,0x47],[0xf9,0x73,0x16],[0xef,0x44,0x44],[0x38,0xbd,0xf8],
                 [0x1b,0x10,0x10],[0x20,0x11,0x13],[0x18,0x0e,0x13],
                 [0x22,0x14,0x16],[0x33,0x20,0x24],[0x4a,0x2c,0x2f],
                 [0xf3,0xe8,0xe0],[0xb0,0x9a,0x94],[0x4a,0x31,0x34],
@@ -180,7 +180,7 @@ pub struct MelodyParams {
     #[id = "theme"] pub theme: EnumParam<Theme>,
     #[id = "gate"] pub gate: FloatParam,
     #[id = "swing"] pub swing: FloatParam,
-    // --- LFO modulation (runtime overlay; targets affect scheduling, not project state) -----
+    // LFO modulation: targets affect scheduling, not project state.
     #[id = "lfo1_enabled"] pub lfo1_enabled: BoolParam,
     #[id = "lfo1_wave"] pub lfo1_wave: EnumParam<OscWave>,
     #[id = "lfo1_rate_mode"] pub lfo1_rate_mode: EnumParam<LfoRateMode>,
@@ -225,7 +225,7 @@ pub struct MelodyParams {
     #[id = "logging"] pub logging: BoolParam,
     #[id = "freerun"] pub free_run: BoolParam,
 
-    // --- Melody / tuning -------------------------------------------------------------
+    // Melody / tuning.
     /// Pitch class of the tonic, 0 = C.
     #[id = "root"] pub root: IntParam,
     #[id = "scale"] pub scale: EnumParam<Tuning>,
@@ -435,17 +435,14 @@ impl MelodyParams {
         cell_count_for(self.steps.value(), self.round_steps.value(), self.step_ceiling())
     }
 
-    /// Step subdivision owned by the selected mode.
     pub(crate) fn step_unit(&self) -> crate::clock::StepUnit {
         self.mode.value().step_unit()
     }
 
-    /// Steps per quarter note for the selected mode.
     pub(crate) fn steps_per_beat(&self) -> f64 {
         self.step_unit().steps_per_quarter()
     }
 
-    /// Number of active voices.
     pub(crate) fn voice_count(&self) -> usize {
         self.voices.value().clamp(1, MAX_VOICES as i32) as usize
     }
@@ -2189,5 +2186,57 @@ mod tests {
             "the delayed step is missing: {ons:?}, expected {expected}");
         assert!(ons.iter().any(|(at, _)| (*at as f64 - 5512.5).abs() <= 1.5),
             "the following step moved with the delayed one: {ons:?}");
+    }
+
+    fn relative_luminance(rgb: [u8; 3]) -> f32 {
+        let channel = |v: u8| {
+            let s = f32::from(v) / 255.0;
+            if s <= 0.039_28 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2])
+    }
+
+    fn contrast_ratio(a: [u8; 3], b: [u8; 3]) -> f32 {
+        let (a, b) = (relative_luminance(a), relative_luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn every_theme_keeps_composed_text_pairs_readable() {
+        // Indices match `Theme::colors`: four accents, three backgrounds, surface, control,
+        // control-hover, text, text-muted, border, cell-off, on-accent.
+        const TEXT: usize = 10;
+        const MUTED: usize = 11;
+        const ON_ACCENT: usize = 14;
+        let pairs: [(usize, usize, f32, &str); 12] = [
+            (TEXT, 7, 4.5, "text on surface"),
+            (TEXT, 8, 4.5, "text on control"),
+            (MUTED, 7, 4.5, "muted text on surface"),
+            (MUTED, 8, 4.5, "muted text on control"),
+            (0, 7, 4.5, "accent heading on surface"),
+            (0, 8, 4.5, "accent heading on control"),
+            (ON_ACCENT, 0, 4.5, "label on the first accent"),
+            (ON_ACCENT, 1, 4.5, "label on the second accent"),
+            (ON_ACCENT, 2, 4.5, "label on the third accent"),
+            (ON_ACCENT, 3, 4.5, "label on the highlight accent"),
+            // The focus ring is a non-text indicator, so 3:1 applies.
+            (3, 7, 3.0, "focus ring on surface"),
+            (3, 8, 3.0, "focus ring on control"),
+        ];
+        for theme in [Theme::Sketchbook, Theme::Neon, Theme::Lava, Theme::Forest] {
+            let palette = theme.colors();
+            for (fg, bg, minimum, what) in pairs {
+                let ratio = contrast_ratio(palette[fg], palette[bg]);
+                assert!(ratio >= minimum, "{theme:?}: {what} is {ratio:.2}:1");
+            }
+            // The window background is a gradient, so check the worst of its three stops.
+            for (fg, what) in [(MUTED, "muted text on the window background"),
+                               (2, "third accent as a status colour")] {
+                let ratio = (4..=6)
+                    .map(|bg| contrast_ratio(palette[fg], palette[bg]))
+                    .fold(f32::INFINITY, f32::min);
+                assert!(ratio >= 4.5, "{theme:?}: {what} is {ratio:.2}:1");
+            }
+        }
     }
 }

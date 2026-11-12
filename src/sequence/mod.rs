@@ -54,8 +54,7 @@ use crate::edits::{EditView, HIT_OFF, HIT_ON};
 use crate::modes::Mode;
 
 /// Hard capacity for every pattern array; the host's `max_steps` ceiling can reach 1024.
-/// Hard capacity for the melodic pattern. Six simultaneous voices share this ceiling, so the
-/// per-voice array is deliberately half the historic size.
+/// Six simultaneous voices share this ceiling, so each per-voice array is half the historic size.
 pub const MAX_STEPS: usize = 512;
 /// Playback/export cap for the LCM of independent voice loops.
 pub const MAX_LOOP_STEPS: usize = 512;
@@ -748,8 +747,6 @@ mod tests {
             assert_eq!(mir.slots[i], plain.slots[15 - i], "mirror slot {i}");
         }
     }
-
-    // ---- regression tests for the mathematical/musical review ------------------------------
 
     fn base(kind: Mode) -> GenParams {
         GenParams { kind, probability: 1.0, ..GenParams::default() }

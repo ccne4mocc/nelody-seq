@@ -1,0 +1,137 @@
+// Shared by nrum seq and nelody seq. This file is duplicated verbatim in both repositories:
+// `every_repo_uses_the_same_shared_ui` pins its hash, so edit it in one repo, copy it to the
+// other, then update the constant in both tests.
+
+export struct ModTargetView {
+    target: int,
+    linked: bool,
+    base: float,
+    value: float,
+    min: float,
+    max: float,
+    base01: float,
+    value01: float,
+    depth-up: float,
+    depth-down: float,
+    lfo-text: string,
+    count: int,
+}
+
+export struct ModRow { lfo: int, target-id: int, source: string, target: string, base: string, value: string, delta: string }
+
+export struct Opt { label: string, min: float, max: float, value: float, text: string, step: float, number: string, scale: float }
+
+export struct ModeRow { header: bool, group: string, left: int, right: int, has-right: bool }
+
+export global HoverTip {
+    in-out property <string> text: "";
+    in-out property <length> x: 0px;
+    in-out property <length> y: 0px;
+    // Position of the control that owns the visible tip, so moving between two controls with
+    // the same hint cannot let the old control clear the new one's tip.
+    in-out property <length> owner-x: 0px;
+    in-out property <length> owner-y: 0px;
+}
+
+export global ModHover {
+    in-out property <int> target: -1;
+    in-out property <length> x: 0px;
+    in-out property <length> y: 0px;
+}
+
+export global ModDrag {
+    in-out property <int> lfo: 0;
+    in-out property <length> x: 0px;
+    in-out property <length> y: 0px;
+    callback dropped(float, length, length);
+}
+
+export global ModRegistry {
+    callback register(int, bool, length, length, length, length);
+}
+
+export global ModView {
+    in property <[ModTargetView]> targets;
+    public pure function view(index: int) -> ModTargetView {
+        if (index >= 0 && index < targets.length) {
+            return targets[index];
+        }
+        return {
+            target: -1, linked: false, base: 0, value: 0, min: 0, max: 1,
+            base01: 0, value01: 0, depth-up: 0, depth-down: 0, lfo-text: "", count: 0
+        };
+    }
+}
+
+/// Focus-ring colour. The app binds it to its highlight accent, so the shared component set does
+/// not need to know about either product's palette.
+export global FocusRing {
+    in-out property <color> color: #38bdf8;
+}
+
+export component TipTouch inherits FocusScope {
+    in property <string> hint: "";
+    // Assistive technology sees a button named after its tooltip. Inert until the backend
+    // produces an accessibility tree; the labels are declared now so the tree is correct when
+    // that lands. (`accessible-role` must be a constant, so toggles are buttons as well.)
+    accessible-role: button;
+    accessible-label: root.hint;
+    out property <bool> has-hover: touch.has-hover;
+    out property <length> mouse-x: touch.mouse-x;
+    out property <length> mouse-y: touch.mouse-y;
+    callback clicked;
+    callback scroll-event(PointerScrollEvent) -> EventResult;
+    callback pointer-event(PointerEvent);
+
+    key-pressed(event) => {
+        if (event.text == Key.Space || event.text == Key.Return) {
+            root.clicked();
+            return accept;
+        }
+        reject
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+        scroll-event(e) => { root.scroll-event(e) }
+        pointer-event(e) => { root.pointer-event(e) }
+        moved => {
+            if (root.has-hover) {
+                HoverTip.text = root.hint;
+                HoverTip.x = root.absolute-position.x + root.mouse-x;
+                HoverTip.y = root.absolute-position.y + root.mouse-y;
+                HoverTip.owner-x = root.absolute-position.x;
+                HoverTip.owner-y = root.absolute-position.y;
+            }
+        }
+        changed has-hover => {
+            if (root.has-hover) {
+                HoverTip.text = root.hint;
+                HoverTip.x = root.absolute-position.x + root.mouse-x;
+                HoverTip.y = root.absolute-position.y + root.mouse-y;
+                HoverTip.owner-x = root.absolute-position.x;
+                HoverTip.owner-y = root.absolute-position.y;
+            } else if (HoverTip.owner-x == root.absolute-position.x && HoverTip.owner-y == root.absolute-position.y) {
+                HoverTip.text = "";
+            }
+        }
+    }
+
+    Rectangle {
+        visible: root.has-focus;
+        width: parent.width; height: parent.height;
+        border-width: 1px; border-color: FocusRing.color; border-radius: 3px;
+        background: transparent;
+    }
+
+    // Keyboard users never hover, so surface the same hint in the status strip on focus.
+    changed has-focus => {
+        if (root.has-focus && root.hint != "") {
+            HoverTip.text = root.hint;
+            HoverTip.owner-x = root.absolute-position.x;
+            HoverTip.owner-y = root.absolute-position.y;
+        } else if (HoverTip.owner-x == root.absolute-position.x && HoverTip.owner-y == root.absolute-position.y) {
+            HoverTip.text = "";
+        }
+    }
+}
