@@ -12,7 +12,7 @@ pub const P: f32 = 210.0;
 const C: f32 = P / 2.0;
 const NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Node {
     pub x: f32,
     pub y: f32,
@@ -20,6 +20,14 @@ pub struct Node {
     pub on: bool,
     pub cur: bool,
     pub label: String,
+    /// Display step this mark belongs to, or -1 for pure structure (circuit vertices, lattice).
+    /// The piano roll uses it for the signal x-ray in both directions.
+    pub link_step: i32,
+}
+impl Default for Node {
+    fn default() -> Self {
+        Self { x: 0.0, y: 0.0, r: 0.0, on: false, cur: false, label: String::new(), link_step: -1 }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -179,7 +187,7 @@ fn contour(v: &mut View, pat: &Pattern, n: usize) {
 fn strip_dots(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     for i in 0..n {
         if pat.hit[i] {
-            v.nodes.push(Node { x: x_of(i, n), y: y_of(pat.u[i]), r: 4.2, on: true, cur: cur == i as i32, label: String::new() });
+            v.nodes.push(Node { x: x_of(i, n), y: y_of(pat.u[i]), r: 4.2, on: true, cur: cur == i as i32, label: String::new(), link_step: i as i32 });
         }
     }
 }
@@ -273,6 +281,7 @@ fn markov_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
         v.nodes.push(Node {
             x, y, r: 11.0, on: s != 0, cur: s == dest,
             label: if s == 0 { "·".into() } else { s.to_string() },
+            ..Node::default()
         });
     }
 }
@@ -355,7 +364,7 @@ fn sieve_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     }
     for i in 0..n {
         if pat.hit[i] {
-            v.nodes.push(Node { x: x_of(i, n), y: P - 12.0, r: 3.0, on: true, cur: cur == i as i32, label: String::new() });
+            v.nodes.push(Node { x: x_of(i, n), y: P - 12.0, r: 3.0, on: true, cur: cur == i as i32, label: String::new(), link_step: i as i32 });
         }
     }
     playhead_column(v, n, cur);
@@ -375,7 +384,7 @@ fn fibonacci_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
             ln(&mut v.edges, x, yc(count));
             count += 1.0;
             ln(&mut v.edges, x, yc(count));
-            v.nodes.push(Node { x, y: yc(count), r: 4.0, on: true, cur: cur == i as i32, label: String::new() });
+            v.nodes.push(Node { x, y: yc(count), r: 4.0, on: true, cur: cur == i as i32, label: String::new(), link_step: i as i32 });
         }
     }
     ln(&mut v.edges, x_of(n, n), yc(count));
@@ -390,9 +399,9 @@ fn bernoulli_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     for i in 0..n {
         let x = x_of(i, n);
         if pat.hit[i] {
-            v.nodes.push(Node { x, y: y_of(pat.u[i]), r: 4.5, on: true, cur: cur == i as i32, label: String::new() });
+            v.nodes.push(Node { x, y: y_of(pat.u[i]), r: 4.5, on: true, cur: cur == i as i32, label: String::new(), link_step: i as i32 });
         } else {
-            v.nodes.push(Node { x, y: P - 12.0, r: 1.8, on: false, cur: false, label: String::new() });
+            v.nodes.push(Node { x, y: P - 12.0, r: 1.8, on: false, cur: false, label: String::new(), link_step: i as i32 });
         }
     }
     contour(v, pat, n);
@@ -408,7 +417,7 @@ fn golomb_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
     for &i in &marks {
         let x = x_of(i, n);
         line(&mut v.edges, (x, y - 10.0), (x, y + 10.0));
-        v.nodes.push(Node { x, y, r: 5.0, on: true, cur: cur == i as i32, label: String::new() });
+        v.nodes.push(Node { x, y, r: 5.0, on: true, cur: cur == i as i32, label: String::new(), link_step: i as i32 });
     }
 
     let all_pairs = marks.len() <= 12;
@@ -437,7 +446,7 @@ fn dice_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
             let x = x0 + w * j as f32 / 4.0;
             poly(dst, &[(x, y), (x + w / 4.0 - 1.0, y), (x + w / 4.0 - 1.0, P - 12.0), (x, P - 12.0)]);
             if pat.hit[i] {
-                v.nodes.push(Node { x: x + w / 8.0, y, r: 3.0, on: true, cur: cur == i as i32, label: String::new() });
+                v.nodes.push(Node { x: x + w / 8.0, y, r: 3.0, on: true, cur: cur == i as i32, label: String::new(), link_step: i as i32 });
             }
         }
     }
@@ -470,7 +479,7 @@ fn logistic_view(v: &mut View, pat: &Pattern, n: usize, cur: i32) {
             ln(&mut v.lines, px, py);
             ln(&mut v.lines, bx + y * w, py);
         }
-        v.nodes.push(Node { x: px, y: py, r: if on { 4.0 } else { 2.0 }, on, cur: cur == i as i32, label: String::new() });
+        v.nodes.push(Node { x: px, y: py, r: if on { 4.0 } else { 2.0 }, on, cur: cur == i as i32, label: String::new(), link_step: i as i32 });
     }
 
     for i in 0..n {
@@ -516,7 +525,7 @@ fn walk_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
         let p = (x_of(i, n), y_of(pat.orbit[i]));
         if !started { mv(&mut v.lines, p.0, p.1); started = true; } else { ln(&mut v.lines, p.0, p.1) }
         if pat.hit[i] {
-            v.nodes.push(Node { x: p.0, y: p.1, r: 4.0, on: true, cur: cur == i as i32, label: String::new() });
+            v.nodes.push(Node { x: p.0, y: p.1, r: 4.0, on: true, cur: cur == i as i32, label: String::new(), link_step: i as i32 });
         }
     }
     playhead_column(v, n, cur);
@@ -536,7 +545,7 @@ fn tent_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
         let x = pat.orbit[i];
         let y = mu * x.min(1.0 - x);
         let p = (12.0 + x * (P - 24.0), P - 12.0 - y * (P - 24.0));
-        v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.0 } else { 1.8 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });
+        v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.0 } else { 1.8 }, on: pat.hit[i], cur: cur == i as i32, label: String::new(), link_step: i as i32 });
     }
     playhead_column(v, n, cur);
 }
@@ -546,7 +555,7 @@ fn henon_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) 
     poly(&mut v.edges, &[(10.0, 10.0), (P - 10.0, 10.0), (P - 10.0, P - 10.0), (10.0, P - 10.0)]);
     for i in 0..n {
         let p = (10.0 + pat.orbit[i] * (P - 20.0), P - 10.0 - pat.theta[i] * (P - 20.0));
-        v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.0 } else { 1.8 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });
+        v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.0 } else { 1.8 }, on: pat.hit[i], cur: cur == i as i32, label: String::new(), link_step: i as i32 });
     }
     playhead_column(v, n, cur);
 }
@@ -606,7 +615,7 @@ fn hilbert_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32
     }
     for i in 0..n {
         let p = (10.0 + pat.orbit[i] * (P - 20.0), P - 10.0 - pat.theta[i] * (P - 20.0));
-        v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 3.8 } else { 1.5 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });
+        v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 3.8 } else { 1.5 }, on: pat.hit[i], cur: cur == i as i32, label: String::new(), link_step: i as i32 });
     }
     playhead_column(v, n, cur);
 }
@@ -619,7 +628,7 @@ fn ulam_view(v: &mut View, pat: &crate::sequence::Pattern, n: usize, cur: i32) {
         let p = (2.0 + pat.orbit[i] * (P - 4.0), P - 2.0 - pat.theta[i] * (P - 4.0));
         if !started { mv(&mut v.lines, p.0, p.1); started = true; } else { ln(&mut v.lines, p.0, p.1) }
         if pat.state[i] == 1 || pat.hit[i] {
-            v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.0 } else { 2.0 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });
+            v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.0 } else { 2.0 }, on: pat.hit[i], cur: cur == i as i32, label: String::new(), link_step: i as i32 });
         }
     }
     playhead_column(v, n, cur);
@@ -637,7 +646,7 @@ pub fn build(kind: Mode, pat: &crate::sequence::Pattern, steps: usize, cur: i32,
             for i in 0..n {
                 let (x, y) = polar(82.0, i as f32 / n as f32);
                 if pat.hit[i] { hits.push((x, y)); }
-                v.nodes.push(Node { x, y, r: if pat.hit[i] { 7.0 } else { 3.5 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });
+                v.nodes.push(Node { x, y, r: if pat.hit[i] { 7.0 } else { 3.5 }, on: pat.hit[i], cur: cur == i as i32, label: String::new(), link_step: i as i32 });
             }
             if hits.len() >= 2 {
                 for (k, h) in hits.iter().enumerate() {
@@ -667,7 +676,7 @@ pub fn build(kind: Mode, pat: &crate::sequence::Pattern, steps: usize, cur: i32,
             }
             for i in 0..nv {
                 let (x, y) = pos(i);
-                v.nodes.push(Node { x, y, r: 11.0, on: i != 0, cur: i == dest, label: if i == 0 { "R".into() } else { i.to_string() } });
+                v.nodes.push(Node { x, y, r: 11.0, on: i != 0, cur: i == dest, label: if i == 0 { "R".into() } else { i.to_string() }, ..Node::default() });
             }
         }
         Mode::CircleMap => {
@@ -677,7 +686,7 @@ pub fn build(kind: Mode, pat: &crate::sequence::Pattern, steps: usize, cur: i32,
             let pts: Vec<(f32, f32)> = (0..n).map(|i| polar(30.0 + 66.0 * (i as f32 + 1.0) / n as f32, pat.theta[i])).collect();
             for (i, p) in pts.iter().enumerate() {
                 if i == 0 { mv(&mut v.lines, p.0, p.1) } else { ln(&mut v.lines, p.0, p.1) }
-                v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.5 } else { 2.0 }, on: pat.hit[i], cur: cur == i as i32, label: String::new() });
+                v.nodes.push(Node { x: p.0, y: p.1, r: if pat.hit[i] { 4.5 } else { 2.0 }, on: pat.hit[i], cur: cur == i as i32, label: String::new(), link_step: i as i32 });
             }
             if cur >= 0 {
                 line(&mut v.hand, (C, C), pts[cur as usize]);
@@ -724,7 +733,7 @@ pub fn build(kind: Mode, pat: &crate::sequence::Pattern, steps: usize, cur: i32,
                 for a in 0..=4 {
                     let (x, y) = lattice(a, b);
                     let pc = ((7 * a + 4 * b).rem_euclid(12) - start_pc + root).rem_euclid(12) as usize;
-                    v.nodes.push(Node { x, y, r: 8.0, on: visited_nodes.contains(&(a, b)), cur: cur_nodes.contains(&(a, b)), label: NAMES[pc].into() });
+                    v.nodes.push(Node { x, y, r: 8.0, on: visited_nodes.contains(&(a, b)), cur: cur_nodes.contains(&(a, b)), label: NAMES[pc].into(), ..Node::default() });
                 }
             }
         }
@@ -821,6 +830,23 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn every_hit_step_has_a_drawing_mark_for_the_xray() {
+        for kind in [Mode::Euclidean, Mode::Golomb, Mode::Logistic, Mode::CircleMap, Mode::Fibonacci, Mode::Bernoulli] {
+            let g = GenParams { kind, steps: 16, pulses: 5, density: 0.7, ..GenParams::default() };
+            let pat = generate(&g);
+            let v = build(kind, &pat, 16, 3, 0, 0);
+            for i in 0..16 {
+                if !pat.hit[i] { continue; }
+                assert!(
+                    v.nodes.iter().any(|n| n.link_step == i as i32),
+                    "{kind:?} step {i} has no linked mark",
+                );
+            }
+            assert!(v.nodes.iter().all(|n| n.link_step < 16), "{kind:?} linked past the pattern");
         }
     }
 

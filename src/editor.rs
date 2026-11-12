@@ -680,19 +680,39 @@ fn open_folder(path: &Path) {
     let _ = std::process::Command::new(opener).arg(path).spawn();
 }
 
-fn push_view(ui: &AppWindow, v: &View) {
+#[derive(Clone, Copy)]
+struct LinkMark { x: f32, y: f32, r: f32, step: i32 }
+
+/// Return the step of the mark nearest a pointer position in the 210-unit drawing space, or -1.
+fn nearest_link(cached: &[LinkMark], ux: f32, uy: f32) -> i32 {
+    let mut best: Option<(f32, i32)> = None;
+    for m in cached {
+        let dx = m.x - ux;
+        let dy = m.y - uy;
+        let reach = m.r + 2.5;
+        let d2 = dx * dx + dy * dy;
+        if d2 <= reach * reach && best.is_none_or(|b| d2 < b.0) {
+            best = Some((d2, m.step));
+        }
+    }
+    best.map(|(_, step)| step).unwrap_or(-1)
+}
+
+fn push_view(ui: &AppWindow, v: &View, links: &Mutex<Vec<LinkMark>>) {
     // Update rows in place when the count is unchanged; replacing the model breaks tweening.
     let model = ui.get_view_nodes();
     if model.row_count() == v.nodes.len() {
         for (i, n) in v.nodes.iter().enumerate() {
             let node = ViewNode {
                 x: n.x, y: n.y, r: n.r, on: n.on, cur: n.cur, label: SharedString::from(n.label.as_str()),
+                link_step: n.link_step,
             };
             if model.row_data(i).as_ref() != Some(&node) { model.set_row_data(i, node); }
         }
     } else {
         ui.set_view_nodes(ModelRc::new(VecModel::from(v.nodes.iter().map(|n| ViewNode {
             x: n.x, y: n.y, r: n.r, on: n.on, cur: n.cur, label: SharedString::from(n.label.as_str()),
+            link_step: n.link_step,
         }).collect::<Vec<_>>())));
     }
     ui.set_view_edges(SharedString::from(v.edges.as_str()));
@@ -702,6 +722,13 @@ fn push_view(ui: &AppWindow, v: &View) {
     ui.set_view_jumped(SharedString::from(v.jumped.as_str()));
     ui.set_view_lines(SharedString::from(v.lines.as_str()));
     ui.set_view_hand(SharedString::from(v.hand.as_str()));
+    // One compact list for the pointer probe; rebuilt only when the view itself changes.
+    if let Ok(mut cached) = links.lock() {
+        cached.clear();
+        cached.extend(v.nodes.iter().filter(|n| n.link_step >= 0).map(|n| LinkMark {
+            x: n.x, y: n.y, r: n.r, step: n.link_step,
+        }));
+    }
 }
 
 /// Convert a history length in derived pattern loops to the editor-side millisecond window.
@@ -751,6 +778,7 @@ fn overlay_clock<'a>(
     now_ms: u64,
     loop_steps: f32,
     notes: &'a [history::Note],
+    probe: Option<usize>,
 ) -> Option<history::Overlay<'a>> {
     if notes.is_empty() { return None; }
     let bpm64 = bpm as f64;
@@ -762,6 +790,7 @@ fn overlay_clock<'a>(
         phase_steps: roll_phase_steps(shared, bpm, now_ms, spb) as f32,
         loop_steps,
         swing_steps: p.swing.value().clamp(0.0, 0.5),
+        probe,
     })
 }
 
@@ -784,7 +813,8 @@ fn push_history(
     } else {
         Vec::new()
     };
-    let overlay = overlay_clock(shared, p, bpm, now_ms, loop_steps, &notes);
+    let overlay = overlay_clock(shared, p, bpm, now_ms, loop_steps, &notes,
+        (ui.get_probe_step() >= 0).then_some(ui.get_probe_step() as usize));
     let spb = p.steps_per_beat();
     let loop_steps = p.loop_steps();
     let unit = p.step_unit();
@@ -815,6 +845,7 @@ fn push_history(
     ui.set_history_notes_hard(SharedString::from(roll.notes_hard.as_str()));
     ui.set_history_pattern(SharedString::from(roll.pattern.as_str()));
     ui.set_history_pattern_slides(SharedString::from(roll.pattern_slides.as_str()));
+    ui.set_history_probe(SharedString::from(roll.probe.as_str()));
     ui.set_history_lo(roll.lo);
     ui.set_history_hi(roll.hi);
     ui.set_history_ruler(ModelRc::new(VecModel::from(
@@ -1011,6 +1042,9 @@ impl Editor for SlintEditor {
         let (setup_params, setup_ctx) = (self.params.clone(), context.clone());
         let setup_shared = self.shared.clone();
         let setup_scale = self.scale.clone();
+        // Marks that can answer the roll x-ray, cached so a pointer move never walks the model.
+        let probe_links = Arc::new(Mutex::new(Vec::<LinkMark>::new()));
+        let setup_links = probe_links.clone();
         let setup_mod_rects = mod_rects.clone();
         let setup = move |h: &slint_baseview::SlintWindowHandler<AppWindow>, _w: &mut slint_baseview::Window| {
             let ui = h.component();
@@ -1299,6 +1333,34 @@ impl Editor for SlintEditor {
                 ui.on_randomize_pressed(move || randomize_parameters(&p, &c));
             }
             {
+                let weak = ui.as_weak();
+                let links = setup_links.clone();
+                ui.on_probe_at(move |ux, uy| {
+                    let Some(ui) = weak.upgrade() else { return; };
+                    let found = if ux < 0.0 {
+                        -1
+                    } else {
+                        let cached = links.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                        nearest_link(&cached, ux, uy)
+                    };
+                    ui.set_probe_step(found);
+                });
+            }
+            {
+                let weak = ui.as_weak();
+                let links = setup_links.clone();
+                ui.on_xray_hover(move |step| {
+                    let Some(ui) = weak.upgrade() else { return; };
+                    let active = if step < 0 {
+                        false
+                    } else {
+                        let cached = links.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                        cached.iter().any(|m| m.step == step)
+                    };
+                    ui.set_xray_active(active);
+                });
+            }
+            {
                 let (p, c) = (setup_params.clone(), setup_ctx.clone());
                 ui.on_toggle_round_steps(move || set(&c, &p.round_steps, !p.round_steps.value()));
             }
@@ -1356,6 +1418,7 @@ impl Editor for SlintEditor {
             ui.set_credit_github(SharedString::from(crate::contact::GITHUB));
         };
 
+        let update_links = probe_links.clone();
         let cache = Arc::new(Mutex::new(Cache {
             gen_key: None,
             pattern: Pattern::default(),
@@ -1610,7 +1673,7 @@ impl Editor for SlintEditor {
             let view_key = (gen_key, cur, preview_pitch.root, gen_key.osc_wave, preview_voice);
             if c.view_key != Some(view_key) {
                 let v = view::build(gen_key.kind, &c.pattern, c.pattern.steps, cur, preview_pitch.root, gen_key.osc_wave);
-                push_view(&ui, &v);
+                push_view(&ui, &v, &update_links);
                 c.view_key = Some(view_key);
             }
             // Live clock: follow the newest note automatically. Entering an edit mode freezes the
@@ -1680,6 +1743,17 @@ impl Editor for SlintEditor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nearest_link_finds_the_mark_and_ignores_empty_space() {
+        let marks = [
+            LinkMark { x: 50.0, y: 50.0, r: 3.0, step: 7 },
+            LinkMark { x: 55.0, y: 50.0, r: 3.0, step: 9 },
+        ];
+        assert_eq!(nearest_link(&marks, 50.5, 50.5), 7);
+        assert_eq!(nearest_link(&marks, 55.0, 50.0), 9);
+        assert_eq!(nearest_link(&marks, 20.0, 20.0), -1);
+    }
 
     #[test]
     fn per_mode_pulse_limits_stay_inside_the_grid() {
@@ -2123,7 +2197,7 @@ mod tests {
             ui.set_history_timing("4/4".into());
             let cur = (frame % 16) as i32;
             let view = view::build(gen_key.kind, &pattern, pattern.steps, cur, p.root.value(), gen_key.osc_wave);
-            push_view(&ui, &view);
+            push_view(&ui, &view, &Mutex::new(Vec::<LinkMark>::new()));
             slint::platform::update_timers_and_animations();
             window.draw_if_needed(|renderer| { renderer.render(&mut buffer, WIDTH as usize); });
             let path = dir.join(format!("frame-{frame:03}.ppm"));

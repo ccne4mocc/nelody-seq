@@ -44,7 +44,7 @@ export global Type {
     out property <length> glyph-large: 14px;
 }
 
-export struct ViewNode { x: length, y: length, r: length, on: bool, cur: bool, label: string }
+export struct ViewNode { x: length, y: length, r: length, on: bool, cur: bool, label: string, link-step: int }
 // One numeric-entry session shared by every option strip, so only one inline editor is open.
 export global OptEdit {
     in-out property <int> index: -1;
@@ -768,6 +768,11 @@ component ModePanel inherits Rectangle {
     in property <string> jumped: "M0 0";
     in property <string> lines: "M0 0";
     in property <string> hand: "M0 0";
+    // Piano-roll pointer position, for the signal x-ray: the marks that produced that step stay
+    // legible while every other mark recedes. -1 means no link is being held.
+    in property <int> xray-step: -1;
+    in property <bool> xray-active: false;
+    callback probe-at(length, length);
     // view.rs builds every panel in a 210-unit space; paths scale through the viewbox and node
     // rectangles are scaled by hand so dots and labels grow with the box.
     property <float> px-per-unit: 1.4285714;   // 300px square drawing / 210-unit geometry
@@ -787,10 +792,24 @@ component ModePanel inherits Rectangle {
         x: root.draw-offset-x + (n.x - n.r) * root.px-per-unit; y: (n.y - n.r) * root.px-per-unit;
         width: n.r * 2 * root.px-per-unit; height: n.r * 2 * root.px-per-unit;
         border-radius: n.r * root.px-per-unit;
+        property <bool> linked: root.xray-step >= 0 && n.link-step == root.xray-step;
+        // A held state, never an animation: the linked marks keep their ink and a focus ring,
+        // the rest step back only while a real mark exists for the held step.
+        opacity: !root.xray-active || root.xray-step < 0 || linked ? 1.0 : 0.28;
         background: n.cur ? Theme.hi : (n.on ? Theme.c1 : Theme.cell-off);
-        border-width: 1px; border-color: Theme.border;
+        border-width: linked ? 2px : 1px;
+        border-color: linked ? Theme.hi : Theme.border;
         // Canvas labels scale with the drawing, so they follow the node radius, not a text role.
         Text { width: parent.width; height: parent.height; text: n.label; font-size: 7px * root.px-per-unit; color: (n.cur || n.on) ? Theme.on-accent : Theme.text; horizontal-alignment: center; vertical-alignment: center; }
+    }
+    // Read the drawing under the pointer. The host finds the nearest step-linked mark, so the
+    // same link works in the other direction: the roll marks the time that step occupies.
+    probe := TouchArea {
+        x: root.draw-offset-x; y: 0px; width: 300px; height: 300px;
+        moved => { root.probe-at(probe.mouse-x / root.px-per-unit, probe.mouse-y / root.px-per-unit); }
+        changed has-hover => {
+            if (!probe.has-hover) { root.probe-at(-9999px, -9999px); }
+        }
     }
 }
 
@@ -968,6 +987,7 @@ export component AppWindow inherits Window {
     // Ghost of the current loop, phase-locked to the transport.
     in property <string> history-pattern: "M0 0";
     in property <string> history-pattern-slides: "M0 0";
+    in property <string> history-probe: "M0 0";
     in property <bool> history-overlay-on: true;
     in property <string> history-range: "";
     in property <string> history-timing: "";
@@ -996,6 +1016,13 @@ export component AppWindow inherits Window {
     in-out property <float> notes-cx: 0.0;
     in-out property <bool> edit-advanced: false;
     in-out property <int> gate-snap-index: 1;
+    // Signal x-ray. `hover-step` is the loop step under the roll pointer; `probe-step` is the
+    // drawing mark under the drawing pointer. They never feed each other.
+    in-out property <int> hover-step: -1;
+    in-out property <int> probe-step: -1;
+    in-out property <bool> xray-active: false;
+    callback probe-at(length, length);
+    callback xray-hover(int);
     // Grid spacing derived from the selected mode; no clock-rate or meter setting exists.
     in property <float> steps-per-bar: 16.0;
     in property <string> timing-summary: "4/4 · step 1/16";
@@ -1386,7 +1413,13 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             // 300px fits the description and live math line without squeezing the sliders.
             height: 300px; spacing: 10px;
-            ModePanel { nodes: root.view-nodes; edges: root.view-edges; fills: root.view-fills; solid: root.view-solid; slid: root.view-slid; jumped: root.view-jumped; lines: root.view-lines; hand: root.view-hand; reduce-motion: root.reduce-motion; }
+            ModePanel {
+                nodes: root.view-nodes; edges: root.view-edges; fills: root.view-fills; solid: root.view-solid; slid: root.view-slid; jumped: root.view-jumped; lines: root.view-lines; hand: root.view-hand;
+                reduce-motion: root.reduce-motion;
+                xray-step: root.hover-step;
+                xray-active: root.xray-active;
+                probe-at(x, y) => { root.probe-at(x, y); }
+            }
             VerticalLayout {
                 vertical-stretch: 1;
                 spacing: 3px; alignment: stretch;
@@ -1507,6 +1540,13 @@ export component AppWindow inherits Window {
             min-height: 187px; max-height: 460px; vertical-stretch: 1; border-radius: 4px;
             background: Theme.surface; border-width: 1px; border-color: Theme.border;
             clip: true;
+            property <bool> roll-hover: history-touch.has-hover;
+            changed roll-hover => {
+                if (!roll-hover) {
+                    root.hover-step = -1;
+                    root.xray-hover(-1);
+                }
+            }
             Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-bg; fill: Theme.cell-off.with-alpha(0.55); }
             Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-bg-bars; fill: Theme.hi.with-alpha(0.055); }
             Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-grid-steps; fill: transparent; stroke: Theme.text-muted.with-alpha(0.18); stroke-width: 0.5px / root.history-zoom-x; }
@@ -1520,6 +1560,7 @@ export component AppWindow inherits Window {
             // Outline-only so the recorded notes stay readable underneath.
             if root.history-overlay-on: Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-pattern; fill: transparent; stroke: Theme.c3.with-alpha(0.9); stroke-width: 1px / root.history-zoom-x; }
             if root.history-overlay-on: Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-pattern-slides; fill: transparent; stroke: Theme.c2.with-alpha(0.85); stroke-width: 1.2px / root.history-zoom-x; }
+            Path { x: 58px; y: 0px; width: parent.width - 62px; height: parent.height; viewbox-x: root.history-vb-x; viewbox-y: root.history-vb-y; viewbox-width: root.history-vb-w; viewbox-height: root.history-vb-h; commands: root.history-probe; fill: Theme.hi.with-alpha(0.22); stroke: Theme.hi; stroke-width: 1.5px / root.history-zoom-x; }
             // Pitch ruler in the gutter below the edit buttons. Labels follow the viewbox so they
             // stay attached to their octave line while the roll is zoomed or panned.
             for i in root.history-ruler.length: Text {
@@ -1561,6 +1602,13 @@ export component AppWindow inherits Window {
                 pointer-event(e) => {
                     let sx = history-touch.mouse-x / Math.max(history-touch.width, 1px);
                     let cx = (root.history-vb-x + sx * root.history-vb-w) / 800.0;
+                    if (e.kind == PointerEventKind.move) {
+                        let phase = Math.max(0.0, Math.min(1.0, cx));
+                        let step = Math.max(0, Math.min(Math.floor(root.steps) - 1,
+                            Math.floor(phase * root.steps)));
+                        root.hover-step = step;
+                        root.xray-hover(step);
+                    }
                     if (root.edit-mode == 1) {
                         // One mode: tap toggles the hit, a horizontal drag resizes the length.
                         if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left && history-touch.mouse-y > 30px) {

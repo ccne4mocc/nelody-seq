@@ -76,6 +76,8 @@ pub struct Roll {
     pub pattern: String,
     /// Slide connectors for the current-loop ghost (stroke in the UI).
     pub pattern_slides: String,
+    /// The ghost occurrence(s) of one held step, outlined by the signal x-ray.
+    pub probe: String,
     pub lo: i32,
     pub hi: i32,
 }
@@ -109,6 +111,8 @@ pub struct Overlay<'a> {
     pub loop_steps: f32,
     /// Swing delay applied to odd steps, in steps.
     pub swing_steps: f32,
+    /// Step held by the signal x-ray, if any; its ghost outline is written to `Roll::probe`.
+    pub probe: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -274,6 +278,9 @@ fn pattern_overlay(roll: &mut Roll, o: &Overlay, window_ms: u64, w: f32, lo: i32
             if !(lo..hi).contains(&n) { continue; }
             let y = (hi - 1 - n) as f32 * rh - note.cents / 100.0 * rh;
             rect(&mut roll.pattern, x0, y + 0.5, x0 + bw, y + rh - 0.5);
+            if o.probe == Some(note.step) {
+                rect(&mut roll.probe, x0, y + 0.5, x0 + bw, y + rh - 0.5);
+            }
             drawn += 1;
             if drawn >= MAX_STEPS { break 'cycles; }
             // A slide holds until the next onset; draw the legato link so it reads as a slide
@@ -450,9 +457,20 @@ mod tests {
     }
 
     #[test]
+    fn overlay_probe_outlines_only_the_held_step() {
+        let notes = loop_notes();
+        let o = Overlay { notes: &notes, step_ms: 125.0, phase_steps: 1.0, loop_steps: 4.0, swing_steps: 0.0, probe: Some(2) };
+        let mut evs = vec![];
+        let r = build(&mut evs, 10_000, 2_000, 600.0, 96.0, Some(&o));
+        assert!(!r.probe.is_empty(), "the held step should have an outline");
+        assert!(r.probe.matches('M').count() < r.pattern.matches('M').count());
+        assert!(r.probe.len() < r.pattern.len(), "only one step is outlined, not the whole ghost");
+    }
+
+    #[test]
     fn overlay_projects_the_loop_backwards_and_wraps() {
         let notes = loop_notes();
-        let o = Overlay { notes: &notes, step_ms: 125.0, phase_steps: 1.0, loop_steps: 4.0, swing_steps: 0.0 };
+        let o = Overlay { notes: &notes, step_ms: 125.0, phase_steps: 1.0, loop_steps: 4.0, swing_steps: 0.0, probe: None };
         let mut evs = vec![];
         let r = build(&mut evs, 10_000, 2_000, 600.0, 96.0, Some(&o));
         assert!(r.pattern.starts_with("M562.5 "), "step 0 should sit one step (37.5 px) left of now: {}", r.pattern);
@@ -481,7 +499,7 @@ mod tests {
             6_000,
             600.0,
             96.0,
-            Some(&Overlay { notes: &detuned, step_ms: 125.0, phase_steps: 0.0, loop_steps: 2.0, swing_steps: 0.0 }),
+            Some(&Overlay { notes: &detuned, step_ms: 125.0, phase_steps: 0.0, loop_steps: 2.0, swing_steps: 0.0, probe: None }),
         );
         let b = build(
             &mut evs,
@@ -489,7 +507,7 @@ mod tests {
             6_000,
             600.0,
             96.0,
-            Some(&Overlay { notes: &plain, step_ms: 125.0, phase_steps: 0.0, loop_steps: 2.0, swing_steps: 0.0 }),
+            Some(&Overlay { notes: &plain, step_ms: 125.0, phase_steps: 0.0, loop_steps: 2.0, swing_steps: 0.0, probe: None }),
         );
         assert!(a.hi - a.lo >= 24);
         // The cent offset shifts the note inside its row, so the geometry must differ.
@@ -521,7 +539,7 @@ mod tests {
     fn slide_connectors_follow_the_pattern_ghost() {
         let mut notes = loop_notes();
         notes[0].slide = true;
-        let o = Overlay { notes: &notes, step_ms: 125.0, phase_steps: 4.0, loop_steps: 4.0, swing_steps: 0.0 };
+        let o = Overlay { notes: &notes, step_ms: 125.0, phase_steps: 4.0, loop_steps: 4.0, swing_steps: 0.0, probe: None };
         let mut evs = vec![];
         let r = build(&mut evs, 10_000, 2_000, 600.0, 96.0, Some(&o));
         assert!(r.pattern_slides.starts_with('M'), "missing slide connector: {}", r.pattern_slides);
@@ -534,11 +552,11 @@ mod tests {
         assert_eq!(none.pattern.trim(), "M0 0");
         let notes = loop_notes();
         // A one-step loop over a long window would otherwise repeat forever.
-        let o = Overlay { notes: &notes[..1], step_ms: 1.0, phase_steps: 0.0, loop_steps: 1.0, swing_steps: 0.0 };
+        let o = Overlay { notes: &notes[..1], step_ms: 1.0, phase_steps: 0.0, loop_steps: 1.0, swing_steps: 0.0, probe: None };
         let r = build(&mut evs, 1_000, 60_000, 600.0, 96.0, Some(&o));
         assert!(r.pattern.matches('M').count() <= crate::sequence::MAX_STEPS);
         // A non-finite clock produces no overlay instead of a broken path.
-        let bad = Overlay { notes: &notes, step_ms: f32::NAN, phase_steps: 0.0, loop_steps: 4.0, swing_steps: 0.0 };
+        let bad = Overlay { notes: &notes, step_ms: f32::NAN, phase_steps: 0.0, loop_steps: 4.0, swing_steps: 0.0, probe: None };
         assert_eq!(build(&mut evs, 1_000, 6_000, 600.0, 96.0, Some(&bad)).pattern.trim(), "M0 0");
     }
 }

@@ -212,6 +212,12 @@ inside the panel. Overlays float on one of two shadow sizes.
 across the panel: 70ms to arrive, 450ms to leave. Nothing else in the chrome eases; state changes
 land on contact, because an instrument confirms by touch.
 
+**The Held Link Rule.** The drawing and the piano roll are one object. Hold a step in the roll and
+the marks that produced it keep their ink and a focus ring while the rest step back; hold a mark
+and its ghost occurrences in the roll take the ring. The link is a state, not an animation, and it
+appears only when the held step has a mark to point at. It never competes with the bloom: one is a
+generated event, the other is a reading.
+
 ## Shapes
 
 1px for ticks, 3px for chips and cells, 4px for rows, inputs and cards, 5px for the two primary

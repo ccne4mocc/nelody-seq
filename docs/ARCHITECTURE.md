@@ -252,6 +252,10 @@ variation comes from Generate, Randomize and the knobs.
 
 - `ViewNode` is a panel coordinate in a 210×210 viewbox; the ModePanel renders it at 300px via
   `px-per-unit`. Keep new geometry in the 210-unit space; do not pre-scale.
+- `ViewNode.link-step` records the display step a mark came from, or -1 for pure structure.
+  The piano roll uses it for the signal x-ray: holding a roll column lights the matching marks,
+  and holding a mark outlines that step's ghost occurrences in the roll (`history-probe`). The
+  cache the pointer probe reads is rebuilt in `push_view`, never derived from the rendered model.
 - The editor layout is fixed at 860×697 and the window never resizes; the extra row is the bottom status strip.
 - The mode panel has seven path slots: `edges` (framing), `fills` (translucent polygons),
   `solid` (strong polygons), `slid` and `jumped` (acid tone classes), `lines` (contours) and
